@@ -43,10 +43,12 @@
   nw_path_monitor_set_queue(_path_monitor, queue);
 
   __block envoy_network_t previousNetworkType = -1;
+  __block BOOL firstUpdate = YES;
   envoy_engine_t engineHandle = _engineHandle;
   nw_path_monitor_set_update_handler(_path_monitor, ^(nw_path_t _Nonnull path) {
     BOOL isSatisfied = nw_path_get_status(path) == nw_path_status_satisfied;
     if (!isSatisfied) {
+      firstUpdate = NO;
       // TODO(jpsim): Handle all possible path status values
       //
       // - nw_path_status_invalid: The path is not valid.
@@ -64,11 +66,13 @@
       network = isWifi ? ENVOY_NET_WLAN : ENVOY_NET_GENERIC;
     }
 
-    if (network != previousNetworkType) {
+    if (network != previousNetworkType && !firstUpdate) {
       NSLog(@"[Envoy] setting preferred network to %d", network);
       set_preferred_network(engineHandle, network);
-      previousNetworkType = network;
     }
+
+    firstUpdate = NO;
+    previousNetworkType = network;
 
     // TODO(jpsim): Should we shadow or otherwise compare these results with the reachability
     // flags?

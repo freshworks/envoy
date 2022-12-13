@@ -20,7 +20,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Start monitoring reachability using `NWPathMonitor`, updating the
 // preferred Envoy network cluster on changes.
 // This is typically called by `EnvoyEngine` automatically on startup.
-- (void)startPathMonitor;
+// 
+// @param ignoreInitialUpdate Do not update preferred
+- (void)startPathMonitor:(BOOL)ignoreInitialUpdate;
 
 @end
 

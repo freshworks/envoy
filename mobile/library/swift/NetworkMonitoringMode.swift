@@ -10,4 +10,8 @@ public enum NetworkMonitoringMode: Int {
   case reachability = 1
   /// Monitor changes to the network reachability state using `NWPathMonitor`.
   case pathMonitor = 2
+  /// Monitor changes to the network reachability state using `NWPathMonitor`.
+  /// Use experimental improvements: avoid forcing the DNS update on the initial
+  /// reachability update.
+  case pathMonitorExperimental = 3
 }

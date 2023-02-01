@@ -28,9 +28,14 @@ public:
   void SetTransactionState(SmtpTransaction::State state) { smtp_transaction_.setState(state); };
   SmtpTransaction::State getTransactionState() { return smtp_transaction_.getState(); }
 
+  void setSessionEncrypted(bool flag) { session_encrypted_ = flag; }
+  bool isSessionEncrypted() const { return session_encrypted_; }
+
 private:
   SmtpSession::State state_{State::CONNECTION_REQUEST};
   SmtpTransaction smtp_transaction_{};
+  bool session_encrypted_{false}; // tells if exchange is encrypted
+
 };
 
 } // namespace SmtpProxy

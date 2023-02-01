@@ -70,8 +70,6 @@ public:
   SmtpSession& getSession() override { return session_; }
   Decoder::Result parseCommand(Buffer::Instance& data);
   Decoder::Result parseResponse(Buffer::Instance& data);
-  void setSessionEncrypted(bool flag) { session_encrypted_ = flag; }
-  bool isSessionEncrypted() const { return session_encrypted_; }
   void handleDownstreamTls();
   void decodeSmtpTransactionCommands(std::string&);
   void decodeSmtpTransactionResponse(uint16_t&);
@@ -81,8 +79,7 @@ protected:
   DecoderCallbacks* callbacks_{};
   SmtpSession session_;
 
-  bool session_encrypted_{false}; // tells if exchange is encrypted
-
+  
 };
 
 } // namespace SmtpProxy

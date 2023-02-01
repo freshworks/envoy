@@ -27,7 +27,8 @@ Decoder::Result DecoderImpl::parseCommand(Buffer::Instance& data) {
   ENVOY_LOG(debug, "smtp_proxy: decoding {} bytes", data.length());
   Decoder::Result result = Decoder::Result::ReadyForNext;
   std::string command = data.toString();
-
+  ENVOY_LOG(debug, "received command {}", command);
+  ENVOY_LOG(debug, "received command", command);
   if (command.length() < 6) {
     // Message size is not sufficient to parse.
     return result;
@@ -57,7 +58,7 @@ Decoder::Result DecoderImpl::parseCommand(Buffer::Instance& data) {
         result = Decoder::Result::Stopped;
         break;
       }
-      if (session_encrypted_) {
+      if (session_.isSessionEncrypted()) {
         ENVOY_LOG(error, "smtp_proxy: received starttls when session is already encrypted.");
         callbacks_->sendReplyDownstream(SmtpUtils::outOfOrderCommandResponse);
         result = Decoder::Result::Stopped;
@@ -166,7 +167,7 @@ Decoder::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
       }
     }
     // If upstream server does not support TLS i.e. response code != 220
-    callbacks_->incUpstreamTlsFailed();
+    // callbacks_->incUpstreamTlsFailed();
     session_.setState(SmtpSession::State::SESSION_TERMINATED);
     callbacks_->sendReplyDownstream(SmtpUtils::tlsNotSupportedResponse);
     callbacks_->closeDownstreamConnection();
@@ -268,14 +269,17 @@ void DecoderImpl::decodeSmtpTransactionResponse(uint16_t& response_code) {
 
 
 void DecoderImpl::handleDownstreamTls() {
+  ENVOY_LOG(debug, "handleDownstreamTls, sessting state SmtpSession::State::DOWNSTREAM_TLS_NEGOTIATION");
   session_.setState(SmtpSession::State::DOWNSTREAM_TLS_NEGOTIATION);
   if (!callbacks_->downstreamStartTls(SmtpUtils::readyToStartTlsResponse)) {
     // callback returns false if connection is switched to tls i.e. tls termination is
     // successful.
-    session_encrypted_ = true;
+    ENVOY_LOG(debug, "downstreamStartTls returned false, success");
+    session_.setSessionEncrypted(true);
     session_.setState(SmtpSession::State::SESSION_IN_PROGRESS);
   } else {
     // error while switching transport socket to tls.
+     ENVOY_LOG(debug, "downstreamStartTls returned true, failure");
     callbacks_->incTlsTerminationErrors();
     session_.setState(SmtpSession::State::SESSION_TERMINATED);
     callbacks_->sendReplyDownstream(SmtpUtils::tlsHandshakeErrorResponse);

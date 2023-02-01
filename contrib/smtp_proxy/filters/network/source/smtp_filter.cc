@@ -29,7 +29,7 @@ Network::FilterStatus SmtpFilter::onNewConnection() {
 }
 
 bool SmtpFilter::downstreamStartTls(absl::string_view response) {
-
+  ENVOY_LOG(debug, "received call downstreamStartTls, response is: {}", response);
   Buffer::OwnedImpl buffer;
   buffer.add(response);
 
@@ -37,12 +37,16 @@ bool SmtpFilter::downstreamStartTls(absl::string_view response) {
     // Wait until response has been sent.
     if (bytes >= response.length()) {
       if (!read_callbacks_->connection().startSecureTransport()) {
-        ENVOY_CONN_LOG(trace, "smtp_proxy filter: cannot switch to tls",
+        ENVOY_CONN_LOG(debug, "smtp_proxy filter: cannot switch to tls",
                        read_callbacks_->connection(), bytes);
+        ENVOY_LOG(debug, "cannot switch to tls");
+        // std::cout << "cannot switch to tls\n";
+        return true;
       } else {
         // Switch to TLS has been completed.
+        ENVOY_LOG(debug, "switched to TLS, incrementing stats");
         incTlsTerminatedSessions();
-        ENVOY_CONN_LOG(trace, "smtp_proxy filter: switched to tls", read_callbacks_->connection(),
+        ENVOY_CONN_LOG(debug, "smtp_proxy filter: switched to tls", read_callbacks_->connection(),
                        bytes);
         return false;
       }
@@ -83,7 +87,6 @@ bool SmtpFilter::upstreamStartTls() {
   // Try to switch upstream connection to use a secure channel.
   if (read_callbacks_->startUpstreamSecureTransport()) {
     config_->stats_.sessions_upstream_tls_success_.inc();
-    // read_callbacks_->injectReadDataToFilterChain(data, false);
     ENVOY_LOG(debug, "smtp_proxy: upstream TLS enabled");
     ENVOY_CONN_LOG(trace, "smtp_proxy: upstream TLS enabled.", read_callbacks_->connection());
   } else {

@@ -15,6 +15,7 @@ envoy_cc_test(
         "smtp_decoder_test.cc",
     ],
     deps = [
+        ":smtp_test_utils",
         "//contrib/smtp_proxy/filters/network/source:filter",
         "//test/mocks/network:network_mocks",
     ],
@@ -32,4 +33,8 @@ envoy_cc_test(
     ],
 )
 
+envoy_cc_test_library(
+    name = "smtp_test_utils",
+    hdrs = ["smtp_test_utils.h"],
+)
 

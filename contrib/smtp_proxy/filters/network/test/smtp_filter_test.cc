@@ -103,7 +103,6 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
 TEST_F(SmtpFilterTest, TestSendReplyDownstream) {
   initialize();
 
-
   EXPECT_CALL(filter_callbacks_, connection()).WillRepeatedly(ReturnRef(connection_));
   Network::Connection::BytesSentCb cb;
   EXPECT_CALL(connection_, addBytesSentCallback(_)).WillOnce(testing::SaveArg<0>(&cb));

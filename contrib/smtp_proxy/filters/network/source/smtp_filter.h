@@ -7,6 +7,7 @@
 #include "source/common/common/logger.h"
 #include "source/common/common/utility.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+#include "envoy/access_log/access_log.h"
 
 #include "contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha/smtp_proxy.pb.h"
 
@@ -46,16 +47,21 @@ public:
     std::string stats_prefix_;
     envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
         upstream_tls_;
+    std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   };
   SmtpFilterConfig(const SmtpFilterConfigOptions& config_options, Stats::Scope& scope);
   const SmtpProxyStats& stats() { return stats_; }
-
+  const std::vector<AccessLog::InstanceSharedPtr>& accessLogs() const {
+    return access_logs_;
+  }
   Stats::Scope& scope_;
   SmtpProxyStats stats_;
+  std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
       upstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
 
 private:
+  
   SmtpProxyStats generateStats(const std::string& prefix, Stats::Scope& scope) {
     return SmtpProxyStats{ALL_SMTP_PROXY_STATS(POOL_COUNTER_PREFIX(scope, prefix))};
   }

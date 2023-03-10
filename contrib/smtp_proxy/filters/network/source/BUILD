@@ -29,6 +29,7 @@ envoy_cc_library(
         "//envoy/server:filter_config_interface",
         "//envoy/stats:stats_interface",
         "//envoy/stats:stats_macros",
+        "//envoy/access_log:access_log_interface",
         "//source/common/buffer:buffer_lib",
         "//source/common/network:filter_lib",
         "//source/extensions/filters/network:well_known_names",
@@ -60,6 +61,9 @@ envoy_cc_contrib_extension(
     repository = "@envoy",
     deps = [
         ":filter",
+        "//envoy/access_log:access_log_interface",
+        "//source/common/access_log:access_log_lib",
+        "@envoy_api//envoy/config/accesslog/v3:pkg_cc_proto",
         "//source/extensions/filters/network:well_known_names",
         "//source/extensions/filters/network/common:factory_base_lib",
         "@envoy_api//contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha:pkg_cc_proto",

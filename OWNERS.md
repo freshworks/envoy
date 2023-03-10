@@ -35,10 +35,6 @@ routing PRs, questions, etc. to the right place.
 
 * Joshua Marantz ([jmarantz](https://github.com/jmarantz)) (jmarantz@google.com)
   * Stats, abseil, scalability, and performance.
-* William A Rowe Jr ([wrowe](https://github.com/wrowe)) (wrowe@vmware.com)
-  * Windows port and CI build, `bazel/foreign_cc` build and dependencies liaison.
-* Antonio Vicente ([antoniovicente](https://github.com/antoniovicente)) (avd@google.com)
-  * Event management, security, performance, data plane.
 * Adi Peleg ([adisuissa](https://github.com/adisuissa)) (adip@google.com)
   * xDS APIs, configuration, control plane, fuzzing.
 * Kevin Baichoo ([KBaichoo](https://github.com/KBaichoo)) (kbaichoo@google.com)
@@ -49,6 +45,8 @@ routing PRs, questions, etc. to the right place.
   * Bazel, CI, compilers, linkers, general build issues, etc.
 * Kuat Yessenov ([kyessenov](https://github.com/kyessenov)) (kuat@google.com)
   * Listeners, RBAC, CEL, matching, Istio.
+* Raven Black ([ravenblackx](https://github.com/ravenblackx)) (ravenblack@dropbox.com)
+  * Caches, file filters, and file I/O.
 
 # Envoy mobile maintainers
 
@@ -67,17 +65,14 @@ The following extension maintainers have final say over the extensions mentioned
 approve an extension PR, it will be merged by the maintainer on-call (or any other maintainer)
 without further review.
 
-* Piotr Sikora ([PiotrSikora](https://github.com/PiotrSikora)) (piotrsikora@google.com)
+* Michael Warres ([mpwarres] (https://github.com/mpwarres)) (mpw@google.com)
   * Wasm
-* Raúl Gutiérrez Segalés ([rgs1](https://github.com/rgs1)) (rgs@pinterest.com)
-  * Thrift
 
 # Envoy security team
 
 * All senior maintainers
 * Tony Allen ([tonya11en](https://github.com/tonya11en)) (tony@allen.gg)
 * Yan Avlasov ([yanavlasov](https://github.com/yanavlasov)) (yavlasov@google.com)
-* William A Rowe Jr ([wrowe](https://github.com/wrowe)) (wrowe@vmware.com)
 * Otto van der Schaaf ([oschaaf](https://github.com/oschaaf)) (oschaaf@redhat.com)
 * Tim Walsh ([twghu](https://github.com/twghu)) (twalsh@redhat.com)
 * Ryan Northey ([phlax](https://github.com/phlax)) (ryan@synca.io)
@@ -115,6 +110,8 @@ contributors to envoy-setec and relevant Slack channels from:
 * Michael Rebello ([rebello95](https://github.com/rebello95)) (mrebello@lyft.com)
 * Alan Chiu ([buildbreaker](https://github.com/buildbreaker)) (achiu@lyft.com)
 * Charles Le Borgne ([carloseltuerto](https://github.com/carloseltuerto)) (cleborgne@google.com)
+* William A Rowe Jr ([wrowe](https://github.com/wrowe)) (wrowe@rowe-clan.net)
+* Antonio Vicente ([antoniovicente](https://github.com/antoniovicente)) (avd@google.com)
 
 # Friends of Envoy
 

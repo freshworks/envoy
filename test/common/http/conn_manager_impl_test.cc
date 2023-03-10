@@ -395,7 +395,7 @@ TEST_F(HttpConnectionManagerImplTest, PopulateStreamInfo) {
   Buffer::OwnedImpl fake_input("input");
   conn_manager_->createCodec(fake_input);
 
-  startRequest(true);
+  startRequest(false);
 
   EXPECT_NE(absl::nullopt, decoder_->streamInfo().getStreamIdProvider());
   EXPECT_NE(absl::nullopt, decoder_->streamInfo().getStreamIdProvider()->toInteger());
@@ -404,6 +404,8 @@ TEST_F(HttpConnectionManagerImplTest, PopulateStreamInfo) {
   EXPECT_EQ(filter_callbacks_.connection_.id_,
             decoder_->streamInfo().downstreamAddressProvider().connectionID().value());
   EXPECT_EQ(server_name_, decoder_->streamInfo().downstreamAddressProvider().requestedServerName());
+  EXPECT_TRUE(decoder_->streamInfo().filterState()->hasDataWithName(
+      Network::ProxyProtocolFilterState::key()));
 
   // Clean up.
   filter_callbacks_.connection_.raiseEvent(Network::ConnectionEvent::RemoteClose);
@@ -1384,7 +1386,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlow) {
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Ingress, config.operationName());
 
@@ -1544,7 +1546,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlowIngressDecorat
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Ingress, config.operationName());
 
@@ -1612,7 +1614,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlowIngressDecorat
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Ingress, config.operationName());
 
@@ -1681,7 +1683,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlowIngressDecorat
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Ingress, config.operationName());
 
@@ -1764,7 +1766,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlowEgressDecorato
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Egress, config.operationName());
 
@@ -1848,7 +1850,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlowEgressDecorato
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Egress, config.operationName());
 
@@ -1934,7 +1936,7 @@ TEST_F(HttpConnectionManagerImplTest, StartAndFinishSpanNormalFlowEgressDecorato
   auto* span = new NiceMock<Tracing::MockSpan>();
   EXPECT_CALL(*tracer_, startSpan_(_, _, _, _))
       .WillOnce(
-          Invoke([&](const Tracing::Config& config, const RequestHeaderMap&,
+          Invoke([&](const Tracing::Config& config, Tracing::TraceContext&,
                      const StreamInfo::StreamInfo&, const Tracing::Decision) -> Tracing::Span* {
             EXPECT_EQ(Tracing::OperationName::Egress, config.operationName());
 
@@ -2218,7 +2220,7 @@ TEST_F(HttpConnectionManagerImplTest, TestFilterCanEnrichAccessLogs) {
   conn_manager_->onData(fake_input, false);
 }
 
-TEST_F(HttpConnectionManagerImplTest, TestDownstreamDisconnectAccessLog) {
+TEST_F(HttpConnectionManagerImplTest, TestRemoteDownstreamDisconnectAccessLog) {
   setup(false, "");
 
   std::shared_ptr<MockStreamDecoderFilter> filter(new NiceMock<MockStreamDecoderFilter>());
@@ -2260,6 +2262,48 @@ TEST_F(HttpConnectionManagerImplTest, TestDownstreamDisconnectAccessLog) {
   conn_manager_->onData(fake_input, false);
 
   filter_callbacks_.connection_.raiseEvent(Network::ConnectionEvent::RemoteClose);
+}
+
+TEST_F(HttpConnectionManagerImplTest, TestLocalDownstreamDisconnectAccessLog) {
+  setup(false, "");
+
+  std::shared_ptr<MockStreamDecoderFilter> filter(new NiceMock<MockStreamDecoderFilter>());
+  std::shared_ptr<AccessLog::MockInstance> handler(new NiceMock<AccessLog::MockInstance>());
+
+  EXPECT_CALL(filter_factory_, createFilterChain(_))
+      .WillOnce(Invoke([&](FilterChainManager& manager) -> bool {
+        FilterFactoryCb filter_factory = createDecoderFilterFactoryCb(filter);
+        FilterFactoryCb handler_factory = createLogHandlerFactoryCb(handler);
+
+        manager.applyFilterFactoryCb({}, filter_factory);
+        manager.applyFilterFactoryCb({}, handler_factory);
+        return true;
+      }));
+
+  EXPECT_CALL(*handler, log(_, _, _, _))
+      .WillOnce(Invoke([](const HeaderMap*, const HeaderMap*, const HeaderMap*,
+                          const StreamInfo::StreamInfo& stream_info) {
+        EXPECT_EQ("downstream_local_disconnect(reason_for_local_close)",
+                  stream_info.responseCodeDetails().value());
+      }));
+
+  EXPECT_CALL(*codec_, dispatch(_))
+      .WillRepeatedly(Invoke([&](Buffer::Instance& data) -> Http::Status {
+        decoder_ = &conn_manager_->newStream(response_encoder_);
+
+        RequestHeaderMapPtr headers{new TestRequestHeaderMapImpl{
+            {":method", "GET"}, {":authority", "host"}, {":path", "/"}}};
+        decoder_->decodeHeaders(std::move(headers), true);
+
+        data.drain(4);
+        return Http::okStatus();
+      }));
+
+  Buffer::OwnedImpl fake_input("1234");
+  conn_manager_->onData(fake_input, false);
+
+  filter_callbacks_.connection_.close(Network::ConnectionCloseType::NoFlush,
+                                      "reason for local close");
 }
 
 TEST_F(HttpConnectionManagerImplTest, TestAccessLogWithTrailers) {
@@ -3225,6 +3269,38 @@ TEST_F(HttpConnectionManagerImplTest, PerStreamIdleTimeoutAfterBidiData) {
   EXPECT_EQ("world", response_body);
 }
 
+TEST_F(HttpConnectionManagerImplTest, RoundTripTimeHasValue) {
+  setup(false, "");
+
+  // Set up the codec.
+  Buffer::OwnedImpl fake_input("input");
+  conn_manager_->createCodec(fake_input);
+
+  startRequest(true);
+
+  EXPECT_CALL(filter_callbacks_.connection_, lastRoundTripTime())
+      .WillOnce(Return(absl::optional<std::chrono::milliseconds>(300)));
+  EXPECT_CALL(filter_callbacks_.connection_, connectionInfoSetter());
+
+  filter_callbacks_.connection_.raiseEvent(Network::ConnectionEvent::RemoteClose);
+}
+
+TEST_F(HttpConnectionManagerImplTest, RoundTripTimeHasNoValue) {
+  setup(false, "");
+
+  // Set up the codec.
+  Buffer::OwnedImpl fake_input("input");
+  conn_manager_->createCodec(fake_input);
+
+  startRequest(true);
+
+  EXPECT_CALL(filter_callbacks_.connection_, lastRoundTripTime())
+      .WillOnce(Return(absl::optional<std::chrono::milliseconds>()));
+  EXPECT_CALL(filter_callbacks_.connection_, connectionInfoSetter()).Times(0);
+
+  filter_callbacks_.connection_.raiseEvent(Network::ConnectionEvent::RemoteClose);
+}
+
 TEST_F(HttpConnectionManagerImplTest, RequestTimeoutDisabledByDefault) {
   setup(false, "");
 
@@ -3885,7 +3961,7 @@ TEST_F(HttpConnectionManagerImplTest, DrainCloseRaceWithClose) {
   EXPECT_CALL(*codec_, dispatch(_)).WillOnce(Return(codecProtocolError("protocol error")));
   EXPECT_CALL(*drain_timer, disableTimer());
   EXPECT_CALL(filter_callbacks_.connection_,
-              close(Network::ConnectionCloseType::FlushWriteAndDelay))
+              close(Network::ConnectionCloseType::FlushWriteAndDelay, _))
       .WillOnce(Return());
   conn_manager_->onData(fake_input, false);
 
@@ -3983,7 +4059,7 @@ TEST_F(HttpConnectionManagerImplTest, DrainClose) {
 
   EXPECT_CALL(*codec_, goAway());
   EXPECT_CALL(filter_callbacks_.connection_,
-              close(Network::ConnectionCloseType::FlushWriteAndDelay));
+              close(Network::ConnectionCloseType::FlushWriteAndDelay, _));
   EXPECT_CALL(*drain_timer, disableTimer());
   drain_timer->invokeCallback();
 

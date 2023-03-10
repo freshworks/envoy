@@ -1,9 +1,15 @@
 import Envoy
 import EnvoyEngine
 import Foundation
+import TestExtensions
 import XCTest
 
 final class SendDataTests: XCTestCase {
+  override static func setUp() {
+    super.setUp()
+    register_test_extensions()
+  }
+
   func testSendData() throws {
     // swiftlint:disable:next line_length
     let emhcmType = "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.EnvoyMobileHttpConnectionManager"
@@ -61,7 +67,6 @@ static_resources:
 
     let requestHeaders = RequestHeadersBuilder(method: .get, scheme: "https",
                                                authority: "example.com", path: "/test")
-      .addUpstreamHttpProtocol(.http2)
       .build()
     let body = try XCTUnwrap(requestStringMatch.data(using: .utf8))
 

@@ -25,8 +25,10 @@ NetworkFilters::SmtpProxy::SmtpConfigFactory::createFilterFactoryFromProtoTyped(
 
   SmtpFilterConfigSharedPtr filter_config(
       std::make_shared<SmtpFilterConfig>(config_options, context.scope()));
-  return [filter_config](Network::FilterManager& filter_manager) -> void {
-    filter_manager.addFilter(std::make_shared<SmtpFilter>(filter_config));
+
+  auto& time_source = context.mainThreadDispatcher().timeSource();
+  return [filter_config, &time_source](Network::FilterManager& filter_manager) -> void {
+    filter_manager.addFilter(std::make_shared<SmtpFilter>(filter_config, time_source));
   };
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 
+#include "envoy/network/connection.h"
 #include "envoy/common/platform.h"
 
 #include "source/common/buffer/buffer_impl.h"
@@ -8,6 +9,8 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
+// #include "source/common/stream_info/stream_info_impl.h"
+#include "envoy/stream_info/stream_info.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -33,12 +36,14 @@ public:
   virtual void incSmtpAuthErrors() PURE;
   virtual void incMailDataTransferErrors() PURE;
   virtual void incMailRcptErrors() PURE;
-  
+
   virtual bool downstreamStartTls(absl::string_view) PURE;
   virtual bool sendReplyDownstream(absl::string_view) PURE;
   virtual bool upstreamTlsRequired() const PURE;
   virtual bool upstreamStartTls() PURE;
   virtual void closeDownstreamConnection() PURE;
+  virtual Network::Connection& connection() const PURE;
+  virtual StreamInfo::StreamInfo& StreamInfo() PURE;
 };
 
 // SMTP message decoder.
@@ -58,13 +63,17 @@ public:
   virtual Result onData(Buffer::Instance& data, bool) PURE;
   // virtual Result parseResponse(Buffer::Instance& data) PURE;
   virtual SmtpSession& getSession() PURE;
+  virtual const StreamInfo::StreamInfo& StreamInfo() PURE;
+  virtual void setStreamInfo(StreamInfo::StreamInfo&) PURE;
 };
 
 using DecoderPtr = std::unique_ptr<Decoder>;
 
 class DecoderImpl : public Decoder, Logger::Loggable<Logger::Id::filter> {
 public:
-  DecoderImpl(DecoderCallbacks* callbacks) : callbacks_(callbacks) {}
+  DecoderImpl(DecoderCallbacks* callbacks, TimeSource& time_source) : callbacks_(callbacks), time_source_(time_source), stream_info_(callbacks->StreamInfo()) {
+  }
+  // stream_info_(time_source_, callbacks_->connection().connectionInfoProviderSharedPtr()) {}
 
   Result onData(Buffer::Instance& data, bool upstream) override;
   SmtpSession& getSession() override { return session_; }
@@ -73,13 +82,21 @@ public:
   void handleDownstreamTls();
   void decodeSmtpTransactionCommands(std::string&);
   void decodeSmtpTransactionResponse(uint16_t&);
+  const StreamInfo::StreamInfo& StreamInfo() override { return stream_info_; }
+  void setStreamInfo(StreamInfo::StreamInfo& stream_info) override { stream_info_ = stream_info; };
+  void setTransactionMetadata();
+  void setSessionMetadata();
 
 protected:
- 
+
   DecoderCallbacks* callbacks_{};
   SmtpSession session_;
 
-  
+  // uint64_t stream_id_;
+  // Random::RandomGenerator& random_generator_;
+  TimeSource& time_source_;
+  // StreamInfo::StreamInfoImpl stream_info_;
+  StreamInfo::StreamInfo& stream_info_;
 };
 
 } // namespace SmtpProxy

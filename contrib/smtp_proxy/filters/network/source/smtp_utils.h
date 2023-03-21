@@ -26,6 +26,10 @@ public:
       "502 TLS not supported\r\n";
   inline static const char* mailboxUnavailableResponse =
       "450  Requested mail action not taken: mailbox unavailable\r\n";
+
+  inline static const char* statusSuccess = "Success";
+  inline static const char* statusFailed = "Failed";
+  inline static const char* statusAborted = "Aborted";
 };
 
 } // namespace SmtpProxy

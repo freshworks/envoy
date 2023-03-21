@@ -16,15 +16,27 @@ SmtpFilterConfig::SmtpFilterConfig(const SmtpFilterConfigOptions& config_options
                                    Stats::Scope& scope)
     : scope_{scope}, stats_(generateStats(config_options.stats_prefix_, scope)),
       upstream_tls_(config_options.upstream_tls_) {
+        access_logs_ = config_options.access_logs_;
+      }
+
+SmtpFilter::SmtpFilter(SmtpFilterConfigSharedPtr config, TimeSource& time_source) : config_{config}, time_source_(time_source) {
+
+  // if (!decoder_) {
+  //   decoder_ = createDecoder(this, time_source);
+  // }
 }
-SmtpFilter::SmtpFilter(SmtpFilterConfigSharedPtr config) : config_{config} {
-  if (!decoder_) {
-    decoder_ = createDecoder(this);
+
+void SmtpFilter::emitLogEntry() {
+for (const auto& access_log : config_->accessLogs()) {
+    access_log->log(nullptr, nullptr, nullptr, decoder_->StreamInfo());
   }
 }
 
 Network::FilterStatus SmtpFilter::onNewConnection() {
   incSmtpSessionRequests();
+   if (!decoder_) {
+    decoder_ = createDecoder(this, time_source_);
+  }
   return Network::FilterStatus::Continue;
 }
 
@@ -162,8 +174,8 @@ Network::FilterStatus SmtpFilter::doDecode(Buffer::Instance& data, bool upstream
   return Network::FilterStatus::Continue;
 }
 
-DecoderPtr SmtpFilter::createDecoder(DecoderCallbacks* callbacks) {
-  return std::make_unique<DecoderImpl>(callbacks);
+DecoderPtr SmtpFilter::createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source) {
+  return std::make_unique<DecoderImpl>(callbacks, time_source);
 }
 
 } // namespace SmtpProxy

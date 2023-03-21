@@ -21,14 +21,14 @@ class SmtpConfigFactory
           envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy> {
 public:
   SmtpConfigFactory() : FactoryBase{NetworkFilterNames::get().SmtpProxy} {}
-  
+
 private:
   Network::FilterFactoryCb createFilterFactoryFromProtoTyped(
       const envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy&
           proto_config,
       Server::Configuration::FactoryContext& context) override;
-  
-  std::vector<AccessLog::InstanceSharedPtr> access_logs_;
+
+  // std::vector<AccessLog::InstanceSharedPtr> access_logs_;
 };
 
 } // namespace SmtpProxy

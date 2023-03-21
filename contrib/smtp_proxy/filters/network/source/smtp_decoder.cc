@@ -1,7 +1,7 @@
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
-
+#include "source/extensions/filters/network/well_known_names.h"
 #include "source/common/common/logger.h"
 #include "absl/strings/match.h"
 
@@ -90,7 +90,7 @@ Decoder::Result DecoderImpl::parseCommand(Buffer::Instance& data) {
     }
 
     decodeSmtpTransactionCommands(command);
-   
+
     break;
   } // End case SESSION_IN_PROGRESS
 
@@ -181,11 +181,14 @@ Decoder::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
     if (response_code == 221) {
       session_.setState(SmtpSession::State::SESSION_TERMINATED);
       callbacks_->incSmtpSessionsCompleted();
-      if (session_.getTransactionState() == SmtpTransaction::State::TRANSACTION_IN_PROGRESS ||
-          session_.getTransactionState() == SmtpTransaction::State::MAIL_DATA_TRANSFER_REQUEST) {
+      if (session_.getTransaction() && (session_.getTransactionState() == SmtpTransaction::State::TRANSACTION_IN_PROGRESS ||
+          session_.getTransactionState() == SmtpTransaction::State::MAIL_DATA_TRANSFER_REQUEST)) {
         // Increment stats for incomplete transactions when session is abruptly terminated.
         callbacks_->incSmtpTransactionsAborted();
+        session_.getTransaction()->setStatus(SmtpUtils::statusAborted);
+        setTransactionMetadata();
       }
+      setSessionMetadata();
     } else {
       session_.setState(SmtpSession::State::SESSION_IN_PROGRESS);
     }
@@ -204,6 +207,8 @@ void DecoderImpl::decodeSmtpTransactionCommands(std::string& command) {
   case SmtpTransaction::State::TRANSACTION_COMPLETED: {
 
     if (absl::StartsWithIgnoreCase(command, SmtpUtils::smtpMailCommand)) {
+
+      session_.createNewTransaction();
       session_.SetTransactionState(SmtpTransaction::State::TRANSACTION_REQUEST);
     }
     break;
@@ -253,21 +258,36 @@ void DecoderImpl::decodeSmtpTransactionResponse(uint16_t& response_code) {
     break;
   }
   case SmtpTransaction::State::MAIL_DATA_TRANSFER_REQUEST: {
+    session_.getTransaction()->setResponseCode(response_code);
+
     if (response_code == 250) {
       session_.SetTransactionState(SmtpTransaction::State::TRANSACTION_COMPLETED);
+      session_.getTransaction()->setStatus(SmtpUtils::statusSuccess);
       callbacks_->incSmtpTransactions();
+      session_.getSessionStats().transactions_completed++;
+    } else if(response_code == 354) {
+      //Intermediate response.
+      break;
     } else if(response_code >=400 && response_code <= 599) {
       callbacks_->incMailDataTransferErrors();
       callbacks_->incSmtpTransactions();
       //Reset the transaction state in case of mail data transfer errors.
       session_.SetTransactionState(SmtpTransaction::State::NONE);
+      session_.getTransaction()->setStatus(SmtpUtils::statusFailed);
+      session_.getSessionStats().transactions_failed++;
     }
+    setTransactionMetadata();
+    session_.deleteTransaction();
     break;
   }
   case SmtpTransaction::State::TRANSACTION_ABORT_REQUEST: {
     if (response_code == 250) {
       callbacks_->incSmtpTransactionsAborted();
       session_.SetTransactionState(SmtpTransaction::State::NONE);
+      session_.getTransaction()->setStatus(SmtpUtils::statusAborted);
+      session_.getSessionStats().transactions_aborted++;
+      setTransactionMetadata();
+      session_.deleteTransaction();
     } else {
        session_.SetTransactionState(SmtpTransaction::State::TRANSACTION_IN_PROGRESS);
     }
@@ -276,6 +296,8 @@ void DecoderImpl::decodeSmtpTransactionResponse(uint16_t& response_code) {
   default:
     break;
   }
+
+
 }
 
 
@@ -293,6 +315,40 @@ void DecoderImpl::handleDownstreamTls() {
     callbacks_->sendReplyDownstream(SmtpUtils::tlsHandshakeErrorResponse);
     callbacks_->closeDownstreamConnection();
   }
+}
+
+void DecoderImpl::setSessionMetadata() {
+  ProtobufWkt::Struct metadata(
+      (*stream_info_.dynamicMetadata().mutable_filter_metadata())[NetworkFilterNames::get().SmtpProxy]);
+
+  auto& fields = *metadata.mutable_fields();
+
+  //Emit SMTP session metadata
+  ProtobufWkt::Struct session_metadata;
+  session_.encode(session_metadata);
+
+  fields["session_metadata"].mutable_struct_value()->CopyFrom(session_metadata);
+
+  stream_info_.setDynamicMetadata(
+      NetworkFilterNames::get().SmtpProxy, metadata);
+}
+
+
+void DecoderImpl::setTransactionMetadata() {
+
+  ProtobufWkt::Struct metadata(
+      (*stream_info_.dynamicMetadata().mutable_filter_metadata())[NetworkFilterNames::get().SmtpProxy]);
+
+  ProtobufWkt::Struct transaction_metadata;
+  session_.getTransaction()->encode(transaction_metadata);
+
+  auto& fields = *metadata.mutable_fields();
+
+  auto& transactions = *fields["smtp_transactions"].mutable_list_value();
+  transactions.add_values()->mutable_struct_value()->CopyFrom(transaction_metadata);
+
+  stream_info_.setDynamicMetadata(
+      NetworkFilterNames::get().SmtpProxy, metadata);
 }
 
 } // namespace SmtpProxy

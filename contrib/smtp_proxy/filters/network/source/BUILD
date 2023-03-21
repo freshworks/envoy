@@ -40,19 +40,34 @@ envoy_cc_library(
 envoy_cc_library(
     name = "smtp_decoder_lib",
     srcs = ["smtp_decoder.cc"],
-    hdrs = ["smtp_decoder.h", "smtp_session.h", "smtp_transaction.h", "smtp_utils.h"],
+    hdrs = ["smtp_decoder.h", "smtp_utils.h"],
     deps = [
+        "smtp_session_lib",
         "//source/common/buffer:buffer_lib",
+        "//source/extensions/filters/network:well_known_names",
+        # "//source/common/stream_info:stream_info_lib",
+        "//envoy/stream_info:stream_info_interface",
     ],
 )
 
+envoy_cc_library(
+    name = "smtp_session_lib",
+    srcs = ["smtp_session.cc"],
+    hdrs = ["smtp_session.h"],
+    deps = [
+        "smtp_transaction_lib",
+    ],
+)
 
-
-# "@envoy//envoy/registry",
-#         "@envoy//source/common/network:connection_lib",
-#         "@envoy//source/extensions/filters/network/common:factory_base_lib",
-#         "@envoy//source/common/common:minimal_logger_lib",
-#         "@envoy//source/common/common:utility_lib",
+envoy_cc_library(
+    name = "smtp_transaction_lib",
+    srcs = ["smtp_transaction.cc"],
+    hdrs = ["smtp_transaction.h"],
+    deps = [
+        "//source/common/buffer:buffer_lib",
+        "//source/common/protobuf:utility_lib",
+    ],
+)
 
 envoy_cc_contrib_extension(
     name = "config",

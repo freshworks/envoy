@@ -22,19 +22,49 @@ public:
     SESSION_AUTH_REQUEST = 8,
   };
 
+  struct SmtpSessionStats {
+    int transactions_failed;
+    int transactions_completed;
+    int transactions_aborted;
+    int downstream_tls_success;
+    int downstream_tls_failed;
+    int upstream_tls_success;
+    int upstream_tls_failed;
+  };
+
+  SmtpSession() {
+    smtp_transaction_ =  new SmtpTransaction(++current_transaction_id);
+  }
+
+  ~SmtpSession() {
+    delete smtp_transaction_;
+    smtp_transaction_ = nullptr;
+  }
+
   void setState(SmtpSession::State state) { state_ = state; }
   SmtpSession::State getState() { return state_; }
 
-  void SetTransactionState(SmtpTransaction::State state) { smtp_transaction_.setState(state); };
-  SmtpTransaction::State getTransactionState() { return smtp_transaction_.getState(); }
+  SmtpTransaction* getTransaction(){ return smtp_transaction_; }
+  void createNewTransaction();
+  void deleteTransaction();
+
+  void SetTransactionState(SmtpTransaction::State state) { smtp_transaction_->setState(state); };
+  SmtpTransaction::State getTransactionState() { return smtp_transaction_->getState(); }
+
+  int getCurrentTransactionId() { return current_transaction_id; }
+  SmtpSession::SmtpSessionStats& getSessionStats() { return session_stats_; }
 
   void setSessionEncrypted(bool flag) { session_encrypted_ = flag; }
   bool isSessionEncrypted() const { return session_encrypted_; }
 
+  void encode(ProtobufWkt::Struct& metadata);
+
 private:
   SmtpSession::State state_{State::CONNECTION_REQUEST};
-  SmtpTransaction smtp_transaction_{};
+  SmtpTransaction* smtp_transaction_;
+  SmtpSession::SmtpSessionStats session_stats_;
   bool session_encrypted_{false}; // tells if exchange is encrypted
+  int current_transaction_id{0};
 
 };
 

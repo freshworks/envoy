@@ -1,3 +1,5 @@
+#include <vector>
+
 #include "source/common/buffer/buffer_impl.h"
 
 #include "test/mocks/network/mocks.h"
@@ -25,13 +27,15 @@ public:
   }
 
   SmtpFilterConfigSharedPtr config_;
+  std::string stat_prefix_{"test."};
+  const std::vector<AccessLog::InstanceSharedPtr> access_logs_;
+
   SmtpFilterConfig::SmtpFilterConfigOptions config_options_{
-      stat_prefix_,
-      envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy_UpstreamTLSMode_DISABLE};
+      stat_prefix_, envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
 
   std::unique_ptr<SmtpFilter> filter_;
-  Stats::IsolatedStoreImpl scope_;
-  std::string stat_prefix_{"test."};
+  Stats::IsolatedStoreImpl store_;
+  Stats::Scope& scope_{*store_.rootScope()};
   NiceMock<Network::MockReadFilterCallbacks> filter_callbacks_;
   NiceMock<Network::MockConnection> connection_;
   Buffer::OwnedImpl data_;
@@ -55,7 +59,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
       envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE;
   ASSERT_FALSE(filter_->upstreamTlsRequired());
   filter_->getSession().setState(SmtpSession::State::CONNECTION_SUCCESS);
-  
+
   data_.add("EHLO localhost\r\n");
   ASSERT_THAT(Network::FilterStatus::Continue, filter_->onData(data_, false));
   EXPECT_EQ(SmtpSession::State::SESSION_INIT_REQUEST, filter_->getSession().getState());
@@ -67,7 +71,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   EXPECT_EQ(SmtpSession::State::SESSION_IN_PROGRESS, filter_->getSession().getState());
   data_.drain(data_.length());
   data_.add("STARTTLS\r\n");
-  
+
   //Downstream TLS termination successful after STARTTLS
 
   EXPECT_CALL(filter_callbacks_, connection()).WillRepeatedly(ReturnRef(connection_));
@@ -75,7 +79,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   EXPECT_CALL(connection_, addBytesSentCallback(_)).WillOnce(testing::SaveArg<0>(&cb));
   Buffer::OwnedImpl buf;
   EXPECT_CALL(connection_, write(_, false)).WillOnce(testing::SaveArg<0>(&buf));
-  
+
   ASSERT_THAT(Network::FilterStatus::StopIteration, filter_->onData(data_, false));
   ASSERT_STREQ(SmtpUtils::readyToStartTlsResponse, buf.toString().c_str());
 
@@ -91,7 +95,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   //Send starttls command again, receive 503 out of order command response from filter.
   buf.drain(buf.length());
   data_.add("STARTTLS\r\n");
-  
+
   EXPECT_CALL(connection_, addBytesSentCallback(_)).WillOnce(testing::SaveArg<0>(&cb));
   EXPECT_CALL(connection_, write(_, false)).WillOnce(testing::SaveArg<0>(&buf));
 
@@ -114,7 +118,7 @@ TEST_F(SmtpFilterTest, TestSendReplyDownstream) {
   ASSERT_STREQ(SmtpUtils::mailboxUnavailableResponse, buf.toString().c_str());
 
   filter_callbacks_.connection().close(Network::ConnectionCloseType::NoFlush);
-  
+
 
   ASSERT_THAT(true, filter_->sendReplyDownstream(SmtpUtils::mailboxUnavailableResponse));
 
@@ -140,9 +144,9 @@ TEST_F(SmtpFilterTest,TestUpstreamStartTls) {
   EXPECT_EQ(SmtpSession::State::SESSION_IN_PROGRESS, filter_->getSession().getState());
   data_.drain(data_.length());
   data_.add("STARTTLS\r\n");
-  
+
   //Upstream TLS termination successful after STARTTLS
-  
+
   ASSERT_THAT(Network::FilterStatus::Continue, filter_->onData(data_, false));
   ASSERT_EQ(SmtpSession::State::UPSTREAM_TLS_NEGOTIATION, filter_->getSession().getState());
 

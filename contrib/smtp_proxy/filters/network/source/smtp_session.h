@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+// #include <string>
+// #include <vector>
 #include "contrib/smtp_proxy/filters/network/source/smtp_transaction.h"
 #include "source/common/common/logger.h"
 
@@ -32,6 +34,12 @@ public:
     int upstream_tls_failed;
   };
 
+  struct SmtpTransactionMetadata {
+    int transaction_id;
+    std::string status;
+    uint16_t response_code;
+  };
+
   SmtpSession() {
     smtp_transaction_ =  new SmtpTransaction(++current_transaction_id);
   }
@@ -46,7 +54,7 @@ public:
 
   SmtpTransaction* getTransaction(){ return smtp_transaction_; }
   void createNewTransaction();
-  void deleteTransaction();
+  void resetTransaction();
 
   void SetTransactionState(SmtpTransaction::State state) { smtp_transaction_->setState(state); };
   SmtpTransaction::State getTransactionState() { return smtp_transaction_->getState(); }
@@ -58,13 +66,18 @@ public:
   bool isSessionEncrypted() const { return session_encrypted_; }
 
   void encode(ProtobufWkt::Struct& metadata);
+  void encodeTransactionMetadata(ProtobufWkt::ListValue&);
+  const std::vector<SmtpTransactionMetadata*>& transaction_metadata() const {
+    return transaction_metadata_;
+  }
 
 private:
   SmtpSession::State state_{State::CONNECTION_REQUEST};
   SmtpTransaction* smtp_transaction_;
-  SmtpSession::SmtpSessionStats session_stats_;
+  SmtpSession::SmtpSessionStats session_stats_ = {};
   bool session_encrypted_{false}; // tells if exchange is encrypted
   int current_transaction_id{0};
+  std::vector<SmtpTransactionMetadata*> transaction_metadata_;
 
 };
 

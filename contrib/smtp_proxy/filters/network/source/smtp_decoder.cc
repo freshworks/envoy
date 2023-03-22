@@ -186,9 +186,9 @@ Decoder::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
         // Increment stats for incomplete transactions when session is abruptly terminated.
         callbacks_->incSmtpTransactionsAborted();
         session_.getTransaction()->setStatus(SmtpUtils::statusAborted);
-        setTransactionMetadata();
+        session_.resetTransaction();
       }
-      setSessionMetadata();
+      setDynamicMetadata();
     } else {
       session_.setState(SmtpSession::State::SESSION_IN_PROGRESS);
     }
@@ -208,7 +208,7 @@ void DecoderImpl::decodeSmtpTransactionCommands(std::string& command) {
 
     if (absl::StartsWithIgnoreCase(command, SmtpUtils::smtpMailCommand)) {
 
-      session_.createNewTransaction();
+      // session_.createNewTransaction();
       session_.SetTransactionState(SmtpTransaction::State::TRANSACTION_REQUEST);
     }
     break;
@@ -276,8 +276,7 @@ void DecoderImpl::decodeSmtpTransactionResponse(uint16_t& response_code) {
       session_.getTransaction()->setStatus(SmtpUtils::statusFailed);
       session_.getSessionStats().transactions_failed++;
     }
-    setTransactionMetadata();
-    session_.deleteTransaction();
+    session_.resetTransaction();
     break;
   }
   case SmtpTransaction::State::TRANSACTION_ABORT_REQUEST: {
@@ -286,8 +285,7 @@ void DecoderImpl::decodeSmtpTransactionResponse(uint16_t& response_code) {
       session_.SetTransactionState(SmtpTransaction::State::NONE);
       session_.getTransaction()->setStatus(SmtpUtils::statusAborted);
       session_.getSessionStats().transactions_aborted++;
-      setTransactionMetadata();
-      session_.deleteTransaction();
+      session_.resetTransaction();
     } else {
        session_.SetTransactionState(SmtpTransaction::State::TRANSACTION_IN_PROGRESS);
     }
@@ -317,7 +315,15 @@ void DecoderImpl::handleDownstreamTls() {
   }
 }
 
-void DecoderImpl::setSessionMetadata() {
+void DecoderImpl::setDynamicMetadata() {
+
+  // if(callbacks_->connection().ssl() != nullptr) {
+  //   std::cout << callbacks_->connection().ssl()->tlsVersion() << std::endl;
+  //   std::cout << callbacks_->connection().ssl()->ciphersuiteString() << std::endl;
+  // } else {
+  //   std::cout << "ssl info not available\n";
+  // }
+
   ProtobufWkt::Struct metadata(
       (*stream_info_.dynamicMetadata().mutable_filter_metadata())[NetworkFilterNames::get().SmtpProxy]);
 
@@ -326,26 +332,15 @@ void DecoderImpl::setSessionMetadata() {
   //Emit SMTP session metadata
   ProtobufWkt::Struct session_metadata;
   session_.encode(session_metadata);
-
   fields["session_metadata"].mutable_struct_value()->CopyFrom(session_metadata);
 
-  stream_info_.setDynamicMetadata(
-      NetworkFilterNames::get().SmtpProxy, metadata);
-}
 
+  ProtobufWkt::ListValue transaction_metadata;
+  session_.encodeTransactionMetadata(transaction_metadata);
+  fields["smtp_transactions"].mutable_list_value()->CopyFrom(transaction_metadata);
 
-void DecoderImpl::setTransactionMetadata() {
-
-  ProtobufWkt::Struct metadata(
-      (*stream_info_.dynamicMetadata().mutable_filter_metadata())[NetworkFilterNames::get().SmtpProxy]);
-
-  ProtobufWkt::Struct transaction_metadata;
-  session_.getTransaction()->encode(transaction_metadata);
-
-  auto& fields = *metadata.mutable_fields();
-
-  auto& transactions = *fields["smtp_transactions"].mutable_list_value();
-  transactions.add_values()->mutable_struct_value()->CopyFrom(transaction_metadata);
+  // auto& transactions = *fields["smtp_transactions"].mutable_list_value();
+  // transactions.add_values()->mutable_struct_value()->CopyFrom(transaction_metadata);
 
   stream_info_.setDynamicMetadata(
       NetworkFilterNames::get().SmtpProxy, metadata);

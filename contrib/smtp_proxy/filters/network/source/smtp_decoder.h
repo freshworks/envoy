@@ -9,7 +9,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
-// #include "source/common/stream_info/stream_info_impl.h"
+#include "source/common/stream_info/stream_info_impl.h"
 #include "envoy/stream_info/stream_info.h"
 
 namespace Envoy {
@@ -72,6 +72,7 @@ using DecoderPtr = std::unique_ptr<Decoder>;
 class DecoderImpl : public Decoder, Logger::Loggable<Logger::Id::filter> {
 public:
   DecoderImpl(DecoderCallbacks* callbacks, TimeSource& time_source) : callbacks_(callbacks), time_source_(time_source), stream_info_(callbacks->StreamInfo()) {
+    stream_info_.setUpstreamInfo(std::make_shared<StreamInfo::UpstreamInfoImpl>());
   }
   // stream_info_(time_source_, callbacks_->connection().connectionInfoProviderSharedPtr()) {}
 
@@ -84,8 +85,7 @@ public:
   void decodeSmtpTransactionResponse(uint16_t&);
   const StreamInfo::StreamInfo& StreamInfo() override { return stream_info_; }
   void setStreamInfo(StreamInfo::StreamInfo& stream_info) override { stream_info_ = stream_info; };
-  void setTransactionMetadata();
-  void setSessionMetadata();
+  void setDynamicMetadata();
 
 protected:
 

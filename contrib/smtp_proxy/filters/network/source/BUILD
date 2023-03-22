@@ -45,7 +45,7 @@ envoy_cc_library(
         "smtp_session_lib",
         "//source/common/buffer:buffer_lib",
         "//source/extensions/filters/network:well_known_names",
-        # "//source/common/stream_info:stream_info_lib",
+        "//source/common/stream_info:stream_info_lib",
         "//envoy/stream_info:stream_info_interface",
     ],
 )

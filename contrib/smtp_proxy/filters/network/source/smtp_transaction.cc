@@ -6,6 +6,13 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
+
+// void SmtpTransaction::setTransactionMetadata(TransactionMetadata* trxn_metdata_obj) {
+
+//   trxn_metdata_obj->transaction_id = transaction_id_;
+//   trxn_metdata_obj->response_code = response_code_;
+//   trxn_metdata_obj->status = getStatus();
+// }
 void SmtpTransaction::encode(ProtobufWkt::Struct& metadata) {
 
   auto& fields = *(metadata.mutable_fields());

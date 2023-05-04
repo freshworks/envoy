@@ -1,7 +1,9 @@
 #include "contrib/smtp_proxy/filters/network/source/config.h"
 
 #include "envoy/config/accesslog/v3/accesslog.pb.h"
+
 #include "source/common/access_log/access_log_impl.h"
+
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {

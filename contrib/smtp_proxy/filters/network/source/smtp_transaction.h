@@ -1,14 +1,17 @@
 #pragma once
+
 #include <cstdint>
 #include <string>
 
+#include "envoy/stream_info/stream_info.h"
+
 #include "source/common/common/logger.h"
 #include "source/common/protobuf/utility.h"
+#include "source/common/stream_info/stream_info_impl.h"
+
+#include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
-#include "source/common/stream_info/stream_info_impl.h"
-#include "envoy/stream_info/stream_info.h"
 
 namespace Envoy {
 namespace Extensions {

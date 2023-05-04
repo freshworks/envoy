@@ -1,7 +1,9 @@
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "test/mocks/network/mocks.h"
+#include <gtest/gtest.h>
+
 #include "test/mocks/common.h"
+#include "test/mocks/network/mocks.h"
+
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
 #include "contrib/smtp_proxy/filters/network/test/smtp_test_utils.h"

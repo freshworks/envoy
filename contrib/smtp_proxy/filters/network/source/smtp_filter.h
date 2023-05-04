@@ -1,18 +1,18 @@
 #pragma once
-#include "envoy/network/filter.h"
-#include "envoy/common/random_generator.h"
+
+#include "envoy/access_log/access_log.h"
 #include "envoy/buffer/buffer.h"
+#include "envoy/common/random_generator.h"
+#include "envoy/network/filter.h"
 #include "envoy/stats/scope.h"
 #include "envoy/stats/stats.h"
 #include "envoy/stats/stats_macros.h"
+
 #include "source/common/common/logger.h"
 #include "source/common/common/utility.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
-// #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
-// #include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
-#include "envoy/access_log/access_log.h"
 
 #include "contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha/smtp_proxy.pb.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
 
 namespace Envoy {
 namespace Extensions {

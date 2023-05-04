@@ -1,5 +1,5 @@
-
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
+
 #include <sstream>
 
 namespace Envoy {

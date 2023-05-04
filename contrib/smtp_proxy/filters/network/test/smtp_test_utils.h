@@ -1,8 +1,10 @@
 #pragma once
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+
+#include "test/mocks/buffer/mocks.h"
 #include "test/mocks/network/mocks.h"
 #include "test/mocks/stream_info/mocks.h"
-#include "test/mocks/buffer/mocks.h"
+
+#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
 
 namespace Envoy {
 namespace Extensions {

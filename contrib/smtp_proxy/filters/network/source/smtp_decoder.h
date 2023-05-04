@@ -1,8 +1,8 @@
 #pragma once
 #include <cstdint>
 
-#include "envoy/network/connection.h"
 #include "envoy/common/platform.h"
+#include "envoy/network/connection.h"
 
 #include "source/common/buffer/buffer_impl.h"
 #include "source/common/common/logger.h"

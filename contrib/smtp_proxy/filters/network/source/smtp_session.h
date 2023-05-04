@@ -1,12 +1,12 @@
 #pragma once
 #include <cstdint>
-// #include <string>
-// #include <vector>
-#include "contrib/smtp_proxy/filters/network/source/smtp_transaction.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_handler.h"
+
 #include "source/common/common/logger.h"
+
+#include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_handler.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_transaction.h"
 
 namespace Envoy {
 namespace Extensions {

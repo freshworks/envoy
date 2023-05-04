@@ -7,7 +7,6 @@
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_filter.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
-
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -172,7 +171,6 @@ TEST_F(SmtpFilterTest, TestUpstreamStartTls) {
 
   ASSERT_THAT(Network::FilterStatus::StopIteration, filter_->onWrite(data_, false));
   ASSERT_EQ(SmtpSession::State::SessionTerminated, filter_->getSession()->getState());
-  // EXPECT_CALL(connection_, close(_)).Times(1);
   EXPECT_EQ(config_->stats().sessions_upstream_tls_failed_.value(), 1);
 }
 

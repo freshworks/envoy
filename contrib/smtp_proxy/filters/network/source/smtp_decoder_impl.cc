@@ -1,7 +1,8 @@
-
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
-#include "source/extensions/filters/network/well_known_names.h"
+
 #include "source/common/common/logger.h"
+#include "source/extensions/filters/network/well_known_names.h"
+
 #include "absl/strings/match.h"
 
 namespace Envoy {

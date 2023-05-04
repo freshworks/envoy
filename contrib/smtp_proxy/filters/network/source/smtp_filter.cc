@@ -1,11 +1,12 @@
 #include "contrib/smtp_proxy/filters/network/source/smtp_filter.h"
-#include "envoy/network/connection.h"
-#include "envoy/buffer/buffer.h"
-#include "source/common/common/assert.h"
 
 #include <iostream>
 #include <string>
-#include "smtp_filter.h"
+
+#include "envoy/buffer/buffer.h"
+#include "envoy/network/connection.h"
+
+#include "source/common/common/assert.h"
 
 namespace Envoy {
 namespace Extensions {

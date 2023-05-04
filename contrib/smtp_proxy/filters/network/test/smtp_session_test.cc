@@ -1,9 +1,11 @@
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
-#include "test/mocks/network/mocks.h"
-#include "test/mocks/stream_info/mocks.h"
+#include <gtest/gtest.h>
+
 #include "test/mocks/buffer/mocks.h"
 #include "test/mocks/common.h"
+#include "test/mocks/network/mocks.h"
+#include "test/mocks/stream_info/mocks.h"
+
 #include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
 #include "contrib/smtp_proxy/filters/network/test/smtp_test_utils.h"
@@ -73,8 +75,7 @@ TEST_F(SmtpSessionTest, TestHandleMail) {
 
   // ON_CALL(callbacks_, sendReplyDownstream(_)).WillByDefault(testing::Return(false));
   EXPECT_CALL(callbacks_, sendReplyDownstream(SmtpUtils::generateResponse(
-                              502, {5, 5, 1}, "Please introduce yourself first")))
-      .Times(1);
+                              502, {5, 5, 1}, "Please introduce yourself first")));
 
   auto result = session_->handleMail(arg);
 
@@ -87,8 +88,7 @@ TEST_F(SmtpSessionTest, TestHandleMail) {
   session_->setState(SmtpSession::State::SessionInProgress);
   // ON_CALL(callbacks_, sendReplyDownstream(_)).WillByDefault(testing::Return(false));
   EXPECT_CALL(callbacks_, sendReplyDownstream(SmtpUtils::generateResponse(
-                              501, {5, 5, 2}, "Bad MAIL arg syntax of FROM:<address>")))
-      .Times(1);
+                              501, {5, 5, 2}, "Bad MAIL arg syntax of FROM:<address>")));
 
   result = session_->handleMail(arg);
 
@@ -100,8 +100,7 @@ TEST_F(SmtpSessionTest, TestHandleMail) {
   session_->setState(SmtpSession::State::SessionInProgress);
   // ON_CALL(callbacks_, sendReplyDownstream(_)).WillByDefault(testing::Return(false));
   EXPECT_CALL(callbacks_, sendReplyDownstream(SmtpUtils::generateResponse(
-                              501, {5, 5, 2}, "Bad MAIL arg syntax of FROM:<address>")))
-      .Times(1);
+                              501, {5, 5, 2}, "Bad MAIL arg syntax of FROM:<address>")));
 
   result = session_->handleMail(arg);
 

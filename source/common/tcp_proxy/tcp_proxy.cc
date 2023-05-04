@@ -681,8 +681,7 @@ Network::FilterStatus Filter::onNewConnection() {
 
 bool Filter::startUpstreamSecureTransport() {
   bool switched_to_tls = upstream_->startUpstreamSecureTransport();
-  if(switched_to_tls)
-  {
+  if (switched_to_tls) {
     StreamInfo::UpstreamInfo& upstream_info = *getStreamInfo().upstreamInfo();
     upstream_info.setUpstreamSslConnection(upstream_->getUpstreamConnectionSslInfo());
   }

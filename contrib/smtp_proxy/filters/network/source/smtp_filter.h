@@ -7,7 +7,9 @@
 #include "envoy/stats/stats_macros.h"
 #include "source/common/common/logger.h"
 #include "source/common/common/utility.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
+// #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+// #include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
 #include "envoy/access_log/access_log.h"
 
 #include "contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha/smtp_proxy.pb.h"
@@ -46,23 +48,22 @@ class SmtpFilterConfig {
 public:
   struct SmtpFilterConfigOptions {
     std::string stats_prefix_;
+    bool tracing_;
     envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
         upstream_tls_;
     std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   };
   SmtpFilterConfig(const SmtpFilterConfigOptions& config_options, Stats::Scope& scope);
   const SmtpProxyStats& stats() { return stats_; }
-  const std::vector<AccessLog::InstanceSharedPtr>& accessLogs() const {
-    return access_logs_;
-  }
+  const std::vector<AccessLog::InstanceSharedPtr>& accessLogs() const { return access_logs_; }
   Stats::Scope& scope_;
   SmtpProxyStats stats_;
+  bool tracing_;
   std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
       upstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
 
 private:
-
   SmtpProxyStats generateStats(const std::string& prefix, Stats::Scope& scope) {
     return SmtpProxyStats{ALL_SMTP_PROXY_STATS(POOL_COUNTER_PREFIX(scope, prefix))};
   }
@@ -73,14 +74,18 @@ using SmtpFilterConfigSharedPtr = std::shared_ptr<SmtpFilterConfig>;
 class SmtpFilter : public Network::Filter, DecoderCallbacks, Logger::Loggable<Logger::Id::filter> {
 public:
   // Network::ReadFilter
-  SmtpFilter(SmtpFilterConfigSharedPtr config, TimeSource& time_source);
+  SmtpFilter(SmtpFilterConfigSharedPtr config, TimeSource& time_source,
+             Random::RandomGenerator& random_generator);
   ~SmtpFilter() {
-    emitLogEntry();
+    // delete session_;
+    // session_ = nullptr;
+    if (config_->accessLogs().size() > 0) {
+      emitLogEntry(getStreamInfo());
+    }
   }
   Network::FilterStatus onData(Buffer::Instance& data, bool end_stream) override;
   Network::FilterStatus onNewConnection() override;
   void initializeReadFilterCallbacks(Network::ReadFilterCallbacks& callbacks) override {
-    std::cout << "initializing read callbacks\n";
     read_callbacks_ = &callbacks;
   }
 
@@ -90,8 +95,9 @@ public:
     write_callbacks_ = &callbacks;
   }
   Network::FilterStatus doDecode(Buffer::Instance& buffer, bool upstream);
-  DecoderPtr createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source);
-  SmtpSession& getSession() { return decoder_->getSession(); }
+  DecoderPtr createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source,
+                           Random::RandomGenerator&);
+
   const SmtpProxyStats& getStats() const { return config_->stats_; }
 
   Network::Connection& connection() const override { return read_callbacks_->connection(); }
@@ -112,30 +118,32 @@ public:
   void incMailDataTransferErrors() override;
   void incMailRcptErrors() override;
 
-
   bool downstreamStartTls(absl::string_view response) override;
   bool sendReplyDownstream(absl::string_view response) override;
   bool upstreamTlsRequired() const override;
+  bool tracingEnabled() override;
+  bool sendUpstream(Buffer::Instance& buffer) override;
 
   bool upstreamStartTls() override;
   void closeDownstreamConnection() override;
-
-  // uint64_t streamId() const { return stream_id_; }
-  void emitLogEntry();
-  StreamInfo::StreamInfo& StreamInfo() override { return read_callbacks_->connection().streamInfo(); }
+  SmtpSession* getSession() { return decoder_->getSession(); }
+  Buffer::OwnedImpl& getReadBuffer() override { return read_buffer_; }
+  Buffer::OwnedImpl& getWriteBuffer() override { return write_buffer_; }
+  void emitLogEntry(StreamInfo::StreamInfo& stream_info) override;
+  StreamInfo::StreamInfo& getStreamInfo() override {
+    return read_callbacks_->connection().streamInfo();
+  }
 
 private:
-
   Network::ReadFilterCallbacks* read_callbacks_{};
   Network::WriteFilterCallbacks* write_callbacks_{};
 
   SmtpFilterConfigSharedPtr config_;
-
   Buffer::OwnedImpl read_buffer_;
   Buffer::OwnedImpl write_buffer_;
   std::unique_ptr<Decoder> decoder_;
   TimeSource& time_source_;
-
+  Random::RandomGenerator& random_generator_;
 };
 
 } // namespace SmtpProxy

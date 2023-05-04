@@ -39,34 +39,45 @@ envoy_cc_library(
 
 envoy_cc_library(
     name = "smtp_decoder_lib",
-    srcs = ["smtp_decoder.cc"],
-    hdrs = ["smtp_decoder.h", "smtp_utils.h"],
+    srcs = ["smtp_decoder_impl.cc"],
+    hdrs = ["smtp_decoder_impl.h", "smtp_decoder.h"],
     deps = [
         "smtp_session_lib",
         "//source/common/buffer:buffer_lib",
         "//source/extensions/filters/network:well_known_names",
-        "//source/common/stream_info:stream_info_lib",
-        "//envoy/stream_info:stream_info_interface",
     ],
 )
 
 envoy_cc_library(
     name = "smtp_session_lib",
     srcs = ["smtp_session.cc"],
-    hdrs = ["smtp_session.h"],
+    hdrs = ["smtp_session.h", "smtp_decoder.h", "smtp_command.h", "smtp_handler.h"],
     deps = [
         "smtp_transaction_lib",
+        "//source/common/buffer:buffer_lib",
+        "//source/extensions/filters/network:well_known_names",
     ],
 )
 
 envoy_cc_library(
     name = "smtp_transaction_lib",
     srcs = ["smtp_transaction.cc"],
-    hdrs = ["smtp_transaction.h"],
+    hdrs = ["smtp_transaction.h", "smtp_command.h", "smtp_decoder.h"],
     deps = [
+        "smtp_utils_lib",
         "//source/common/buffer:buffer_lib",
         "//source/common/protobuf:utility_lib",
+        "//source/common/stream_info:stream_info_lib",
+        "//source/extensions/filters/network:well_known_names",
+        "//envoy/stream_info:stream_info_interface",
     ],
+)
+
+envoy_cc_library(
+    name = "smtp_utils_lib",
+    srcs = ["smtp_utils.cc"],
+    hdrs = ["smtp_utils.h"],
+    deps = [],
 )
 
 envoy_cc_contrib_extension(

@@ -23,6 +23,7 @@ void ImplBase::log(const Http::RequestHeaderMap* request_headers,
   }
   if (filter_ &&
       !filter_->evaluate(stream_info, *request_headers, *response_headers, *response_trailers)) {
+        std::cout << "evaluate false, returning\n";
     return;
   }
   return emitLog(*request_headers, *response_headers, *response_trailers, stream_info);

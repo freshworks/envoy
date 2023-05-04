@@ -16,6 +16,7 @@ envoy_cc_test(
     ],
     deps = [
         ":smtp_test_utils",
+        "//test/mocks:common_lib",
         "//contrib/smtp_proxy/filters/network/source:filter",
         "//test/mocks/network:network_mocks",
     ],
@@ -23,18 +24,43 @@ envoy_cc_test(
 
 
 envoy_cc_test(
+    name = "smtp_session_tests",
+    srcs = [
+        "smtp_session_test.cc",
+    ],
+    deps = [
+        ":smtp_test_utils",
+        "//test/mocks:common_lib",
+        "//contrib/smtp_proxy/filters/network/source:smtp_session_lib",
+        "//test/mocks/network:network_mocks",
+    ],
+)
+
+envoy_cc_test(
     name = "smtp_filter_tests",
     srcs = [
         "smtp_filter_test.cc",
     ],
     deps = [
+        ":smtp_test_utils",
         "//contrib/smtp_proxy/filters/network/source:config",
+        "//contrib/smtp_proxy/filters/network/source:filter",
         "//test/mocks/network:network_mocks",
+        "//test/mocks/stream_info:stream_info_mocks",
+        "//test/mocks/buffer:buffer_mocks",
+        "//test/mocks:common_lib",
     ],
 )
 
 envoy_cc_test_library(
     name = "smtp_test_utils",
     hdrs = ["smtp_test_utils.h"],
+    deps = [
+        "//contrib/smtp_proxy/filters/network/source:smtp_decoder_lib",
+        "//test/mocks/network:network_mocks",
+        "//test/mocks/stream_info:stream_info_mocks",
+        "//test/mocks/buffer:buffer_mocks",
+        "//test/mocks:common_lib",
+    ]
 )
 

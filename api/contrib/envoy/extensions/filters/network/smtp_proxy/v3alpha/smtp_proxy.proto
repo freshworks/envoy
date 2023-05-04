@@ -3,6 +3,7 @@ syntax = "proto3";
 package envoy.extensions.filters.network.smtp_proxy.v3alpha;
 
 import "envoy/config/accesslog/v3/accesslog.proto";
+
 import "udpa/annotations/status.proto";
 import "validate/validate.proto";
 
@@ -18,7 +19,6 @@ option (udpa.annotations.file_status).package_version_status = ACTIVE;
 // <config_network_filters_smtp_proxy>`.
 // [#extension: envoy.filters.network.smtp_proxy]
 
-// [#next-free-field: 5]
 message SmtpProxy {
   // Upstream TLS operational modes.
   enum UpstreamTLSMode {
@@ -29,11 +29,12 @@ message SmtpProxy {
     // accept the request for TLS connection, the session is terminated.
     REQUIRE = 1;
   }
+
   // The human readable prefix to use when emitting :ref:`statistics
   // <config_network_filters_smtp_proxy_stats>`.
   string stat_prefix = 1 [(validate.rules).string = {min_len: 1}];
 
-  //If enabled, filter will generate x-req-id to identify smtp session/transaction and send it to upstream.
+  // If enabled, filter will generate x-req-id to identify smtp session/transaction and send it to upstream.
   bool tracing = 2;
 
   // Controls whether to establish upstream TLS connection to the server.

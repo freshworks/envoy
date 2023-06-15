@@ -102,9 +102,9 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
     ENVOY_LOG(error, "smtp_proxy: error while decoding response code ", response_code);
   }
   result = session_->handleResponse(response_code, response);
-  if(response_code >= 400 && response_code < 500) {
+  if (response_code >= 400 && response_code < 500) {
     callbacks_->inc4xxErrors();
-  } else if(response_code >= 500 && response_code <= 599) {
+  } else if (response_code >= 500 && response_code <= 599) {
     callbacks_->inc5xxErrors();
   }
   return result;

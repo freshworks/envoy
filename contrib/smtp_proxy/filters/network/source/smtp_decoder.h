@@ -34,6 +34,8 @@ public:
   virtual void incSmtpAuthErrors() PURE;
   virtual void incMailDataTransferErrors() PURE;
   virtual void incMailRcptErrors() PURE;
+  virtual void inc4xxErrors() PURE;
+  virtual void inc5xxErrors() PURE;
 
   virtual bool downstreamStartTls(absl::string_view) PURE;
   virtual bool sendReplyDownstream(absl::string_view) PURE;

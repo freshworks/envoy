@@ -35,7 +35,9 @@ namespace SmtpProxy {
   COUNTER(sessions_upstream_tls_failed)                                                            \
   COUNTER(smtp_auth_errors)                                                                        \
   COUNTER(smtp_mail_data_transfer_errors)                                                          \
-  COUNTER(smtp_rcpt_errors)
+  COUNTER(smtp_rcpt_errors)                                                                        \
+  COUNTER(smtp_4xx_errors)                                                                         \
+  COUNTER(smtp_5xx_errors)
 
 /**
  * Struct definition for all SMTP proxy stats. @see stats_macros.h
@@ -117,6 +119,8 @@ public:
   void incSmtpAuthErrors() override;
   void incMailDataTransferErrors() override;
   void incMailRcptErrors() override;
+  void inc4xxErrors() override;
+  void inc5xxErrors() override;
 
   bool downstreamStartTls(absl::string_view response) override;
   bool sendReplyDownstream(absl::string_view response) override;

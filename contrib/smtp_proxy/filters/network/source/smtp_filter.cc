@@ -126,6 +126,8 @@ void SmtpFilter::incMailDataTransferErrors() {
   config_->stats_.smtp_mail_data_transfer_errors_.inc();
 }
 void SmtpFilter::incMailRcptErrors() { config_->stats_.smtp_rcpt_errors_.inc(); }
+void SmtpFilter::inc4xxErrors() { config_->stats_.smtp_4xx_errors_.inc(); }
+void SmtpFilter::inc5xxErrors() { config_->stats_.smtp_5xx_errors_.inc(); }
 
 void SmtpFilter::incTlsTerminatedSessions() { config_->stats_.smtp_tls_terminated_sessions_.inc(); }
 

@@ -36,6 +36,8 @@ public:
   MOCK_METHOD(void, incSmtpAuthErrors, (), (override));
   MOCK_METHOD(void, incMailDataTransferErrors, (), (override));
   MOCK_METHOD(void, incMailRcptErrors, (), (override));
+  MOCK_METHOD(void, inc4xxErrors, (), (override));
+  MOCK_METHOD(void, inc5xxErrors, (), (override));
 
   MOCK_METHOD(bool, downstreamStartTls, (absl::string_view), (override));
   MOCK_METHOD(bool, sendReplyDownstream, (absl::string_view), (override));

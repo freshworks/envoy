@@ -4,47 +4,19 @@
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/random_generator.h"
 #include "envoy/network/filter.h"
-#include "envoy/stats/scope.h"
-#include "envoy/stats/stats.h"
-#include "envoy/stats/stats_macros.h"
 
 #include "source/common/common/logger.h"
 #include "source/common/common/utility.h"
 
 #include "contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha/smtp_proxy.pb.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_stats.h"
 
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
-/**
- * All SMTP proxy stats. @see stats_macros.h
- */
-#define ALL_SMTP_PROXY_STATS(COUNTER)                                                              \
-  COUNTER(smtp_session_requests)                                                                   \
-  COUNTER(smtp_connection_establishment_errors)                                                    \
-  COUNTER(smtp_sessions_completed)                                                                 \
-  COUNTER(smtp_sessions_terminated)                                                                \
-  COUNTER(smtp_transactions)                                                                       \
-  COUNTER(smtp_transactions_aborted)                                                               \
-  COUNTER(smtp_tls_terminated_sessions)                                                            \
-  COUNTER(smtp_tls_termination_errors)                                                             \
-  COUNTER(sessions_upstream_tls_success)                                                           \
-  COUNTER(sessions_upstream_tls_failed)                                                            \
-  COUNTER(smtp_auth_errors)                                                                        \
-  COUNTER(smtp_mail_data_transfer_errors)                                                          \
-  COUNTER(smtp_rcpt_errors)                                                                        \
-  COUNTER(smtp_4xx_errors)                                                                         \
-  COUNTER(smtp_5xx_errors)
-
-/**
- * Struct definition for all SMTP proxy stats. @see stats_macros.h
- */
-struct SmtpProxyStats {
-  ALL_SMTP_PROXY_STATS(GENERATE_COUNTER_STRUCT)
-};
 
 class SmtpFilterConfig {
 public:
@@ -60,14 +32,16 @@ public:
   const std::vector<AccessLog::InstanceSharedPtr>& accessLogs() const { return access_logs_; }
   Stats::Scope& scope_;
   SmtpProxyStats stats_;
-  bool tracing_;
+  bool tracing_{false};
   std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
       upstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
 
 private:
   SmtpProxyStats generateStats(const std::string& prefix, Stats::Scope& scope) {
-    return SmtpProxyStats{ALL_SMTP_PROXY_STATS(POOL_COUNTER_PREFIX(scope, prefix))};
+    return SmtpProxyStats{ALL_SMTP_PROXY_STATS(POOL_COUNTER_PREFIX(scope, prefix),
+                                               POOL_GAUGE_PREFIX(scope, prefix),
+                                               POOL_HISTOGRAM_PREFIX(scope, prefix))};
   }
 };
 
@@ -100,7 +74,7 @@ public:
   DecoderPtr createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source,
                            Random::RandomGenerator&);
 
-  const SmtpProxyStats& getStats() const { return config_->stats_; }
+  SmtpProxyStats& getStats() override { return config_->stats_; }
 
   Network::Connection& connection() const override { return read_callbacks_->connection(); }
   const SmtpFilterConfigSharedPtr& getConfig() const { return config_; }
@@ -108,13 +82,19 @@ public:
   void incSmtpSessionRequests() override;
   void incSmtpConnectionEstablishmentErrors() override;
   void incTlsTerminatedSessions() override;
-  void incSmtpTransactions() override;
+  void incSmtpTransactionRequests() override;
+  void incSmtpTransactionsCompleted() override;
   void incSmtpTransactionsAborted() override;
+  void incSmtpTrxnFailed() override;
   void incSmtpSessionsCompleted() override;
   void incSmtpSessionsTerminated() override;
   void incTlsTerminationErrors() override;
   void incUpstreamTlsSuccess() override;
   void incUpstreamTlsFailed() override;
+  void incActiveTransaction() override;
+  void decActiveTransaction() override;
+  void incActiveSession() override;
+  void decActiveSession() override;
 
   void incSmtpAuthErrors() override;
   void incMailDataTransferErrors() override;

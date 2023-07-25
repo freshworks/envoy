@@ -2,6 +2,7 @@
 #include <cstdint>
 
 #include "source/common/common/logger.h"
+#include "envoy/stats/timespan.h"
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
@@ -129,6 +130,9 @@ private:
   bool command_in_progress_{false};
   bool auth_complete_{false};
   bool x_req_id_sent_{false};
+  Stats::TimespanPtr session_length_;
+  Stats::TimespanPtr data_tx_length_;
+  Stats::TimespanPtr command_length_;
   SmtpUtils::SessionType upstream_session_type_{SmtpUtils::SessionType::PlainText};
 };
 

@@ -76,12 +76,6 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
 
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
 
-  // Special handling to parse any error response to connection request.
-  if (!(session_->isCommandInProgress()) &&
-      session_->getState() != SmtpSession::State::ConnectionRequest) {
-    return result;
-  }
-
   std::string response = data.toString();
   if (!absl::EndsWith(response, SmtpUtils::smtpCrlfSuffix)) {
     return result;
@@ -101,12 +95,19 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
     response_code = 0;
     ENVOY_LOG(error, "smtp_proxy: error while decoding response code ", response_code);
   }
-  result = session_->handleResponse(response_code, response);
   if (response_code >= 400 && response_code < 500) {
     callbacks_->inc4xxErrors();
   } else if (response_code >= 500 && response_code <= 599) {
     callbacks_->inc5xxErrors();
   }
+  // Special handling to parse any error response to connection request.
+  if (!(session_->isCommandInProgress()) &&
+      session_->getState() != SmtpSession::State::ConnectionRequest) {
+    return result;
+  }
+
+  result = session_->handleResponse(response_code, response);
+
   return result;
 }
 

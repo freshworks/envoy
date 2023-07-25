@@ -1,6 +1,8 @@
 #include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
 
 #include "source/common/buffer/buffer_impl.h"
+#include "source/common/stats/timespan_impl.h"
+
 #include "source/extensions/filters/network/well_known_names.h"
 
 namespace Envoy {
@@ -11,9 +13,12 @@ namespace SmtpProxy {
 SmtpSession::SmtpSession(DecoderCallbacks* callbacks, TimeSource& time_source,
                          Random::RandomGenerator& random_generator)
     : callbacks_(callbacks), time_source_(time_source), random_generator_(random_generator) {}
+
 void SmtpSession::newCommand(const std::string& name, SmtpCommand::Type type) {
   current_command_ = std::make_shared<SmtpCommand>(name, type, time_source_);
   command_in_progress_ = true;
+  command_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
+      callbacks_->getStats().smtp_command_length_ms_, time_source_);
 }
 
 void SmtpSession::createNewTransaction() {
@@ -86,7 +91,8 @@ SmtpUtils::Result SmtpSession::handleEhlo(std::string& command) {
 
   newCommand(StringUtil::toUpper(command), SmtpCommand::Type::NonTransactionCommand);
   setState(SmtpSession::State::SessionInitRequest);
-
+  session_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
+      callbacks_->getStats().smtp_session_length_ms_, time_source_);
   return result;
 }
 
@@ -110,6 +116,7 @@ SmtpUtils::Result SmtpSession::handleMail(std::string& arg) {
   createNewTransaction();
   std::string sender = SmtpUtils::extractAddress(arg);
   getTransaction()->setSender(sender);
+  callbacks_->incSmtpTransactionRequests();
   updateBytesMeterOnCommand(callbacks_->getReadBuffer());
   setTransactionState(SmtpTransaction::State::TransactionRequest);
   return result;
@@ -159,7 +166,6 @@ SmtpUtils::Result SmtpSession::handleData(std::string& arg) {
 
   newCommand(SmtpUtils::smtpDataCommand, SmtpCommand::Type::TransactionCommand);
   updateBytesMeterOnCommand(callbacks_->getReadBuffer());
-  setDataTransferInProgress(true);
   setTransactionState(SmtpTransaction::State::MailDataTransferRequest);
   return result;
 }
@@ -313,6 +319,7 @@ SmtpUtils::Result SmtpSession::handleEhloResponse(uint16_t& response_code, std::
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   if (response_code == 250) {
     setState(SmtpSession::State::SessionInProgress);
+    callbacks_->incActiveSession();
     if (transaction_in_progress_) {
       // Abort this transaction.
       abortTransaction();
@@ -331,6 +338,7 @@ SmtpUtils::Result SmtpSession::handleMailResponse(uint16_t& response_code, std::
   updateBytesMeterOnResponse(callbacks_->getWriteBuffer());
   if (response_code == 250) {
     setTransactionState(SmtpTransaction::State::TransactionInProgress);
+    callbacks_->incActiveTransaction();
     if (callbacks_->tracingEnabled() && !getTransaction()->isXReqIdSent()) {
       response_on_hold_ = response + SmtpUtils::smtpCrlfSuffix;
       std::string x_req_id =
@@ -392,13 +400,20 @@ SmtpUtils::Result SmtpSession::handleDataResponse(uint16_t& response_code, std::
     getSessionStats().transactions_completed++;
   } else if (response_code == 354) {
     // Intermediate response.
+    setDataTransferInProgress(true);
+    data_tx_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
+        callbacks_->getStats().smtp_data_transfer_length_ms_, time_source_);
+
     return result;
   } else if (response_code >= 400 && response_code <= 599) {
     callbacks_->incMailDataTransferErrors();
+    callbacks_->incSmtpTrxnFailed();
     setTransactionState(SmtpTransaction::State::None);
     getTransaction()->setStatus(SmtpUtils::statusFailed);
     getSessionStats().transactions_failed++;
   }
+  data_tx_length_->complete();
+  callbacks_->decActiveTransaction();
   onTransactionComplete();
   setDataTransferInProgress(false);
   return result;
@@ -423,6 +438,7 @@ SmtpUtils::Result SmtpSession::handleQuitResponse(uint16_t& response_code, std::
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   storeResponse(response, response_code);
   if (response_code == 221) {
+    callbacks_->decActiveSession();
     terminateSession();
   } else {
     setState(SmtpSession::State::SessionInProgress);
@@ -487,14 +503,19 @@ SmtpUtils::Result SmtpSession::storeResponse(std::string response, uint16_t resp
   if (current_command_ == nullptr)
     return result;
 
-  // current_command_->storeResponse(response, response_code);
   current_command_->onComplete(response, response_code);
 
   if (response_code / 100 == 3) {
+    if (current_command_->getName() == SmtpUtils::smtpDataCommand) {
+      command_length_->complete();
+    }
     // If intermediate response code, do not end current command processing
     return result;
   }
 
+  if (current_command_->getName() != SmtpUtils::smtpDataCommand) {
+    command_length_->complete();
+  }
   command_in_progress_ = false;
   session_stats_.total_commands++;
   switch (current_command_->getType()) {
@@ -574,6 +595,7 @@ void SmtpSession::terminateSession() {
     abortTransaction();
   }
   setSessionMetadata();
+  session_length_->complete();
 }
 
 void SmtpSession::abortTransaction() {
@@ -585,7 +607,7 @@ void SmtpSession::abortTransaction() {
 
 void SmtpSession::onTransactionComplete() {
 
-  callbacks_->incSmtpTransactions();
+  callbacks_->incSmtpTransactionsCompleted();
   session_stats_.total_transactions++;
   transaction_in_progress_ = false;
   getTransaction()->onComplete();

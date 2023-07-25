@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 
+#include "envoy/stats/timespan.h"
 #include "envoy/stream_info/stream_info.h"
 
 #include "source/common/common/logger.h"
@@ -76,6 +77,7 @@ private:
   Random::RandomGenerator& random_generator_;
   StreamInfo::StreamInfoImpl stream_info_;
   bool x_req_id_sent_{false};
+  Stats::TimespanPtr trxn_length_;
 };
 
 } // namespace SmtpProxy

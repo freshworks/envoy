@@ -180,6 +180,9 @@ TagNameValues::TagNameValues() {
 
   // listener_local_rate_limit.(<stat_prefix>.)
   addTokenized(LOCAL_LISTENER_RATELIMIT_PREFIX, "listener_local_ratelimit.$.**");
+
+  // smtp.(<stat_prefix>.)*
+  addTokenized(SMTP_PREFIX, "smtp.$.**");
 }
 
 void TagNameValues::addRe2(const std::string& name, const std::string& regex,

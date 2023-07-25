@@ -22,8 +22,10 @@ public:
   NiceMock<Network::MockConnection> mock_connection_;
   NiceMock<StreamInfo::MockStreamInfo> stream_info_;
   NiceMock<MockBuffer> buffer_;
-  MOCK_METHOD(void, incSmtpTransactions, (), (override));
+  MOCK_METHOD(void, incSmtpTransactionRequests, (), (override));
+  MOCK_METHOD(void, incSmtpTransactionsCompleted, (), (override));
   MOCK_METHOD(void, incSmtpTransactionsAborted, (), (override));
+  MOCK_METHOD(void, incSmtpTrxnFailed, (), (override));
   MOCK_METHOD(void, incSmtpSessionRequests, (), (override));
   MOCK_METHOD(void, incSmtpConnectionEstablishmentErrors, (), (override));
   MOCK_METHOD(void, incSmtpSessionsCompleted, (), (override));
@@ -32,6 +34,12 @@ public:
   MOCK_METHOD(void, incTlsTerminationErrors, (), (override));
   MOCK_METHOD(void, incUpstreamTlsSuccess, (), (override));
   MOCK_METHOD(void, incUpstreamTlsFailed, (), (override));
+  MOCK_METHOD(SmtpProxyStats&, getStats, (), (override));
+
+ MOCK_METHOD(void, incActiveTransaction, (), (override));
+ MOCK_METHOD(void, decActiveTransaction, (), (override));
+ MOCK_METHOD(void, incActiveTransaction, (), (override));
+ MOCK_METHOD(void, dedActiveTransaction, (), (override));
 
   MOCK_METHOD(void, incSmtpAuthErrors, (), (override));
   MOCK_METHOD(void, incMailDataTransferErrors, (), (override));

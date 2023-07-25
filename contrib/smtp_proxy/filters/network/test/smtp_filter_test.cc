@@ -95,7 +95,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   cb(buf.length());
 
   EXPECT_EQ(SmtpSession::State::SessionInProgress, filter_->getSession()->getState());
-  EXPECT_EQ(config_->stats().smtp_tls_terminated_sessions_.value(), 1);
+  EXPECT_EQ(config_->stats().smtp_session_tls_termination_success_.value(), 1);
 
   // Send starttls command again, receive 503 out of order command response from filter.
   buf.drain(buf.length());
@@ -159,7 +159,7 @@ TEST_F(SmtpFilterTest, TestUpstreamStartTls) {
   ASSERT_THAT(Network::FilterStatus::StopIteration, filter_->onWrite(data_, false));
 
   EXPECT_CALL(connection_, close(_)).Times(0);
-  EXPECT_EQ(config_->stats().sessions_upstream_tls_success_.value(), 1);
+  EXPECT_EQ(config_->stats().smtp_session_upstream_tls_success_.value(), 1);
 
   filter_->getSession()->setSessionEncrypted(false);
   filter_->getSession()->setState(SmtpSession::State::UpstreamTlsNegotiation);
@@ -171,7 +171,7 @@ TEST_F(SmtpFilterTest, TestUpstreamStartTls) {
 
   ASSERT_THAT(Network::FilterStatus::StopIteration, filter_->onWrite(data_, false));
   ASSERT_EQ(SmtpSession::State::SessionTerminated, filter_->getSession()->getState());
-  EXPECT_EQ(config_->stats().sessions_upstream_tls_failed_.value(), 1);
+  EXPECT_EQ(config_->stats().smtp_session_upstream_tls_failed_.value(), 1);
 }
 
 } // namespace SmtpProxy

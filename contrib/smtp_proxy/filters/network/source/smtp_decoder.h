@@ -9,6 +9,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_stats.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -20,8 +21,10 @@ class DecoderCallbacks {
 public:
   virtual ~DecoderCallbacks() = default;
 
-  virtual void incSmtpTransactions() PURE;
+  virtual void incSmtpTransactionRequests() PURE;
+  virtual void incSmtpTransactionsCompleted() PURE;
   virtual void incSmtpTransactionsAborted() PURE;
+  virtual void incSmtpTrxnFailed() PURE;
   virtual void incSmtpSessionRequests() PURE;
   virtual void incSmtpConnectionEstablishmentErrors() PURE;
   virtual void incSmtpSessionsCompleted() PURE;
@@ -30,6 +33,11 @@ public:
   virtual void incTlsTerminationErrors() PURE;
   virtual void incUpstreamTlsSuccess() PURE;
   virtual void incUpstreamTlsFailed() PURE;
+  virtual void incActiveTransaction() PURE;
+  virtual void decActiveTransaction() PURE;
+  virtual void incActiveSession() PURE;
+  virtual void decActiveSession() PURE;
+  virtual SmtpProxyStats& getStats() PURE;
 
   virtual void incSmtpAuthErrors() PURE;
   virtual void incMailDataTransferErrors() PURE;

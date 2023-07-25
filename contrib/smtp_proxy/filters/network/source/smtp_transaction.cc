@@ -2,7 +2,6 @@
 
 #include "source/common/common/logger.h"
 #include "source/common/stats/timespan_impl.h"
-
 #include "source/extensions/filters/network/well_known_names.h"
 
 namespace Envoy {
@@ -16,7 +15,8 @@ SmtpTransaction::SmtpTransaction(std::string& session_id, DecoderCallbacks* call
       random_generator_(random_generator),
       stream_info_(time_source_, callbacks_->connection().connectionInfoProviderSharedPtr()) {
 
-  trxn_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(callbacks_->getStats().smtp_transaction_length_ms_, time_source_);
+  trxn_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
+      callbacks_->getStats().smtp_transaction_length_, time_source_);
   StreamInfo::StreamInfo& parent_stream_info = callbacks_->getStreamInfo();
 
   stream_info_.setUpstreamInfo(parent_stream_info.upstreamInfo());

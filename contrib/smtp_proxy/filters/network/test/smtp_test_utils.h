@@ -36,10 +36,10 @@ public:
   MOCK_METHOD(void, incUpstreamTlsFailed, (), (override));
   MOCK_METHOD(SmtpProxyStats&, getStats, (), (override));
 
- MOCK_METHOD(void, incActiveTransaction, (), (override));
- MOCK_METHOD(void, decActiveTransaction, (), (override));
- MOCK_METHOD(void, incActiveTransaction, (), (override));
- MOCK_METHOD(void, dedActiveTransaction, (), (override));
+  MOCK_METHOD(void, incActiveTransaction, (), (override));
+  MOCK_METHOD(void, decActiveTransaction, (), (override));
+  MOCK_METHOD(void, incActiveSession, (), (override));
+  MOCK_METHOD(void, decActiveSession, (), (override));
 
   MOCK_METHOD(void, incSmtpAuthErrors, (), (override));
   MOCK_METHOD(void, incMailDataTransferErrors, (), (override));

@@ -31,10 +31,10 @@ namespace SmtpProxy {
   COUNTER(smtp_5xx_errors)                                                                         \
   GUAGE(smtp_transaction_active, Accumulate)                                                       \
   GUAGE(smtp_session_active, Accumulate)                                                           \
-  HISTOGRAM(smtp_transaction_length_ms, Milliseconds)                                              \
-  HISTOGRAM(smtp_session_length_ms, Milliseconds)                                                  \
-  HISTOGRAM(smtp_data_transfer_length_ms, Milliseconds)                                            \
-  HISTOGRAM(smtp_command_length_ms, Milliseconds)
+  HISTOGRAM(smtp_transaction_length, Milliseconds)                                                 \
+  HISTOGRAM(smtp_session_length, Milliseconds)                                                     \
+  HISTOGRAM(smtp_data_transfer_length, Milliseconds)                                               \
+  HISTOGRAM(smtp_command_length, Milliseconds)
 
 /**
  * Struct definition for all SMTP proxy stats. @see stats_macros.h

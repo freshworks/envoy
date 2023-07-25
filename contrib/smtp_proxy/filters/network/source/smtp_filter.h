@@ -17,7 +17,6 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
-
 class SmtpFilterConfig {
 public:
   struct SmtpFilterConfigOptions {

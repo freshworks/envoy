@@ -43,8 +43,8 @@ envoy_cc_library(
     srcs = ["smtp_decoder_impl.cc"],
     hdrs = [
         "smtp_decoder.h",
-        "smtp_stats.h",
         "smtp_decoder_impl.h",
+        "smtp_stats.h",
     ],
     deps = [
         "smtp_session_lib",
@@ -59,9 +59,9 @@ envoy_cc_library(
     hdrs = [
         "smtp_command.h",
         "smtp_decoder.h",
-        "smtp_stats.h",
         "smtp_handler.h",
         "smtp_session.h",
+        "smtp_stats.h",
     ],
     deps = [
         "smtp_transaction_lib",
@@ -82,10 +82,10 @@ envoy_cc_library(
     deps = [
         "smtp_utils_lib",
         "//envoy/stats:timespan_interface",
-        "//source/common/stats:timespan_lib",
         "//envoy/stream_info:stream_info_interface",
         "//source/common/buffer:buffer_lib",
         "//source/common/protobuf:utility_lib",
+        "//source/common/stats:timespan_lib",
         "//source/common/stream_info:stream_info_lib",
         "//source/extensions/filters/network:well_known_names",
     ],

@@ -1,8 +1,9 @@
 #pragma once
 #include <cstdint>
 
-#include "source/common/common/logger.h"
 #include "envoy/stats/timespan.h"
+
+#include "source/common/common/logger.h"
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"

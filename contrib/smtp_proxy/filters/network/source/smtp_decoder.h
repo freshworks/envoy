@@ -8,8 +8,8 @@
 #include "source/common/common/logger.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_stats.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
 
 namespace Envoy {
 namespace Extensions {

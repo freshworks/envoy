@@ -2,7 +2,6 @@
 
 #include "source/common/buffer/buffer_impl.h"
 #include "source/common/stats/timespan_impl.h"
-
 #include "source/extensions/filters/network/well_known_names.h"
 
 namespace Envoy {
@@ -18,7 +17,7 @@ void SmtpSession::newCommand(const std::string& name, SmtpCommand::Type type) {
   current_command_ = std::make_shared<SmtpCommand>(name, type, time_source_);
   command_in_progress_ = true;
   command_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-      callbacks_->getStats().smtp_command_length_ms_, time_source_);
+      callbacks_->getStats().smtp_command_length_, time_source_);
 }
 
 void SmtpSession::createNewTransaction() {
@@ -92,7 +91,7 @@ SmtpUtils::Result SmtpSession::handleEhlo(std::string& command) {
   newCommand(StringUtil::toUpper(command), SmtpCommand::Type::NonTransactionCommand);
   setState(SmtpSession::State::SessionInitRequest);
   session_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-      callbacks_->getStats().smtp_session_length_ms_, time_source_);
+      callbacks_->getStats().smtp_session_length_, time_source_);
   return result;
 }
 
@@ -402,7 +401,7 @@ SmtpUtils::Result SmtpSession::handleDataResponse(uint16_t& response_code, std::
     // Intermediate response.
     setDataTransferInProgress(true);
     data_tx_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-        callbacks_->getStats().smtp_data_transfer_length_ms_, time_source_);
+        callbacks_->getStats().smtp_data_transfer_length_, time_source_);
 
     return result;
   } else if (response_code >= 400 && response_code <= 599) {

@@ -111,7 +111,9 @@ bool SmtpFilter::upstreamStartTls() {
 }
 
 void SmtpFilter::incSmtpTransactionRequests() { config_->stats_.smtp_transaction_req_.inc(); }
-void SmtpFilter::incSmtpTransactionsCompleted() { config_->stats_.smtp_transaction_completed_.inc(); }
+void SmtpFilter::incSmtpTransactionsCompleted() {
+  config_->stats_.smtp_transaction_completed_.inc();
+}
 
 void SmtpFilter::incSmtpTransactionsAborted() { config_->stats_.smtp_transaction_aborted_.inc(); }
 void SmtpFilter::incSmtpSessionRequests() { config_->stats_.smtp_session_requests_.inc(); }
@@ -120,7 +122,6 @@ void SmtpFilter::incActiveTransaction() { config_->stats_.smtp_transaction_activ
 void SmtpFilter::decActiveTransaction() { config_->stats_.smtp_transaction_active_.dec(); }
 void SmtpFilter::incActiveSession() { config_->stats_.smtp_session_active_.inc(); }
 void SmtpFilter::decActiveSession() { config_->stats_.smtp_session_active_.dec(); }
-
 
 void SmtpFilter::incSmtpSessionsTerminated() { config_->stats_.smtp_session_terminated_.inc(); }
 
@@ -132,21 +133,25 @@ void SmtpFilter::incMailDataTransferErrors() {
   config_->stats_.smtp_mail_data_transfer_errors_.inc();
 }
 
-void SmtpFilter::incSmtpTrxnFailed() {
-  config_->stats_.smtp_transaction_failed_.inc();
-}
+void SmtpFilter::incSmtpTrxnFailed() { config_->stats_.smtp_transaction_failed_.inc(); }
 
 void SmtpFilter::incMailRcptErrors() { config_->stats_.smtp_rcpt_errors_.inc(); }
 void SmtpFilter::inc4xxErrors() { config_->stats_.smtp_4xx_errors_.inc(); }
 void SmtpFilter::inc5xxErrors() { config_->stats_.smtp_5xx_errors_.inc(); }
 
-void SmtpFilter::incTlsTerminatedSessions() { config_->stats_.smtp_session_tls_termination_success_.inc(); }
+void SmtpFilter::incTlsTerminatedSessions() {
+  config_->stats_.smtp_session_tls_termination_success_.inc();
+}
 
-void SmtpFilter::incTlsTerminationErrors() { config_->stats_.smtp_session_tls_termination_error_.inc(); }
+void SmtpFilter::incTlsTerminationErrors() {
+  config_->stats_.smtp_session_tls_termination_error_.inc();
+}
 
 void SmtpFilter::incSmtpAuthErrors() { config_->stats_.smtp_auth_errors_.inc(); }
 
-void SmtpFilter::incUpstreamTlsSuccess() { config_->stats_.smtp_session_upstream_tls_success_.inc(); }
+void SmtpFilter::incUpstreamTlsSuccess() {
+  config_->stats_.smtp_session_upstream_tls_success_.inc();
+}
 
 void SmtpFilter::incUpstreamTlsFailed() { config_->stats_.smtp_session_upstream_tls_failed_.inc(); }
 

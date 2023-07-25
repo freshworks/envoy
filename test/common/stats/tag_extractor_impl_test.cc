@@ -431,12 +431,12 @@ TEST(TagExtractorTest, DefaultTagExtractors) {
   redis_prefix.value_ = "my_redis_prefix";
   regex_tester.testRegex("redis.my_redis_prefix.response", "redis.response", {redis_prefix});
 
-
   // SMTP Proxy Prefix
   Tag smtp_prefix;
   smtp_prefix.name_ = tag_names.SMTP_PREFIX;
   smtp_prefix.value_ = "my_smtp_prefix";
-  regex_tester.testRegex("smtp.my_smtp_prefix.smtp_transaction_completed", "smtp.smtp_transaction_completed", {smtp_prefix});
+  regex_tester.testRegex("smtp.my_smtp_prefix.smtp_transaction_completed",
+                         "smtp.smtp_transaction_completed", {smtp_prefix});
 }
 
 TEST(TagExtractorTest, ExtAuthzTagExtractors) {

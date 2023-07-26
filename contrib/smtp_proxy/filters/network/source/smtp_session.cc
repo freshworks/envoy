@@ -437,7 +437,6 @@ SmtpUtils::Result SmtpSession::handleQuitResponse(uint16_t& response_code, std::
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   storeResponse(response, response_code);
   if (response_code == 221) {
-    callbacks_->decActiveSession();
     terminateSession();
   } else {
     setState(SmtpSession::State::SessionInProgress);

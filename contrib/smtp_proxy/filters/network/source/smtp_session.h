@@ -43,6 +43,7 @@ public:
               Random::RandomGenerator& random_generator);
 
   ~SmtpSession() {
+    callbacks_->decActiveSession();
     delete smtp_transaction_;
     smtp_transaction_ = nullptr;
   }

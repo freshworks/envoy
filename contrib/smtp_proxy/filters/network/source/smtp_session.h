@@ -44,10 +44,10 @@ public:
 
   ~SmtpSession() {
 
-    if(state_ == SmtpSession::State::SessionInProgress) {
+    if (state_ == SmtpSession::State::SessionInProgress) {
       terminateSession();
     }
-    if(transaction_in_progress_) {
+    if (transaction_in_progress_) {
       abortTransaction();
     }
   }

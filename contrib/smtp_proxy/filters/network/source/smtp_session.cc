@@ -593,10 +593,10 @@ void SmtpSession::onSessionComplete() {
 }
 
 void SmtpSession::endSession() {
-   callbacks_->decActiveSession();
-   setState(SmtpSession::State::SessionTerminated);
+  callbacks_->decActiveSession();
+  setState(SmtpSession::State::SessionTerminated);
 
-   if (transaction_in_progress_) {
+  if (transaction_in_progress_) {
     abortTransaction();
   }
   setSessionMetadata();

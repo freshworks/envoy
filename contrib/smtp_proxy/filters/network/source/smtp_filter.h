@@ -52,8 +52,8 @@ public:
   SmtpFilter(SmtpFilterConfigSharedPtr config, TimeSource& time_source,
              Random::RandomGenerator& random_generator);
   ~SmtpFilter() {
-
-    // This will ensure session metadata is populated to stream_info and then logged before filter chain is destroyed.
+    // This will ensure session metadata is populated to stream_info and then logged before filter
+    // chain is destroyed.
     decoder_.reset();
     if (config_->accessLogs().size() > 0) {
       emitLogEntry(getStreamInfo());

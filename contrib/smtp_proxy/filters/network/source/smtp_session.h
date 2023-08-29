@@ -43,9 +43,13 @@ public:
               Random::RandomGenerator& random_generator);
 
   ~SmtpSession() {
-    callbacks_->decActiveSession();
-    delete smtp_transaction_;
-    smtp_transaction_ = nullptr;
+
+    if(state_ == SmtpSession::State::SessionInProgress) {
+      terminateSession();
+    }
+    if(transaction_in_progress_) {
+      abortTransaction();
+    }
   }
 
   void setState(SmtpSession::State state) { state_ = state; }
@@ -100,6 +104,8 @@ public:
   bool isDataTransferInProgress() override { return data_transfer_in_progress_; }
   bool isTerminated() override { return state_ == State::SessionTerminated; }
   void terminateSession();
+  void onSessionComplete();
+  void endSession();
   void setDataTransferInProgress(bool status) { data_transfer_in_progress_ = status; }
   bool isCommandInProgress() override { return command_in_progress_; }
 
@@ -112,6 +118,7 @@ public:
 
   void setSessionMetadata();
   void onTransactionComplete();
+  void onTransactionFailed();
 
   bool isXReqIdSent() { return x_req_id_sent_; }
 

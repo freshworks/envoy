@@ -48,6 +48,18 @@ void SmtpTransaction::emitLog() {
   session_id.set_string_value(session_id_);
   fields["session_id"] = session_id;
 
+  ProtobufWkt::Value trxn_id;
+  trxn_id.set_string_value(transaction_id_);
+  fields["transaction_id"] = trxn_id;
+
+  ProtobufWkt::Value sender;
+  sender.set_string_value(sender_);
+  fields["sender"] = sender;
+
+  ProtobufWkt::Value status;
+  status.set_string_value(status_);
+  fields["status"] = status;
+
   stream_info_.setDynamicMetadata(NetworkFilterNames::get().SmtpProxy, metadata);
   callbacks_->emitLogEntry(stream_info_);
 }

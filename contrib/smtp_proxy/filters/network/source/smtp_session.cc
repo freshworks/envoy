@@ -396,7 +396,7 @@ SmtpUtils::Result SmtpSession::handleDataResponse(uint16_t& response_code, std::
   if (response_code == 250) {
     setTransactionState(SmtpTransaction::State::TransactionCompleted);
     getTransaction()->setStatus(SmtpUtils::statusSuccess);
-    getSessionStats().transactions_completed++;
+    onTransactionComplete();
   } else if (response_code == 354) {
     // Intermediate response.
     setDataTransferInProgress(true);
@@ -406,14 +406,10 @@ SmtpUtils::Result SmtpSession::handleDataResponse(uint16_t& response_code, std::
     return result;
   } else if (response_code >= 400 && response_code <= 599) {
     callbacks_->incMailDataTransferErrors();
-    callbacks_->incSmtpTrxnFailed();
     setTransactionState(SmtpTransaction::State::None);
-    getTransaction()->setStatus(SmtpUtils::statusFailed);
-    getSessionStats().transactions_failed++;
+    onTransactionFailed();
   }
   data_tx_length_->complete();
-  callbacks_->decActiveTransaction();
-  onTransactionComplete();
   setDataTransferInProgress(false);
   return result;
 }
@@ -437,7 +433,7 @@ SmtpUtils::Result SmtpSession::handleQuitResponse(uint16_t& response_code, std::
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   storeResponse(response, response_code);
   if (response_code == 221) {
-    terminateSession();
+    onSessionComplete();
   } else {
     setState(SmtpSession::State::SessionInProgress);
   }
@@ -581,15 +577,26 @@ void SmtpSession::setSessionMetadata() {
   ProtobufWkt::Value session_id;
   session_id.set_string_value(session_id_);
   fields["session_id"] = session_id;
-
+  std::cout << "have set the session metdata fields\n";
   parent_stream_info.setDynamicMetadata(NetworkFilterNames::get().SmtpProxy, metadata);
   // callbacks_->emitLogEntry(parent_stream_info);
 }
 
 void SmtpSession::terminateSession() {
-  setState(SmtpSession::State::SessionTerminated);
+  callbacks_->incSmtpSessionsTerminated();
+  endSession();
+}
+
+void SmtpSession::onSessionComplete() {
   callbacks_->incSmtpSessionsCompleted();
-  if (transaction_in_progress_) {
+  endSession();
+}
+
+void SmtpSession::endSession() {
+   callbacks_->decActiveSession();
+   setState(SmtpSession::State::SessionTerminated);
+
+   if (transaction_in_progress_) {
     abortTransaction();
   }
   setSessionMetadata();
@@ -600,20 +607,31 @@ void SmtpSession::abortTransaction() {
   callbacks_->incSmtpTransactionsAborted();
   getTransaction()->setStatus(SmtpUtils::statusAborted);
   getSessionStats().transactions_aborted++;
-  onTransactionComplete();
+  endTransaction();
 }
 
 void SmtpSession::onTransactionComplete() {
-
   callbacks_->incSmtpTransactionsCompleted();
-  session_stats_.total_transactions++;
-  transaction_in_progress_ = false;
-  getTransaction()->onComplete();
-  getTransaction()->emitLog();
+  getSessionStats().transactions_completed++;
+  endTransaction();
+}
+
+void SmtpSession::onTransactionFailed() {
+  getTransaction()->setStatus(SmtpUtils::statusFailed);
+  getSessionStats().transactions_failed++;
+  callbacks_->incSmtpTrxnFailed();
   endTransaction();
 }
 
 void SmtpSession::endTransaction() {
+
+  // Emit access log for this transaction using transaction stream_info.
+  session_stats_.total_transactions++;
+  transaction_in_progress_ = false;
+  callbacks_->decActiveTransaction();
+  getTransaction()->onComplete();
+  getTransaction()->emitLog();
+
   if (smtp_transaction_ != nullptr) {
     delete smtp_transaction_;
     smtp_transaction_ = nullptr;

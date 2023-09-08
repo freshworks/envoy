@@ -577,9 +577,7 @@ void SmtpSession::setSessionMetadata() {
   ProtobufWkt::Value session_id;
   session_id.set_string_value(session_id_);
   fields["session_id"] = session_id;
-  std::cout << "have set the session metdata fields\n";
   parent_stream_info.setDynamicMetadata(NetworkFilterNames::get().SmtpProxy, metadata);
-  // callbacks_->emitLogEntry(parent_stream_info);
 }
 
 void SmtpSession::terminateSession() {

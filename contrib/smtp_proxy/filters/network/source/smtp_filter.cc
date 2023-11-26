@@ -16,7 +16,9 @@ namespace SmtpProxy {
 SmtpFilterConfig::SmtpFilterConfig(const SmtpFilterConfigOptions& config_options,
                                    Stats::Scope& scope)
     : scope_{scope}, stats_(generateStats(config_options.stats_prefix_, scope)),
-      tracing_(config_options.tracing_), upstream_tls_(config_options.upstream_tls_) {
+      tracing_(config_options.tracing_), downstream_tls_(config_options.downstream_tls_),
+      upstream_tls_(config_options.upstream_tls_),
+      protocol_inspection_(config_options.protocol_inspection_) {
   access_logs_ = config_options.access_logs_;
 }
 
@@ -87,9 +89,19 @@ bool SmtpFilter::sendReplyDownstream(absl::string_view response) {
   return false;
 }
 
-bool SmtpFilter::upstreamTlsRequired() const {
+bool SmtpFilter::upstreamTlsEnabled() const {
   return (config_->upstream_tls_ ==
-          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE);
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
+}
+
+bool SmtpFilter::downstreamTlsEnabled() const {
+  return (config_->downstream_tls_ ==
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
+}
+
+bool SmtpFilter::protocolInspectionEnabled() const {
+  return (config_->protocol_inspection_ ==
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
 }
 
 bool SmtpFilter::tracingEnabled() { return config_->tracing_; }
@@ -189,6 +201,8 @@ Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_strea
 Network::FilterStatus SmtpFilter::doDecode(Buffer::Instance& data, bool upstream) {
 
   switch (decoder_->onData(data, upstream)) {
+  case SmtpUtils::Result::NeedMoreData:
+    return Network::FilterStatus::Continue;
   case SmtpUtils::Result::ReadyForNext:
     return Network::FilterStatus::Continue;
   case SmtpUtils::Result::Stopped:
@@ -201,7 +215,8 @@ Network::FilterStatus SmtpFilter::doDecode(Buffer::Instance& data, bool upstream
 
 DecoderPtr SmtpFilter::createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source,
                                      Random::RandomGenerator& random_generator) {
-  return std::make_unique<DecoderImpl>(callbacks, time_source, random_generator);
+  smtp_session_ = new SmtpSession(callbacks, time_source, random_generator);
+  return std::make_unique<DecoderImpl>(callbacks, smtp_session_, time_source, random_generator);
 }
 
 } // namespace SmtpProxy

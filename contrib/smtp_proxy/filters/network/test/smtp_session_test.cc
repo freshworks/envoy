@@ -269,7 +269,7 @@ TEST_F(SmtpSessionTest, TestHandleAuth) {
 TEST_F(SmtpSessionTest, TestHandleStarttls) {
 
   // received STARTTLS command and upstream TLS is enabled in config.
-  EXPECT_CALL(callbacks_, upstreamTlsRequired()).WillOnce(Return(true));
+  EXPECT_CALL(callbacks_, upstreamTlsEnabled()).WillOnce(Return(true));
 
   auto result = session_->handleStarttls();
 
@@ -282,7 +282,7 @@ TEST_F(SmtpSessionTest, TestHandleStarttls) {
   // received STARTTLS command and upstream TLS is disabled in config i.e. only downstream tls
   // termination required.
   session_->setState(SmtpSession::State::SessionInProgress);
-  EXPECT_CALL(callbacks_, upstreamTlsRequired()).WillOnce(Return(false));
+  EXPECT_CALL(callbacks_, upstreamTlsEnabled()).WillOnce(Return(false));
 
   result = session_->handleStarttls();
 

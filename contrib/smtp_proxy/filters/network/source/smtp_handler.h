@@ -23,7 +23,7 @@ public:
   virtual bool isDataTransferInProgress() PURE;
   virtual bool isCommandInProgress() PURE;
   virtual SmtpUtils::Result handleCommand(std::string& command, std::string& args) PURE;
-  virtual SmtpUtils::Result handleResponse(uint16_t& response_code, std::string& response) PURE;
+  virtual SmtpUtils::Result handleResponse(int& response_code, std::string& response) PURE;
 
   virtual void updateBytesMeterOnCommand(Buffer::Instance& data) PURE;
 };

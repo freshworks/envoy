@@ -39,10 +39,16 @@ public:
     int total_commands;
   };
 
+  struct Response {
+    int response_code;
+    std::string response_code_details;
+    std::string response_str;
+  };
+
   SmtpSession(DecoderCallbacks* callbacks, TimeSource& time_source,
               Random::RandomGenerator& random_generator);
 
-  ~SmtpSession() {
+ virtual ~SmtpSession() {
 
     if (state_ == SmtpSession::State::SessionInProgress) {
       terminateSession();
@@ -63,6 +69,7 @@ public:
   SmtpTransaction::State getTransactionState() { return smtp_transaction_->getState(); }
 
   SmtpSession::SmtpSessionStats& getSessionStats() { return session_stats_; }
+  SmtpSession::Response& getConnectResponse() { return connect_resp_; }
 
   void setSessionEncrypted(bool flag) { session_encrypted_ = flag; }
   bool isSessionEncrypted() const { return session_encrypted_; }
@@ -81,24 +88,24 @@ public:
   SmtpUtils::Result handleStarttls();
   SmtpUtils::Result handleOtherCmds(std::string& args);
 
-  SmtpUtils::Result handleResponse(uint16_t& response_code, std::string& response) override;
-  SmtpUtils::Result handleConnResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleEhloResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleMailResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleRcptResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleDataResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleResetResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleQuitResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleAuthResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleStarttlsResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleXReqIdResponse(uint16_t& response_code, std::string& response);
-  SmtpUtils::Result handleOtherResponse(uint16_t& response_code, std::string& response);
+  SmtpUtils::Result handleResponse(int& response_code, std::string& response) override;
+  SmtpUtils::Result handleConnResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleEhloResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleMailResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleRcptResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleDataResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleResetResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleQuitResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleAuthResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleStarttlsResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleXReqIdResponse(int& response_code, std::string& response);
+  SmtpUtils::Result handleOtherResponse(int& response_code, std::string& response);
 
   void abortTransaction();
   void handleDownstreamTls();
 
   void newCommand(const std::string& name, SmtpCommand::Type type);
-  SmtpUtils::Result storeResponse(std::string response, uint16_t response_code);
+  SmtpUtils::Result storeResponse(std::string response, std::string resp_code_details, int response_code);
   std::string& getResponseOnHold() { return response_on_hold_; }
   void setResponseOnHold(std::string& resp) { response_on_hold_ = resp; }
   bool isDataTransferInProgress() override { return data_transfer_in_progress_; }
@@ -143,6 +150,7 @@ private:
   Stats::TimespanPtr data_tx_length_;
   Stats::TimespanPtr command_length_;
   SmtpUtils::SessionType upstream_session_type_{SmtpUtils::SessionType::PlainText};
+  SmtpSession::Response connect_resp_ = {};
 };
 
 } // namespace SmtpProxy

@@ -20,7 +20,9 @@ NetworkFilters::SmtpProxy::SmtpConfigFactory::createFilterFactoryFromProtoTyped(
 
   SmtpFilterConfig::SmtpFilterConfigOptions config_options;
   config_options.stats_prefix_ = fmt::format("smtp.{}", proto_config.stat_prefix());
+  config_options.downstream_tls_ = proto_config.downstream_tls();
   config_options.upstream_tls_ = proto_config.upstream_tls();
+  config_options.protocol_inspection_ = proto_config.protocol_inspection();
   config_options.tracing_ = proto_config.tracing();
   for (const envoy::config::accesslog::v3::AccessLog& log_config : proto_config.access_log()) {
     config_options.access_logs_.emplace_back(

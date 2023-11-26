@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <string>
 
 namespace Envoy {
 namespace Extensions {
@@ -17,11 +18,13 @@ public:
     Stopped, // Received and processed message disrupts the current flow. Decoder stopped accepting
              // data. This happens when decoder wants filter to perform some action, for example to
              // call starttls transport socket to enable TLS.
+    NeedMoreData, // Decoder needs more data to reconstruct the message.
+    ProtocolError,
     ResumeLastResponse
   };
 
   enum class SessionType { PlainText, Tls };
-
+  //= {"HELO", "EHLO", "AUTH", "MAIL", "RCPT", "DATA", "QUIT", "RSET", "STARTTLS", "XREQID"};
   inline static const char* smtpCrlfSuffix = "\r\n";
   inline static const char* smtpHeloCommand = "HELO";
   inline static const char* smtpEhloCommand = "EHLO";
@@ -32,7 +35,7 @@ public:
   inline static const char* smtpQuitCommand = "QUIT";
   inline static const char* smtpRsetCommand = "RSET";
   inline static const char* startTlsCommand = "STARTTLS";
-  inline static const char* xReqIdCommand = "X-REQUEST-ID";
+  inline static const char* xReqIdCommand = "XREQID";
   inline static const char* ehloFirstMsg = "Please introduce yourself first";
   inline static const char* syntaxErrorNoParamsAllowed =
       "501 Syntax error (no parameters allowed)\r\n";
@@ -40,15 +43,18 @@ public:
   inline static const char* readyToStartTlsResponse = "220 2.0.0 Ready to start TLS\r\n";
   inline static const char* tlsHandshakeErrorResponse = "550 5.0.0 TLS Handshake error\r\n";
   inline static const char* tlsNotSupportedResponse = "502 TLS not supported\r\n";
+  inline static const std::string tlsSessionActiveAlready = "Already running in TLS";
   inline static const char* mailboxUnavailableResponse =
       "450  Requested mail action not taken: mailbox unavailable\r\n";
 
   inline static const char* statusSuccess = "Success";
   inline static const char* statusFailed = "Failed";
   inline static const char* statusAborted = "Aborted";
+  inline static const char* via_upstream = "via_upstream";
   static std::string generateResponse(int code, EnhancedCode enhCode, std::string text);
   static std::string extractAddress(std::string& arg);
 };
+
 
 } // namespace SmtpProxy
 } // namespace NetworkFilters

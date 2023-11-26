@@ -22,8 +22,10 @@ public:
   struct SmtpFilterConfigOptions {
     std::string stats_prefix_;
     bool tracing_;
-    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
+    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode downstream_tls_;
+    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
         upstream_tls_;
+    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode protocol_inspection_;
     std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   };
   SmtpFilterConfig(const SmtpFilterConfigOptions& config_options, Stats::Scope& scope);
@@ -33,8 +35,12 @@ public:
   SmtpProxyStats stats_;
   bool tracing_{false};
   std::vector<AccessLog::InstanceSharedPtr> access_logs_;
-  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::UpstreamTLSMode
+  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
+      downstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
+  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
       upstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
+  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
+      protocol_inspection_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
 
 private:
   SmtpProxyStats generateStats(const std::string& prefix, Stats::Scope& scope) {
@@ -54,7 +60,9 @@ public:
   ~SmtpFilter() {
     // This will ensure session metadata is populated to stream_info and then logged before filter
     // chain is destroyed.
-    decoder_.reset();
+    // decoder_.reset();
+    delete smtp_session_;
+    smtp_session_ = nullptr;
     if (config_->accessLogs().size() > 0) {
       emitLogEntry(getStreamInfo());
     }
@@ -104,13 +112,16 @@ public:
 
   bool downstreamStartTls(absl::string_view response) override;
   bool sendReplyDownstream(absl::string_view response) override;
-  bool upstreamTlsRequired() const override;
+  bool upstreamTlsEnabled() const override;
+  bool downstreamTlsEnabled() const override;
+  bool protocolInspectionEnabled() const override;
   bool tracingEnabled() override;
   bool sendUpstream(Buffer::Instance& buffer) override;
 
   bool upstreamStartTls() override;
   void closeDownstreamConnection() override;
-  SmtpSession* getSession() { return decoder_->getSession(); }
+  SmtpSession* getSession() { return smtp_session_; }
+  // SmtpSession* getSession() { return decoder_->getSession(); }
   Buffer::OwnedImpl& getReadBuffer() override { return read_buffer_; }
   Buffer::OwnedImpl& getWriteBuffer() override { return write_buffer_; }
   void emitLogEntry(StreamInfo::StreamInfo& stream_info) override;
@@ -126,6 +137,7 @@ private:
   Buffer::OwnedImpl read_buffer_;
   Buffer::OwnedImpl write_buffer_;
   std::unique_ptr<Decoder> decoder_;
+  SmtpSession* smtp_session_;
   TimeSource& time_source_;
   Random::RandomGenerator& random_generator_;
 };

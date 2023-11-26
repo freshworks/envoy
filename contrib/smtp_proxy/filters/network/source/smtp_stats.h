@@ -28,7 +28,9 @@ namespace SmtpProxy {
   COUNTER(smtp_mail_data_transfer_errors)                                                          \
   COUNTER(smtp_rcpt_errors)                                                                        \
   COUNTER(smtp_4xx_errors)                                                                         \
+  COUNTER(smtp_local_4xx_errors)                                                                   \
   COUNTER(smtp_5xx_errors)                                                                         \
+  COUNTER(smtp_local_5xx_errors)                                                                   \
   GUAGE(smtp_transaction_active, Accumulate)                                                       \
   GUAGE(smtp_session_active, Accumulate)                                                           \
   HISTOGRAM(smtp_transaction_length, Milliseconds)                                                 \

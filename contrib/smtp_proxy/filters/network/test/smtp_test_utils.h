@@ -50,7 +50,7 @@ public:
   MOCK_METHOD(bool, downstreamStartTls, (absl::string_view), (override));
   MOCK_METHOD(bool, sendReplyDownstream, (absl::string_view), (override));
   MOCK_METHOD(bool, sendUpstream, (Buffer::Instance&), (override));
-  MOCK_METHOD(bool, upstreamTlsRequired, (), (const));
+  MOCK_METHOD(bool, upstreamTlsEnabled, (), (const));
   MOCK_METHOD(bool, upstreamStartTls, (), (override));
   MOCK_METHOD(void, closeDownstreamConnection, (), (override));
   MOCK_METHOD(bool, tracingEnabled, (), (override));

@@ -59,7 +59,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   // Upstream TLS is disabled, testing only downstream starttls handling
   filter_->getConfig()->upstream_tls_ =
       envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE;
-  ASSERT_FALSE(filter_->upstreamTlsRequired());
+  ASSERT_FALSE(filter_->upstreamTlsEnabled());
   filter_->getSession()->setState(SmtpSession::State::ConnectionSuccess);
 
   data_.add("EHLO localhost\r\n");
@@ -131,7 +131,7 @@ TEST_F(SmtpFilterTest, TestUpstreamStartTls) {
   // Upstream TLS is disabled, testing only downstream starttls handling
   filter_->getConfig()->upstream_tls_ =
       envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE;
-  ASSERT_TRUE(filter_->upstreamTlsRequired());
+  ASSERT_TRUE(filter_->upstreamTlsEnabled());
   filter_->getSession()->setState(SmtpSession::State::ConnectionSuccess);
 
   data_.add("EHLO localhost\r\n");

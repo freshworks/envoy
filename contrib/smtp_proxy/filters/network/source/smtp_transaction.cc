@@ -60,6 +60,10 @@ void SmtpTransaction::emitLog() {
   status.set_string_value(status_);
   fields["status"] = status;
 
+  ProtobufWkt::Value log_type;
+  log_type.set_string_value("transaction");
+  fields["type"] = log_type;
+
   stream_info_.setDynamicMetadata(NetworkFilterNames::get().SmtpProxy, metadata);
   callbacks_->emitLogEntry(stream_info_);
 }
@@ -93,11 +97,19 @@ void SmtpTransaction::encode(ProtobufWkt::Struct& metadata) {
 
     ProtobufWkt::Value name;
     name.set_string_value(command->getName());
-    fields["command_name"] = name;
+    fields["command_verb"] = name;
 
     ProtobufWkt::Value response_code;
     response_code.set_number_value(command->getResponseCode());
     fields["response_code"] = response_code;
+
+    ProtobufWkt::Value response_code_details;
+    response_code_details.set_string_value(command->getResponseCodeDetails());
+    fields["response_code_details"] = response_code_details;
+
+    ProtobufWkt::Value response_msg;
+    response_msg.set_string_value(command->getResponseMsg());
+    fields["msg"] = response_msg;
 
     ProtobufWkt::Value duration;
     duration.set_number_value(command->getDuration());

@@ -12,6 +12,12 @@ namespace SmtpProxy {
 // SMTP message decoder.
 class Decoder {
 public:
+ struct Command {
+    std::string verb;
+    std::string args;
+    size_t len;
+  };
+
   virtual ~Decoder() = default;
 
   virtual SmtpUtils::Result onData(Buffer::Instance& data, bool) PURE;
@@ -24,22 +30,23 @@ using DecoderPtr = std::unique_ptr<Decoder>;
 
 class DecoderImpl : public Decoder, Logger::Loggable<Logger::Id::filter> {
 public:
-  DecoderImpl(DecoderCallbacks* callbacks, TimeSource& time_source,
+  DecoderImpl(DecoderCallbacks* callbacks, SmtpSession* session, TimeSource& time_source,
               Random::RandomGenerator& random_generator);
 
   ~DecoderImpl() {
-    delete session_;
-    session_ = nullptr;
+    // delete session_;
+    // session_ = nullptr;
   }
   void setSession(SmtpSession* session) { session_ = session; }
   SmtpUtils::Result onData(Buffer::Instance& data, bool upstream) override;
   SmtpSession* getSession() override { return session_; }
   SmtpUtils::Result parseCommand(Buffer::Instance& data) override;
   SmtpUtils::Result parseResponse(Buffer::Instance& data) override;
+  SmtpUtils::Result getLine(Buffer::Instance& data, size_t max_line, std::string& line_out);
 
 protected:
-  SmtpSession* session_;
   DecoderCallbacks* callbacks_{};
+  SmtpSession* session_;
   Buffer::OwnedImpl response_;
   Buffer::OwnedImpl last_response_;
   Buffer::OwnedImpl response_on_hold_;

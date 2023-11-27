@@ -188,6 +188,11 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
   }
 
   absl::string_view line_remaining(line);
+
+  const bool trailing_crlf_consumed = absl::ConsumeSuffix(&line_remaining, CRLF);
+  ASSERT(trailing_crlf_consumed);
+
+
   line_remaining.remove_prefix(3);
   char sp_or_dash = ' ';
   if (!line_remaining.empty() && line_remaining != CRLF) {

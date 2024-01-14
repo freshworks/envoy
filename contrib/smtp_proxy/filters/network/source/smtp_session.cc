@@ -437,7 +437,9 @@ SmtpUtils::Result SmtpSession::handleDataResponse(int& response_code, std::strin
     setTransactionState(SmtpTransaction::State::None);
     onTransactionFailed();
   }
-  data_tx_length_->complete();
+  if (data_tx_length_ != nullptr) {
+    data_tx_length_->complete();
+  }
   setDataTransferInProgress(false);
   return result;
 }

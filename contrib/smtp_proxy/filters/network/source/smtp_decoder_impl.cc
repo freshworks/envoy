@@ -151,7 +151,7 @@ SmtpUtils::Result DecoderImpl::getLine(Buffer::Instance& data, size_t max_line, 
   return SmtpUtils::Result::ReadyForNext;
 }
 
-SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
+SmtpUtils::Result DecoderImpl:: parseResponse(Buffer::Instance& data) {
   ENVOY_LOG(debug, "smtp_proxy: decoding response {} bytes", data.length());
   ENVOY_LOG(debug, "smtp_proxy: received response {}", data.toString());
 

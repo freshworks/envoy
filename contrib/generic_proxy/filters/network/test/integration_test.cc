@@ -54,8 +54,8 @@ public:
     TestReadFilter(IntegrationTest& parent) : parent_(parent) {}
 
     // Network::ReadFilter
-    Network::FilterStatus onData(Buffer::Instance& data, bool) override {
-      parent_.response_decoder_->decode(data);
+    Network::FilterStatus onData(Buffer::Instance& data, bool end_stream) override {
+      parent_.client_codec_->decode(data, end_stream);
       return Network::FilterStatus::Continue;
     }
     Network::FilterStatus onNewConnection() override { return Network::FilterStatus::Continue; }
@@ -65,19 +65,19 @@ public:
   };
   using TestReadFilterSharedPtr = std::shared_ptr<TestReadFilter>;
 
-  struct TestRequestEncoderCallback : public RequestEncoderCallback {
+  struct TestRequestEncoderCallback : public EncodingCallbacks {
     void onEncodingSuccess(Buffer::Instance& buffer, bool) override { buffer_.move(buffer); }
     Buffer::OwnedImpl buffer_;
   };
   using TestRequestEncoderCallbackSharedPtr = std::shared_ptr<TestRequestEncoderCallback>;
 
-  struct TestResponseEncoderCallback : public ResponseEncoderCallback {
+  struct TestResponseEncoderCallback : public EncodingCallbacks {
     void onEncodingSuccess(Buffer::Instance& buffer, bool) override { buffer_.move(buffer); }
     Buffer::OwnedImpl buffer_;
   };
   using TestResponseEncoderCallbackSharedPtr = std::shared_ptr<TestResponseEncoderCallback>;
 
-  struct TestResponseDecoderCallback : public ResponseDecoderCallback {
+  struct TestResponseDecoderCallback : public ClientCodecCallbacks {
     TestResponseDecoderCallback(IntegrationTest& parent) : parent_(parent) {}
 
     struct SingleResponse {
@@ -125,15 +125,17 @@ public:
     integration_ = std::make_unique<GenericProxyIntegrationTest>(config_yaml);
     integration_->initialize();
 
-    // Create codec for downstream client.
+    // Create codec for downstream client to encode request and decode response.
     codec_factory_ = std::move(codec_factory);
-    request_encoder_ = codec_factory_->requestEncoder();
-    response_decoder_ = codec_factory_->responseDecoder();
-    response_encoder_ = codec_factory_->responseEncoder();
+    client_codec_ = codec_factory_->createClientCodec();
+
     request_encoder_callback_ = std::make_shared<TestRequestEncoderCallback>();
     response_decoder_callback_ = std::make_shared<TestResponseDecoderCallback>(*this);
+    client_codec_->setCodecCallbacks(*response_decoder_callback_);
+
+    // Helper codec for upstream server to encode response.
+    server_codec_ = codec_factory_->createServerCodec();
     response_encoder_callback_ = std::make_shared<TestResponseEncoderCallback>();
-    response_decoder_->setDecoderCallback(*response_decoder_callback_);
   }
 
   std::string defaultConfig(bool bind_upstream_connection = false) {
@@ -207,7 +209,7 @@ public:
 
   // Send downstream request.
   void sendRequestForTest(StreamFrame& request) {
-    request_encoder_->encode(request, *request_encoder_callback_);
+    client_codec_->encode(request, *request_encoder_callback_);
     client_connection_->write(request_encoder_callback_->buffer_, false);
     client_connection_->dispatcher().run(Envoy::Event::Dispatcher::RunType::NonBlock);
     // Clear buffer for next encoding.
@@ -230,7 +232,7 @@ public:
 
   // Send upstream response.
   void sendResponseForTest(const StreamFrame& response) {
-    response_encoder_->encode(response, *response_encoder_callback_);
+    server_codec_->encode(response, *response_encoder_callback_);
 
     auto result =
         upstream_connection_->write(response_encoder_callback_->buffer_.toString(), false);
@@ -280,9 +282,9 @@ public:
 
   // Codec.
   CodecFactoryPtr codec_factory_;
-  RequestEncoderPtr request_encoder_;
-  ResponseDecoderPtr response_decoder_;
-  ResponseEncoderPtr response_encoder_;
+  ServerCodecPtr server_codec_;
+  ClientCodecPtr client_codec_;
+
   TestRequestEncoderCallbackSharedPtr request_encoder_callback_;
   TestResponseDecoderCallbackSharedPtr response_decoder_callback_;
   TestResponseEncoderCallbackSharedPtr response_encoder_callback_;
@@ -330,8 +332,8 @@ TEST_P(IntegrationTest, RequestRouteNotFound) {
                  "unexpected timeout");
 
   EXPECT_NE(response_decoder_callback_->responses_[0].response_, nullptr);
-  EXPECT_EQ(response_decoder_callback_->responses_[0].response_->status().message(),
-            "route_not_found");
+  EXPECT_EQ(response_decoder_callback_->responses_[0].response_->status().code(),
+            static_cast<uint32_t>(absl::StatusCode::kNotFound));
 
   cleanup();
 }
@@ -360,7 +362,7 @@ TEST_P(IntegrationTest, RequestAndResponse) {
 
   FakeStreamCodecFactory::FakeResponse response;
   response.protocol_ = "fake_fake_fake";
-  response.status_ = Status();
+  response.status_ = StreamStatus();
   response.data_["zzzz"] = "xxxx";
 
   sendResponseForTest(response);
@@ -369,8 +371,8 @@ TEST_P(IntegrationTest, RequestAndResponse) {
                  "unexpected timeout");
 
   EXPECT_NE(response_decoder_callback_->responses_[0].response_, nullptr);
-  EXPECT_EQ(response_decoder_callback_->responses_[0].response_->status().code(), StatusCode::kOk);
-  EXPECT_EQ(response_decoder_callback_->responses_[0].response_->getByKey("zzzz"), "xxxx");
+  EXPECT_EQ(response_decoder_callback_->responses_[0].response_->status().code(), 0);
+  EXPECT_EQ(response_decoder_callback_->responses_[0].response_->get("zzzz"), "xxxx");
 
   cleanup();
 }
@@ -462,7 +464,7 @@ TEST_P(IntegrationTest, MultipleRequests) {
 
   FakeStreamCodecFactory::FakeResponse response_2;
   response_2.protocol_ = "fake_fake_fake";
-  response_2.status_ = Status();
+  response_2.status_ = StreamStatus();
   response_2.data_["zzzz"] = "xxxx";
   response_2.data_["stream_id"] = "2";
 
@@ -472,13 +474,13 @@ TEST_P(IntegrationTest, MultipleRequests) {
                  "unexpected timeout");
 
   EXPECT_NE(response_decoder_callback_->responses_[2].response_, nullptr);
-  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->status().code(), StatusCode::kOk);
-  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->getByKey("zzzz"), "xxxx");
-  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->getByKey("stream_id"), "2");
+  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->status().code(), 0);
+  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->get("zzzz"), "xxxx");
+  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->get("stream_id"), "2");
 
   FakeStreamCodecFactory::FakeResponse response_1;
   response_1.protocol_ = "fake_fake_fake";
-  response_1.status_ = Status();
+  response_1.status_ = StreamStatus();
   response_1.data_["zzzz"] = "yyyy";
   response_1.data_["stream_id"] = "1";
 
@@ -488,9 +490,9 @@ TEST_P(IntegrationTest, MultipleRequests) {
                  "unexpected timeout");
 
   EXPECT_NE(response_decoder_callback_->responses_[1].response_, nullptr);
-  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->status().code(), StatusCode::kOk);
-  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->getByKey("zzzz"), "yyyy");
-  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->getByKey("stream_id"), "1");
+  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->status().code(), 0);
+  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->get("zzzz"), "yyyy");
+  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->get("stream_id"), "1");
 
   cleanup();
 }
@@ -587,7 +589,7 @@ TEST_P(IntegrationTest, MultipleRequestsWithMultipleFrames) {
 
   FakeStreamCodecFactory::FakeResponse response_2;
   response_2.protocol_ = "fake_fake_fake";
-  response_2.status_ = Status();
+  response_2.status_ = StreamStatus();
   response_2.data_["zzzz"] = "xxxx";
   response_2.data_["stream_id"] = "2";
   response_2.data_["end_stream"] = "false";
@@ -603,13 +605,13 @@ TEST_P(IntegrationTest, MultipleRequestsWithMultipleFrames) {
                  "unexpected timeout");
 
   EXPECT_NE(response_decoder_callback_->responses_[2].response_, nullptr);
-  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->status().code(), StatusCode::kOk);
-  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->getByKey("zzzz"), "xxxx");
-  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->getByKey("stream_id"), "2");
+  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->status().code(), 0);
+  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->get("zzzz"), "xxxx");
+  EXPECT_EQ(response_decoder_callback_->responses_[2].response_->get("stream_id"), "2");
 
   FakeStreamCodecFactory::FakeResponse response_1;
   response_1.protocol_ = "fake_fake_fake";
-  response_1.status_ = Status();
+  response_1.status_ = StreamStatus();
   response_1.data_["zzzz"] = "yyyy";
   response_1.data_["stream_id"] = "1";
   response_1.data_["end_stream"] = "false";
@@ -625,9 +627,9 @@ TEST_P(IntegrationTest, MultipleRequestsWithMultipleFrames) {
                  "unexpected timeout");
 
   EXPECT_NE(response_decoder_callback_->responses_[1].response_, nullptr);
-  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->status().code(), StatusCode::kOk);
-  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->getByKey("zzzz"), "yyyy");
-  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->getByKey("stream_id"), "1");
+  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->status().code(), 0);
+  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->get("zzzz"), "yyyy");
+  EXPECT_EQ(response_decoder_callback_->responses_[1].response_->get("stream_id"), "1");
 
   cleanup();
 }

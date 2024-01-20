@@ -41,11 +41,11 @@ enum class StreamResetReason : uint32_t {
 class RouterFilter;
 class UpstreamRequest;
 
-class GenericUpstream : public UpstreamConnection, public ResponseDecoderCallback {
+class GenericUpstream : public UpstreamConnection, public ClientCodecCallbacks {
 public:
-  GenericUpstream(Upstream::TcpPoolData&& tcp_pool_data, ResponseDecoderPtr&& response_decoder)
-      : UpstreamConnection(std::move(tcp_pool_data), std::move(response_decoder)) {
-    response_decoder_->setDecoderCallback(*this);
+  GenericUpstream(Upstream::TcpPoolData&& tcp_pool_data, ClientCodecPtr&& client_codec)
+      : UpstreamConnection(std::move(tcp_pool_data), std::move(client_codec)) {
+    client_codec_->setCodecCallbacks(*this);
   }
 
   // ResponseDecoderCallback
@@ -137,7 +137,7 @@ private:
 
 class UpstreamRequest : public LinkedObject<UpstreamRequest>,
                         public Envoy::Event::DeferredDeletable,
-                        public RequestEncoderCallback,
+                        public EncodingCallbacks,
                         Logger::Loggable<Envoy::Logger::Id::filter> {
 public:
   UpstreamRequest(RouterFilter& parent, GenericUpstreamSharedPtr generic_upstream);
@@ -172,13 +172,15 @@ public:
   uint64_t stream_id_{};
 
   GenericUpstreamSharedPtr generic_upstream_;
-  Upstream::HostDescriptionConstSharedPtr upstream_host_;
 
   Buffer::OwnedImpl upstream_request_buffer_;
 
   StreamInfo::StreamInfoImpl stream_info_;
+  std::shared_ptr<StreamInfo::UpstreamInfoImpl> upstream_info_;
   OptRef<const Tracing::Config> tracing_config_;
   Tracing::SpanPtr span_;
+
+  absl::optional<MonotonicTime> connecting_start_time_;
 
   // One of these flags should be set to true when the request is complete.
   bool stream_reset_{};
@@ -209,7 +211,9 @@ class RouterFilter : public DecoderFilter,
                      Logger::Loggable<Envoy::Logger::Id::filter> {
 public:
   RouterFilter(RouterConfigSharedPtr config, Server::Configuration::FactoryContext& context)
-      : config_(std::move(config)), context_(context) {}
+      : config_(std::move(config)),
+        cluster_manager_(context.serverFactoryContext().clusterManager()),
+        time_source_(context.serverFactoryContext().timeSource()) {}
 
   // DecoderFilter
   void onDestroy() override;
@@ -218,8 +222,6 @@ public:
     callbacks_ = &callbacks;
     // Set handler for following request frames.
     callbacks_->setRequestFramesHandler(*this);
-
-    request_encoder_ = callbacks_->downstreamCodec().requestEncoder();
   }
   FilterStatus onStreamDecoded(StreamRequest& request) override;
 
@@ -262,14 +264,13 @@ private:
 
   Envoy::Router::MetadataMatchCriteriaConstPtr metadata_match_;
 
-  RequestEncoderPtr request_encoder_;
-
   std::list<UpstreamRequestPtr> upstream_requests_;
 
   DecoderFilterCallback* callbacks_{};
 
   RouterConfigSharedPtr config_;
-  Server::Configuration::FactoryContext& context_;
+  Upstream::ClusterManager& cluster_manager_;
+  TimeSource& time_source_;
 };
 
 } // namespace Router

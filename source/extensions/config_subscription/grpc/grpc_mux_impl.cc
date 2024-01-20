@@ -47,7 +47,9 @@ bool isXdsTpWildcard(const std::string& resource_name) {
 // Must only be called on XdsTp resource names.
 std::string convertToWildcard(const std::string& resource_name) {
   ASSERT(XdsResourceIdentifier::hasXdsTpScheme(resource_name));
-  xds::core::v3::ResourceName xdstp_resource = XdsResourceIdentifier::decodeUrn(resource_name);
+  auto resource_or_error = XdsResourceIdentifier::decodeUrn(resource_name);
+  THROW_IF_STATUS_NOT_OK(resource_or_error, throw);
+  xds::core::v3::ResourceName xdstp_resource = resource_or_error.value();
   const auto pos = xdstp_resource.id().find_last_of('/');
   xdstp_resource.set_id(
       pos == std::string::npos ? "*" : absl::StrCat(xdstp_resource.id().substr(0, pos), "/*"));
@@ -91,7 +93,14 @@ void GrpcMuxImpl::onDynamicContextUpdate(absl::string_view resource_type_url) {
   queueDiscoveryRequest(resource_type_url);
 }
 
-void GrpcMuxImpl::start() { grpc_stream_.establishNewStream(); }
+void GrpcMuxImpl::start() {
+  ASSERT(!started_);
+  if (started_) {
+    return;
+  }
+  started_ = true;
+  grpc_stream_.establishNewStream();
+}
 
 void GrpcMuxImpl::sendDiscoveryRequest(absl::string_view type_url) {
   if (shutdown_) {
@@ -377,8 +386,9 @@ void GrpcMuxImpl::processDiscoveryResources(const std::vector<DecodedResourcePtr
     all_resource_refs.emplace_back(*resource);
     if (XdsResourceIdentifier::hasXdsTpScheme(resource->name())) {
       // Sort the context params of an xdstp resource, so we can compare them easily.
-      xds::core::v3::ResourceName xdstp_resource =
-          XdsResourceIdentifier::decodeUrn(resource->name());
+      auto resource_or_error = XdsResourceIdentifier::decodeUrn(resource->name());
+      THROW_IF_STATUS_NOT_OK(resource_or_error, throw);
+      xds::core::v3::ResourceName xdstp_resource = resource_or_error.value();
       XdsResourceIdentifier::EncodeOptions options;
       options.sort_context_params_ = true;
       resource_ref_map.emplace(XdsResourceIdentifier::encodeUrn(xdstp_resource, options),

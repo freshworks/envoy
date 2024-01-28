@@ -62,6 +62,7 @@ ProxyStats ProxyFilterConfig::generateStats(const std::string& prefix, Stats::Sc
   return {
       ALL_REDIS_PROXY_STATS(POOL_COUNTER_PREFIX(scope, prefix), POOL_GAUGE_PREFIX(scope, prefix))};
 }
+ProxyFilter::PubsubCallbacks* ProxyFilter::PubsubCallbacks::psubcb_ = nullptr;
 
 ProxyFilter::ProxyFilter(Common::Redis::DecoderFactory& factory,
                          Common::Redis::EncoderPtr&& encoder, CommandSplitter::Instance& splitter,
@@ -137,6 +138,7 @@ void ProxyFilter::onAuth(PendingRequest& request, const std::string& password) {
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
+    PubsubCallbacks::getInstance(this);
   } else {
     response->type(Common::Redis::RespType::Error);
     response->asString() = "ERR invalid password";
@@ -157,10 +159,12 @@ void ProxyFilter::onAuth(PendingRequest& request, const std::string& username,
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
+    PubsubCallbacks::getInstance(this);
   } else if (username == config_->downstream_auth_username_ && checkPassword(password)) {
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
+    PubsubCallbacks::getInstance(this);
   } else {
     response->type(Common::Redis::RespType::Error);
     response->asString() = "WRONGPASS invalid username-password pair";
@@ -177,7 +181,25 @@ bool ProxyFilter::checkPassword(const std::string& password) {
   }
   return false;
 }
+void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
+  encoder_->encode(*value, encoder_buffer_);
 
+  if (encoder_buffer_.length() > 0) {
+    callbacks_->connection().write(encoder_buffer_, false);
+  }
+
+  if ( connection_quit_) {
+    callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
+    connection_quit_ = false;
+    return;
+  }
+
+  // Check if there is an active transaction that needs to be closed.
+  if (transaction_.should_close_ ) {
+    transaction_.close();
+  }
+  
+}
 void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePtr&& value) {
   ASSERT(!pending_requests_.empty());
   request.pending_response_ = std::move(value);
@@ -215,6 +237,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
 
 Network::FilterStatus ProxyFilter::onData(Buffer::Instance& data, bool) {
   TRY_NEEDS_AUDIT {
+    PubsubCallbacks::getInstance(this);
     decoder_->decode(data);
     return Network::FilterStatus::Continue;
   }

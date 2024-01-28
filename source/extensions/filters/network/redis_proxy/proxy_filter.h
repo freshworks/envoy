@@ -104,6 +104,39 @@ public:
 
   Common::Redis::Client::Transaction& transaction() { return transaction_; }
 
+struct PubsubCallbacks : Common::Redis::Client::DirectCallbacks{
+private:
+    ProxyFilter* parent_;
+    // Private constructor
+    PubsubCallbacks(ProxyFilter* parent) : parent_(parent) {
+        parent->config_->stats_.downstream_rq_total_.inc();
+        parent->config_->stats_.downstream_rq_active_.inc();
+    }
+
+    // Deleted copy constructor and assignment operator to prevent copying
+    PubsubCallbacks(const PubsubCallbacks&) = delete;
+    PubsubCallbacks& operator=(const PubsubCallbacks&) = delete;
+
+    static PubsubCallbacks* psubcb_;
+
+public:
+    // Public method to access the singleton instance
+    static PubsubCallbacks* getInstance(ProxyFilter* parent) {
+        if (!psubcb_) {
+            psubcb_ = new PubsubCallbacks(parent);
+        }
+        if (parent->transaction_.getPubsubCallback() != psubcb_) {
+            parent->transaction_.setPubsubCallback(psubcb_);
+        }
+        //parent->transaction_.setPubsubCallback(psubcb_);
+        return psubcb_;
+    }
+
+    void onDirectResponse(Common::Redis::RespValuePtr&& value) override {
+        parent_->onAsyncResponse(std::move(value));
+    }
+};
+
 private:
   friend class RedisProxyFilterTest;
 
@@ -133,6 +166,7 @@ private:
   void onAuth(PendingRequest& request, const std::string& password);
   void onAuth(PendingRequest& request, const std::string& username, const std::string& password);
   void onResponse(PendingRequest& request, Common::Redis::RespValuePtr&& value);
+  void onAsyncResponse(Common::Redis::RespValuePtr&& value);
   bool checkPassword(const std::string& password);
 
   Common::Redis::DecoderPtr decoder_;

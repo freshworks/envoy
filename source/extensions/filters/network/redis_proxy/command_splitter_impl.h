@@ -230,6 +230,23 @@ private:
   void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) override;
 
 };
+
+class BlockingRequest : public NoKeyAllPrimaryRequest {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+private:
+  BlockingRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : NoKeyAllPrimaryRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+
+  // RedisProxy::CommandSplitter::NoKeyAllPrimaryRequest
+  void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) override;
+
+};
+
 /**
  * SimpleRequest hashes the first argument as the key.
  */
@@ -452,6 +469,7 @@ private:
   CommandHandlerFactory<SplitKeysSumResultRequest> split_keys_sum_result_handler_;
   CommandHandlerFactory<TransactionRequest> transaction_handler_;
   CommandHandlerFactory<NoKeyRequest> nokeyrequest_handler_;
+  CommandHandlerFactory<BlockingRequest> blockingrequest_handler_;
   TrieLookupTable<HandlerDataPtr> handler_lookup_table_;
   InstanceStats stats_;
   TimeSource& time_source_;

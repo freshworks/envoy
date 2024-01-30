@@ -49,6 +49,8 @@ public:
   virtual bool sendReplyDownstream(absl::string_view) PURE;
   virtual bool upstreamTlsEnabled() const PURE;
   virtual bool downstreamTlsEnabled() const PURE;
+  virtual bool downstreamTlsRequired() const PURE;
+  virtual bool upstreamTlsRequired() const PURE;
   virtual bool protocolInspectionEnabled() const PURE;
   virtual bool tracingEnabled() PURE;
   virtual bool upstreamStartTls() PURE;

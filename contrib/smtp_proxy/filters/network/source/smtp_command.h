@@ -19,6 +19,12 @@ public:
     Others,
   };
 
+  enum class ResponseType {
+    None,
+    Local,
+    ViaUpstream
+  };
+
   SmtpCommand(const std::string& name, SmtpCommand::Type type, TimeSource& time_source)
       : name_(name), type_(type), time_source_(time_source),
         start_time_(time_source.monotonicTime()) {}
@@ -32,12 +38,13 @@ public:
   }
   std::string& getResponseCodeDetails() { return response_code_details_; }
   std::string& getResponseMsg() { return response_; }
-  bool isLocalResponseSet() { return local_resp_generated_; }
+  bool isLocalResponseSet() { return response_type_ == SmtpCommand::ResponseType::Local; }
   int64_t& getDuration() { return duration_; }
 
-  void onComplete(std::string& response, const std::string& resp_code_details, int response_code) {
+  void onComplete(std::string& response, const std::string& resp_code_details, int response_code, SmtpCommand::ResponseType resp_type) {
 
     if (!local_resp_generated_) {
+      response_type_ = resp_type;
       response_code_ = response_code;
       response_ = response;
       response_code_details_ = resp_code_details;
@@ -52,6 +59,7 @@ public:
   void storeLocalResponse(std::string response, const std::string& resp_code_details,
                           int response_code) {
     local_resp_generated_ = true;
+    response_type_ = ResponseType::Local;
     response_code_ = response_code;
     response_ = response;
     response_code_details_ = resp_code_details;
@@ -62,6 +70,7 @@ private:
   int response_code_{0};
   std::string response_;
   std::string response_code_details_;
+  SmtpCommand::ResponseType response_type_{SmtpCommand::ResponseType::None};
   SmtpCommand::Type type_{SmtpCommand::Type::None};
   TimeSource& time_source_;
   const MonotonicTime start_time_;

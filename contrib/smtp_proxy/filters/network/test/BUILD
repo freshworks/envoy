@@ -51,6 +51,27 @@ envoy_cc_test(
     ],
 )
 
+envoy_cc_test(
+    name = "smtp_integration_test",
+    srcs = [
+        "smtp_integration_test.cc",
+    ],
+    data = [
+        "smtp_test_config.yaml-template",
+        "//test/config/integration/certs",
+    ],
+    deps = [
+        "//contrib/smtp_proxy/filters/network/source:config",
+        "//contrib/smtp_proxy/filters/network/source:filter",
+        "//source/common/tcp_proxy",
+        "//source/extensions/filters/network/tcp_proxy:config",
+        "//source/extensions/transport_sockets/starttls:config",
+        "//test/integration:integration_lib",
+        "//test/test_common:registry_lib",
+        "@envoy_api//contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha:pkg_cc_proto",
+    ],
+)
+
 envoy_cc_test_library(
     name = "smtp_test_utils",
     hdrs = ["smtp_test_utils.h"],

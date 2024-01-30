@@ -54,6 +54,8 @@ public:
   MOCK_METHOD(bool, upstreamStartTls, (), (override));
   MOCK_METHOD(void, closeDownstreamConnection, (), (override));
   MOCK_METHOD(bool, tracingEnabled, (), (override));
+  MOCK_METHOD(bool, protocolInspectionEnabled, (), (const));
+  MOCK_METHOD(bool, downstreamTlsEnabled, (), (const));
   // MOCK_METHOD(Buffer::OwnedImpl&, getReadBuffer, (), (override));
   MOCK_METHOD(MockBuffer&, getReadBuffer, (), (override));
   // MOCK_METHOD(Buffer::OwnedImpl&, getWriteBuffer, (), (override));

@@ -60,6 +60,10 @@ void SmtpTransaction::emitLog() {
   status.set_string_value(status_);
   fields["status"] = status;
 
+  ProtobufWkt::Value msg;
+  msg.set_string_value(msg_);
+  fields["msg"] = msg;
+
   ProtobufWkt::Value log_type;
   log_type.set_string_value("transaction");
   fields["type"] = log_type;

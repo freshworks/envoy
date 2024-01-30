@@ -2,6 +2,8 @@
 #include <array>
 #include <string>
 
+#include "absl/strings/string_view.h"
+
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
@@ -25,6 +27,9 @@ public:
 
   enum class SessionType { PlainText, Tls };
   //= {"HELO", "EHLO", "AUTH", "MAIL", "RCPT", "DATA", "QUIT", "RSET", "STARTTLS", "XREQID"};
+  constexpr static size_t maxCommandLen = 1024;
+  constexpr static size_t maxResponseLen = 1024;
+  constexpr static absl::string_view CRLF = "\r\n";
   inline static const char* smtpCrlfSuffix = "\r\n";
   inline static const char* smtpHeloCommand = "HELO";
   inline static const char* smtpEhloCommand = "EHLO";
@@ -49,8 +54,10 @@ public:
 
   inline static const char* statusSuccess = "Success";
   inline static const char* statusFailed = "Failed";
+  inline static const char* statusError = "Error";
   inline static const char* statusAborted = "Aborted";
   inline static const char* via_upstream = "via_upstream";
+  inline static const char* protocol_error = "Protocol Error";
   static std::string generateResponse(int code, EnhancedCode enhCode, std::string text);
   static std::string extractAddress(std::string& arg);
 };

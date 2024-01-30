@@ -6,8 +6,8 @@
 #include "source/common/common/logger.h"
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_handler.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_callbacks.h"
+// #include "contrib/smtp_proxy/filters/network/source/smtp_handler.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_transaction.h"
 
 namespace Envoy {
@@ -15,7 +15,7 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
-class SmtpSession : public SmtpHandler {
+class SmtpSession {
 public:
   enum class State {
     ConnectionRequest = 0,
@@ -29,6 +29,7 @@ public:
     SessionAuthRequest = 8,
     SessionResetRequest = 9,
     XReqIdTransfer = 10,
+    Passthrough = 11,
   };
 
   struct SmtpSessionStats {
@@ -50,8 +51,8 @@ public:
 
  virtual ~SmtpSession() {
 
-    if (state_ == SmtpSession::State::SessionInProgress) {
-      terminateSession();
+    if (state_ != SmtpSession::State::SessionTerminated) {
+      terminateSession(SmtpUtils::statusSuccess, "terminated by envoy");
     }
     if (transaction_in_progress_) {
       abortTransaction();
@@ -60,6 +61,10 @@ public:
 
   void setState(SmtpSession::State state) { state_ = state; }
   SmtpSession::State getState() { return state_; }
+
+  void setStatus(std::string status) { status_ = status; }
+  std::string& getStatus() { return status_; }
+
 
   SmtpTransaction* getTransaction() { return smtp_transaction_; }
   void createNewTransaction();
@@ -76,7 +81,7 @@ public:
 
   void encode(ProtobufWkt::Struct& metadata);
 
-  SmtpUtils::Result handleCommand(std::string& command, std::string& args) override;
+  SmtpUtils::Result handleCommand(std::string& command, std::string& args);
 
   SmtpUtils::Result handleEhlo(std::string& command);
   SmtpUtils::Result handleMail(std::string& args);
@@ -88,7 +93,7 @@ public:
   SmtpUtils::Result handleStarttls();
   SmtpUtils::Result handleOtherCmds(std::string& args);
 
-  SmtpUtils::Result handleResponse(int& response_code, std::string& response) override;
+  SmtpUtils::Result handleResponse(int& response_code, std::string& response);
   SmtpUtils::Result handleConnResponse(int& response_code, std::string& response);
   SmtpUtils::Result handleEhloResponse(int& response_code, std::string& response);
   SmtpUtils::Result handleMailResponse(int& response_code, std::string& response);
@@ -105,27 +110,27 @@ public:
   void handleDownstreamTls();
 
   void newCommand(const std::string& name, SmtpCommand::Type type);
-  SmtpUtils::Result storeResponse(std::string response, std::string resp_code_details, int response_code);
+  SmtpUtils::Result storeResponse(std::string response, std::string resp_code_details, int response_code, SmtpCommand::ResponseType resp_type);
   std::string& getResponseOnHold() { return response_on_hold_; }
   void setResponseOnHold(std::string& resp) { response_on_hold_ = resp; }
-  bool isDataTransferInProgress() override { return data_transfer_in_progress_; }
-  bool isTerminated() override { return state_ == State::SessionTerminated; }
-  void terminateSession();
+  bool isDataTransferInProgress() { return data_transfer_in_progress_; }
+  bool isTerminated() { return state_ == State::SessionTerminated; }
+  void terminateSession(std::string status, std::string msg);
   void onSessionComplete();
   void endSession();
   void setDataTransferInProgress(bool status) { data_transfer_in_progress_ = status; }
-  bool isCommandInProgress() override { return command_in_progress_; }
+  bool isCommandInProgress() { return command_in_progress_; }
 
   bool isAuthenticated() { return auth_complete_; }
   void setAuthStatus(bool status) { auth_complete_ = status; }
 
   std::shared_ptr<SmtpCommand> getCurrentCommand() { return current_command_; }
-  void updateBytesMeterOnCommand(Buffer::Instance& data) override;
+  void updateBytesMeterOnCommand(Buffer::Instance& data);
   void updateBytesMeterOnResponse(Buffer::Instance& data);
 
   void setSessionMetadata();
   void onTransactionComplete();
-  void onTransactionFailed();
+  void onTransactionFailed(std::string& response);
 
   bool isXReqIdSent() { return x_req_id_sent_; }
 
@@ -134,6 +139,8 @@ private:
   SmtpSession::State state_{State::ConnectionRequest};
   SmtpTransaction* smtp_transaction_{};
   SmtpSession::SmtpSessionStats session_stats_ = {};
+  std::string status_;
+  std::string msg_;
   bool session_encrypted_{false}; // tells if smtp session is encrypted
   DecoderCallbacks* callbacks_{};
   TimeSource& time_source_;

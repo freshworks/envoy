@@ -11,7 +11,7 @@
 #include "source/common/stream_info/stream_info_impl.h"
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_command.h"
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_callbacks.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
 
 namespace Envoy {
@@ -48,6 +48,9 @@ public:
   void setSender(std::string& sender) { sender_ = sender; }
   std::string& getSender() { return sender_; }
 
+  void setMsg(std::string& msg) { msg_ = msg; }
+  std::string& getMsg() { return msg_; }
+
   void addRcpt(std::string& rcpt) { recipients_.push_back(rcpt); }
 
   uint8_t getNoOfRecipients() { return recipients_.size(); }
@@ -69,6 +72,7 @@ private:
   // Transaction status
   std::string status_;
   std::string sender_;
+  std::string msg_;
   std::vector<std::string> recipients_;
   uint64_t payload_size_ = 0;
   std::vector<std::shared_ptr<SmtpCommand>> trxn_commands_;

@@ -9,7 +9,9 @@
 #include "source/common/common/utility.h"
 
 #include "contrib/envoy/extensions/filters/network/smtp_proxy/v3alpha/smtp_proxy.pb.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_callbacks.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_session.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_stats.h"
 
 namespace Envoy {
@@ -25,7 +27,7 @@ public:
     envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode downstream_tls_;
     envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
         upstream_tls_;
-    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode protocol_inspection_;
+    bool protocol_inspection_;
     std::vector<AccessLog::InstanceSharedPtr> access_logs_;
   };
   SmtpFilterConfig(const SmtpFilterConfigOptions& config_options, Stats::Scope& scope);
@@ -39,8 +41,7 @@ public:
       downstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
   envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
       upstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
-  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
-      protocol_inspection_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
+  bool protocol_inspection_{false};
 
 private:
   SmtpProxyStats generateStats(const std::string& prefix, Stats::Scope& scope) {
@@ -78,7 +79,7 @@ public:
   void initializeWriteFilterCallbacks(Network::WriteFilterCallbacks& callbacks) override {
     write_callbacks_ = &callbacks;
   }
-  Network::FilterStatus doDecode(Buffer::Instance& buffer, bool upstream);
+  // Network::FilterStatus doDecode(Buffer::Instance& buffer, bool upstream);
   DecoderPtr createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source,
                            Random::RandomGenerator&);
 
@@ -114,6 +115,8 @@ public:
   bool sendReplyDownstream(absl::string_view response) override;
   bool upstreamTlsEnabled() const override;
   bool downstreamTlsEnabled() const override;
+  bool downstreamTlsRequired() const override;
+  bool upstreamTlsRequired() const override;
   bool protocolInspectionEnabled() const override;
   bool tracingEnabled() override;
   bool sendUpstream(Buffer::Instance& buffer) override;

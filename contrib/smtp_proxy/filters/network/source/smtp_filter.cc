@@ -13,6 +13,11 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
+namespace {
+const std::string known_commands[] = {"HELO", "EHLO", "AUTH", "MAIL",     "RCPT",
+                                      "DATA", "QUIT", "RSET", "STARTTLS", "XREQID"};
+}
+
 SmtpFilterConfig::SmtpFilterConfig(const SmtpFilterConfigOptions& config_options,
                                    Stats::Scope& scope)
     : scope_{scope}, stats_(generateStats(config_options.stats_prefix_, scope)),
@@ -99,9 +104,18 @@ bool SmtpFilter::downstreamTlsEnabled() const {
           envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
 }
 
+bool SmtpFilter::downstreamTlsRequired() const {
+  return (config_->downstream_tls_ ==
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE);
+}
+
+bool SmtpFilter::upstreamTlsRequired() const {
+  return (config_->downstream_tls_ ==
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE);
+}
+
 bool SmtpFilter::protocolInspectionEnabled() const {
-  return (config_->protocol_inspection_ ==
-          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
+  return config_->protocol_inspection_;
 }
 
 bool SmtpFilter::tracingEnabled() { return config_->tracing_; }
@@ -169,54 +183,135 @@ void SmtpFilter::incUpstreamTlsFailed() { config_->stats_.smtp_session_upstream_
 
 void SmtpFilter::closeDownstreamConnection() {
   read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
-  incSmtpSessionsTerminated();
 }
 
 // onData method processes payloads sent by downstream client.
 Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream) {
   ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", read_callbacks_->connection(), data.length(),
                  "end_stream ", end_stream);
+
+  // Network::FilterStatus result = doDecode(read_buffer_, false);
+
+  if (getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
+    return Network::FilterStatus::Continue;
+  }
+  // Do not parse payload when DATA transfer is taking place.
+  if (getSession()->isDataTransferInProgress()) {
+    getSession()->updateBytesMeterOnCommand(data);
+    return Network::FilterStatus::Continue;
+  }
   read_buffer_.add(data);
-  Network::FilterStatus result = doDecode(read_buffer_, false);
-  if (result == Network::FilterStatus::StopIteration) {
-    ASSERT(read_buffer_.length() == 0);
-    data.drain(data.length());
+  Decoder::Command command;
+  SmtpUtils::Result result = decoder_->parseCommand(read_buffer_, command);
+  switch (result) {
+  case SmtpUtils::Result::ProtocolError: {
+    read_buffer_.drain(read_buffer_.length());
+    getSession()->setState(SmtpSession::State::Passthrough);
+    getSession()->setStatus(SmtpUtils::protocol_error);
+    return Network::FilterStatus::Continue;
   }
-  return result;
-}
-
-// onWrite method processes payloads sent by upstream to the client.
-Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_stream) {
-  ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
-                 "end_stream ", end_stream);
-  write_buffer_.add(data);
-  Network::FilterStatus result = doDecode(write_buffer_, true);
-  if (result == Network::FilterStatus::StopIteration) {
-    ASSERT(write_buffer_.length() == 0);
-    data.drain(data.length());
-  }
-  return result;
-}
-
-Network::FilterStatus SmtpFilter::doDecode(Buffer::Instance& data, bool upstream) {
-
-  switch (decoder_->onData(data, upstream)) {
   case SmtpUtils::Result::NeedMoreData:
     return Network::FilterStatus::Continue;
   case SmtpUtils::Result::ReadyForNext:
-    return Network::FilterStatus::Continue;
-  case SmtpUtils::Result::Stopped:
+    break;
+  default:
+    break;
+  }
+
+  for (const auto& c : known_commands) {
+    if (absl::AsciiStrToUpper(command.verb) != c) {
+      continue;
+    }
+    result = smtp_session_->handleCommand(command.verb, command.args);
+    break;
+  }
+
+  switch (result) {
+  case SmtpUtils::Result::ReadyForNext:
+    break;
+  case SmtpUtils::Result::Stopped: {
+    ASSERT(read_buffer_.length() == 0);
+    data.drain(data.length());
     return Network::FilterStatus::StopIteration;
+  }
   default:
     break;
   }
   return Network::FilterStatus::Continue;
 }
 
+// onWrite method processes payloads sent by upstream to the client.
+Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_stream) {
+  ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
+                 "end_stream ", end_stream);
+  ENVOY_CONN_LOG(debug, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
+                 "end_stream ", end_stream);
+
+  if(getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
+    return Network::FilterStatus::Continue;
+  }
+  write_buffer_.add(data);
+  // Network::FilterStatus result = doDecode(write_buffer_, true);
+  // if (result == Network::FilterStatus::StopIteration) {
+  //   ASSERT(write_buffer_.length() == 0);
+  //   data.drain(data.length());
+  // }
+
+  Decoder::Response response;
+  SmtpUtils::Result result = decoder_->parseResponse(write_buffer_, response);
+  switch (result) {
+  case SmtpUtils::Result::ProtocolError: {
+    write_buffer_.drain(write_buffer_.length());
+    getSession()->setState(SmtpSession::State::Passthrough);
+    getSession()->setStatus(SmtpUtils::protocol_error);
+    return Network::FilterStatus::Continue;
+  }
+  case SmtpUtils::Result::NeedMoreData:
+    return Network::FilterStatus::Continue;
+  case SmtpUtils::Result::ReadyForNext:
+    break;
+  default:
+    break;
+  }
+  if (response.len != write_buffer_.length()) {
+    write_buffer_.drain(write_buffer_.length());
+    return Network::FilterStatus::Continue;
+  }
+  result = smtp_session_->handleResponse(response.resp_code, response.msg);
+
+  switch (result) {
+  case SmtpUtils::Result::ReadyForNext:
+    break;
+  case SmtpUtils::Result::Stopped: {
+    ASSERT(write_buffer_.length() == 0);
+    data.drain(data.length());
+    return Network::FilterStatus::StopIteration;
+  }
+  default:
+    break;
+  }
+  return Network::FilterStatus::Continue;
+}
+
+// Network::FilterStatus SmtpFilter::doDecode(Buffer::Instance& data, bool upstream) {
+
+//   switch (decoder_->onData(data, upstream)) {
+//   case SmtpUtils::Result::NeedMoreData:
+//     return Network::FilterStatus::Continue;
+//   case SmtpUtils::Result::ReadyForNext:
+//     return Network::FilterStatus::Continue;
+//   case SmtpUtils::Result::Stopped:
+//     return Network::FilterStatus::StopIteration;
+//   default:
+//     break;
+//   }
+//   return Network::FilterStatus::Continue;
+// }
+
 DecoderPtr SmtpFilter::createDecoder(DecoderCallbacks* callbacks, TimeSource& time_source,
                                      Random::RandomGenerator& random_generator) {
   smtp_session_ = new SmtpSession(callbacks, time_source, random_generator);
-  return std::make_unique<DecoderImpl>(callbacks, smtp_session_, time_source, random_generator);
+  return std::make_unique<DecoderImpl>();
 }
 
 } // namespace SmtpProxy

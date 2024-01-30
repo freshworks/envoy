@@ -24,8 +24,8 @@ public:
   struct SmtpFilterConfigOptions {
     std::string stats_prefix_;
     bool tracing_;
-    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode downstream_tls_;
-    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
+    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::SSLMode downstream_tls_;
+    envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::SSLMode
         upstream_tls_;
     bool protocol_inspection_;
     std::vector<AccessLog::InstanceSharedPtr> access_logs_;
@@ -37,9 +37,9 @@ public:
   SmtpProxyStats stats_;
   bool tracing_{false};
   std::vector<AccessLog::InstanceSharedPtr> access_logs_;
-  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
+  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::SSLMode
       downstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
-  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::OpMode
+  envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::SSLMode
       upstream_tls_{envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::DISABLE};
   bool protocol_inspection_{false};
 
@@ -131,6 +131,7 @@ public:
   StreamInfo::StreamInfo& getStreamInfo() override {
     return read_callbacks_->connection().streamInfo();
   }
+  void printSessionState(SmtpSession::State state);
 
 private:
   Network::ReadFilterCallbacks* read_callbacks_{};

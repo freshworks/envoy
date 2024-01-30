@@ -53,7 +53,6 @@ SmtpUtils::Result DecoderImpl::parseCommand(Buffer::Instance& data, Command& com
   if(crlfPos <= 0) {
     return SmtpUtils::Result::ProtocolError;
   }
-  std::cout << "crlf size : " << SmtpUtils::CRLF.size() << std::endl;
 
   if (crlfPos != data.length() - 2) {
     // Invalid command, duplicate CRLF found
@@ -63,7 +62,6 @@ SmtpUtils::Result DecoderImpl::parseCommand(Buffer::Instance& data, Command& com
   // Extract the command up to CRLF
   std::string buffer = data.toString();
   std::string commandStr = buffer.substr(0, crlfPos);
-  std::cout << "command string:" << commandStr << std::endl;
 */
 
   std::string current_line;
@@ -136,10 +134,8 @@ SmtpUtils::Result DecoderImpl::getLine(Buffer::Instance& data, size_t max_line,
   }
 
   const size_t len = crlf + SmtpUtils::CRLF.size();
-  // std::cout << "len = " << len << std::endl;
   ASSERT(len > SmtpUtils::CRLF.size());
   auto front_slice = data.frontSlice();
-  // std::cout << "front_slice.len = " << front_slice.len_ << std::endl;
   if (front_slice.len_ >= len) {
     line_out.append(static_cast<char*>(front_slice.mem_), len);
   } else {
@@ -165,7 +161,6 @@ SmtpUtils::Result DecoderImpl::isValidSmtpLine(Buffer::Instance& data, size_t ma
   if (crlfPos <= 0) {
     return SmtpUtils::Result::ProtocolError;
   }
-  std::cout << "crlf size : " << SmtpUtils::CRLF.size() << std::endl;
 
   std::string buffer = data.toString();
   output = buffer.substr(0, crlfPos + SmtpUtils::CRLF.size());
@@ -174,7 +169,7 @@ SmtpUtils::Result DecoderImpl::isValidSmtpLine(Buffer::Instance& data, size_t ma
 
 SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data, Response& response) {
   ENVOY_LOG(debug, "smtp_proxy: decoding response {} bytes", data.length());
-  ENVOY_LOG(debug, "smtp_proxy: received response {}", data.toString());
+  ENVOY_LOG(debug, "smtp_proxy: decoding response {}", data.toString());
 
   int response_code = 0;
   std::string response_msg;
@@ -209,23 +204,20 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data, Response& r
       ENVOY_LOG(error, "smtp_proxy: error while decoding response code ", response_code);
       return SmtpUtils::Result::ProtocolError;
     }
-
-    if (code != response_code) {
+    if (response_code && code != response_code) {
       return SmtpUtils::Result::ProtocolError;
     }
     response_code = code;
-    current_line.erase(0, 3);
-
+    current_line = current_line.erase(0, 3);
     // Separator can be either ' ' or '-'
     char separator = ' ';
     if (!current_line.empty() && current_line != SmtpUtils::CRLF.data()) {
         separator = current_line[0];
-
-        if (separator != ' ' || separator != '-') {
+        if (separator != ' ' && separator != '-') {
             return SmtpUtils::Result::ProtocolError;
         }
         // Remove the first character from line
-        current_line.erase(0, 1);
+        current_line = current_line.erase(0, 1);
         response_msg += current_line;
     }
 

@@ -189,8 +189,9 @@ void SmtpFilter::closeDownstreamConnection() {
 Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream) {
   ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", read_callbacks_->connection(), data.length(),
                  "end_stream ", end_stream);
+  ENVOY_LOG(debug, "smtp_proxy: received command {}", data.toString());
 
-  // Network::FilterStatus result = doDecode(read_buffer_, false);
+  // printSessionState(getSession()->getState());
 
   if (getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
     return Network::FilterStatus::Continue;
@@ -240,25 +241,61 @@ Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream
   return Network::FilterStatus::Continue;
 }
 
+void SmtpFilter::printSessionState(SmtpSession::State state) {
+
+  switch(state) {
+    case SmtpSession::State::Passthrough:
+      std::cout << " current session state: Passthrough" << std::endl;
+      break;
+    case SmtpSession::State::SessionInProgress:
+      std::cout << " current session state: SessionInProgress" << std::endl;
+      break;
+    case SmtpSession::State::SessionTerminated:
+      std::cout << " current session state: SessionTerminated" << std::endl;
+      break;
+    case SmtpSession::State::SessionAuthRequest:
+      std::cout << " current session state: SessionAuthRequest" << std::endl;
+      break;
+     case SmtpSession::State::SessionInitRequest:
+      std::cout << " current session state: SessionInitRequest" << std::endl;
+      break;
+     case SmtpSession::State::XReqIdTransfer:
+      std::cout << " current session state: XReqIdTransfer" << std::endl;
+      break;
+     case SmtpSession::State::SessionResetRequest:
+      std::cout << " current session state: SessionResetRequest" << std::endl;
+      break;
+    case SmtpSession::State::SessionTerminationRequest:
+      std::cout << " current session state: SessionTerminationRequest" << std::endl;
+      break;
+    case SmtpSession::State::ConnectionSuccess:
+      std::cout << " current session state: ConnectionSuccess" << std::endl;
+      break;
+    default:
+      break;
+  }
+
+}
+
 // onWrite method processes payloads sent by upstream to the client.
 Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_stream) {
   ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
                  "end_stream ", end_stream);
   ENVOY_CONN_LOG(debug, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
                  "end_stream ", end_stream);
+  // ENVOY_LOG(debug, "smtp_proxy: received response {}", data.toString());
 
   if(getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
     return Network::FilterStatus::Continue;
   }
   write_buffer_.add(data);
-  // Network::FilterStatus result = doDecode(write_buffer_, true);
-  // if (result == Network::FilterStatus::StopIteration) {
-  //   ASSERT(write_buffer_.length() == 0);
-  //   data.drain(data.length());
-  // }
+
 
   Decoder::Response response;
   SmtpUtils::Result result = decoder_->parseResponse(write_buffer_, response);
+  // ENVOY_LOG(debug, "smtp_proxy: response code {}", response.resp_code);
+  // ENVOY_LOG(debug, "smtp_proxy: response msg {}", response.msg);
+
   switch (result) {
   case SmtpUtils::Result::ProtocolError: {
     write_buffer_.drain(write_buffer_.length());
@@ -266,17 +303,19 @@ Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_strea
     getSession()->setStatus(SmtpUtils::protocol_error);
     return Network::FilterStatus::Continue;
   }
-  case SmtpUtils::Result::NeedMoreData:
+  case SmtpUtils::Result::NeedMoreData: {
     return Network::FilterStatus::Continue;
+  }
+
   case SmtpUtils::Result::ReadyForNext:
     break;
   default:
     break;
   }
-  if (response.len != write_buffer_.length()) {
-    write_buffer_.drain(write_buffer_.length());
-    return Network::FilterStatus::Continue;
-  }
+  // if (response.len != write_buffer_.length()) {
+  //   write_buffer_.drain(write_buffer_.length());
+  //   return Network::FilterStatus::Continue;
+  // }
   result = smtp_session_->handleResponse(response.resp_code, response.msg);
 
   switch (result) {

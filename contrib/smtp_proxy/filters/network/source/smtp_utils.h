@@ -57,7 +57,12 @@ public:
   inline static const char* statusError = "Error";
   inline static const char* statusAborted = "Aborted";
   inline static const char* via_upstream = "via_upstream";
-  inline static const char* protocol_error = "Protocol Error";
+  inline static const char* protocol_error = "protocol_error";
+  inline static const char* passthroughMode = "passthrough_mode";
+  inline static const char* terminatedByEnvoyMsg = "terminated_by_envoy";
+  inline static const char* trxnAbortedDueToSessionClose = "aborted_due_to_session_close";
+  inline static const char* resetDueToEhlo = "reset_due_to_ehlo";
+  inline static const char* resetDueToRset = "reset_due_to_rset";
   static std::string generateResponse(int code, EnhancedCode enhCode, std::string text);
   static std::string extractAddress(std::string& arg);
 };

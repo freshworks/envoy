@@ -52,10 +52,10 @@ public:
  virtual ~SmtpSession() {
 
     if (state_ != SmtpSession::State::SessionTerminated) {
-      terminateSession(SmtpUtils::statusSuccess, "terminated by envoy");
+      terminateSession(SmtpUtils::statusSuccess, SmtpUtils::terminatedByEnvoyMsg);
     }
     if (transaction_in_progress_) {
-      abortTransaction();
+      abortTransaction(SmtpUtils::trxnAbortedDueToSessionClose);
     }
   }
 
@@ -106,7 +106,7 @@ public:
   SmtpUtils::Result handleXReqIdResponse(int& response_code, std::string& response);
   SmtpUtils::Result handleOtherResponse(int& response_code, std::string& response);
 
-  void abortTransaction();
+  void abortTransaction(std::string);
   void handleDownstreamTls();
 
   void newCommand(const std::string& name, SmtpCommand::Type type);
@@ -117,7 +117,7 @@ public:
   bool isTerminated() { return state_ == State::SessionTerminated; }
   void terminateSession(std::string status, std::string msg);
   void onSessionComplete();
-  void endSession();
+  // void endSession();
   void setDataTransferInProgress(bool status) { data_transfer_in_progress_ = status; }
   bool isCommandInProgress() { return command_in_progress_; }
 

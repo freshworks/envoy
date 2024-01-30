@@ -15,6 +15,7 @@ SmtpSession::SmtpSession(DecoderCallbacks* callbacks, TimeSource& time_source,
   newCommand(StringUtil::toUpper("connect_req"), SmtpCommand::Type::NonTransactionCommand);
   session_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
       callbacks_->getStats().smtp_session_length_, time_source_);
+  callbacks_->incActiveSession();
 }
 
 void SmtpSession::newCommand(const std::string& name, SmtpCommand::Type type) {
@@ -94,12 +95,15 @@ SmtpUtils::Result SmtpSession::handleEhlo(std::string& command) {
 
   newCommand(StringUtil::toUpper(command), SmtpCommand::Type::NonTransactionCommand);
   setState(SmtpSession::State::SessionInitRequest);
-  // session_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-  //     callbacks_->getStats().smtp_session_length_, time_source_);
   return result;
 }
 
 SmtpUtils::Result SmtpSession::handleMail(std::string& arg) {
+
+  if(transaction_in_progress_) {
+    getTransaction()->setStatus(SmtpUtils::passthroughMode);
+    return SmtpUtils::Result::ProtocolError;
+  }
 
   newCommand(SmtpUtils::smtpMailCommand, SmtpCommand::Type::TransactionCommand);
   if (state_ != SmtpSession::State::SessionInProgress) {
@@ -182,14 +186,6 @@ SmtpUtils::Result SmtpSession::handleData(std::string& arg) {
 SmtpUtils::Result SmtpSession::handleAuth() {
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   newCommand(SmtpUtils::smtpAuthCommand, SmtpCommand::Type::NonTransactionCommand);
-  // if (state_ != SmtpSession::State::SessionInProgress) {
-  //   current_command_->storeLocalResponse("Please introduce yourself first", "local", 502);
-  //   callbacks_->sendReplyDownstream(
-  //       SmtpUtils::generateResponse(502, {5, 5, 1}, "Please introduce yourself first"));
-  //   result = SmtpUtils::Result::Stopped;
-  //   return result;
-  // }
-
   if (isAuthenticated()) {
     current_command_->storeLocalResponse("Already authenticated", "local", 502);
     callbacks_->sendReplyDownstream(
@@ -352,13 +348,9 @@ SmtpUtils::Result SmtpSession::handleEhloResponse(int& response_code, std::strin
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   if (response_code == 250) {
     setState(SmtpSession::State::SessionInProgress);
-    auto last_command = session_commands_.back();
-    if (last_command && last_command->getName() != "STARTTLS") {
-      callbacks_->incActiveSession();
-    }
     if (transaction_in_progress_) {
       // Abort this transaction.
-      abortTransaction();
+      abortTransaction(SmtpUtils::resetDueToEhlo);
     }
   } else {
     setState(SmtpSession::State::ConnectionSuccess);
@@ -471,7 +463,7 @@ SmtpUtils::Result SmtpSession::handleResetResponse(int& response_code, std::stri
 
   if (transaction_in_progress_) {
     if (response_code == 250) {
-      abortTransaction();
+      abortTransaction(SmtpUtils::resetDueToRset);
     } else {
       setTransactionState(SmtpTransaction::State::TransactionInProgress);
     }
@@ -695,28 +687,42 @@ void SmtpSession::terminateSession(std::string status, std::string msg) {
   status_ = status;
   msg_ = msg;
   callbacks_->incSmtpSessionsTerminated();
-  endSession();
+  callbacks_->decActiveSession();
+  setState(SmtpSession::State::SessionTerminated);
+  if (transaction_in_progress_) {
+    abortTransaction(SmtpUtils::trxnAbortedDueToSessionClose);
+  }
+  setSessionMetadata();
+  session_length_->complete();
+
 }
 
 void SmtpSession::onSessionComplete() {
   status_ = SmtpUtils::statusSuccess;
   callbacks_->incSmtpSessionsCompleted();
-  endSession();
-}
-
-void SmtpSession::endSession() {
   callbacks_->decActiveSession();
   setState(SmtpSession::State::SessionTerminated);
-
   if (transaction_in_progress_) {
-    abortTransaction();
+    abortTransaction(SmtpUtils::trxnAbortedDueToSessionClose);
   }
   setSessionMetadata();
   session_length_->complete();
 }
 
-void SmtpSession::abortTransaction() {
+// void SmtpSession::endSession() {
+//   callbacks_->decActiveSession();
+//   setState(SmtpSession::State::SessionTerminated);
+
+//   if (transaction_in_progress_) {
+//     abortTransaction();
+//   }
+//   setSessionMetadata();
+//   session_length_->complete();
+// }
+
+void SmtpSession::abortTransaction(std::string reason) {
   callbacks_->incSmtpTransactionsAborted();
+  getTransaction()->setMsg(reason);
   getTransaction()->setStatus(SmtpUtils::statusAborted);
   getSessionStats().transactions_aborted++;
   endTransaction();

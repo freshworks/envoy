@@ -59,7 +59,8 @@ public:
   inline static const char* local_resp = "local";
   inline static const char* protocol_error = "protocol_error";
   inline static const char* passthroughMode = "passthrough_mode";
-  inline static const char* terminatedByEnvoyMsg = "terminated_by_envoy";
+  inline static const char* terminatedByEnvoyMsg = "terminated_by_envoy_due_to_cx_close";
+  inline static const char* connectionClose = "connection_close";
   inline static const char* trxnAbortedDueToSessionClose = "aborted_due_to_session_close";
   inline static const char* resetDueToEhlo = "reset_due_to_ehlo";
   inline static const char* resetDueToRset = "reset_due_to_rset";

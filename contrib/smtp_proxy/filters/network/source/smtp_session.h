@@ -52,7 +52,7 @@ public:
  virtual ~SmtpSession() {
 
     if (state_ != SmtpSession::State::SessionTerminated) {
-      terminateSession(SmtpUtils::statusSuccess, SmtpUtils::terminatedByEnvoyMsg);
+      terminateSession(SmtpUtils::connectionClose, SmtpUtils::terminatedByEnvoyMsg);
     }
     if (transaction_in_progress_) {
       abortTransaction(SmtpUtils::trxnAbortedDueToSessionClose);

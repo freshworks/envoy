@@ -41,7 +41,6 @@ public:
   inline static const char* smtpRsetCommand = "RSET";
   inline static const char* startTlsCommand = "STARTTLS";
   inline static const char* xReqIdCommand = "XREQID";
-  inline static const char* ehloFirstMsg = "Please introduce yourself first";
   inline static const char* syntaxErrorNoParamsAllowed =
       "501 Syntax error (no parameters allowed)\r\n";
   inline static const char* outOfOrderCommandResponse = "503 Bad sequence of commands\r\n";
@@ -52,11 +51,12 @@ public:
   inline static const char* mailboxUnavailableResponse =
       "450  Requested mail action not taken: mailbox unavailable\r\n";
 
-  inline static const char* statusSuccess = "Success";
-  inline static const char* statusFailed = "Failed";
-  inline static const char* statusError = "Error";
-  inline static const char* statusAborted = "Aborted";
+  inline static const char* statusSuccess = "success";
+  inline static const char* statusFailed = "failed";
+  inline static const char* statusError = "error";
+  inline static const char* statusAborted = "aborted";
   inline static const char* via_upstream = "via_upstream";
+  inline static const char* local_resp = "local";
   inline static const char* protocol_error = "protocol_error";
   inline static const char* passthroughMode = "passthrough_mode";
   inline static const char* terminatedByEnvoyMsg = "terminated_by_envoy";

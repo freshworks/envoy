@@ -4,7 +4,7 @@
 #include "test/mocks/network/mocks.h"
 #include "test/mocks/stream_info/mocks.h"
 
-#include "contrib/smtp_proxy/filters/network/source/smtp_decoder.h"
+#include "contrib/smtp_proxy/filters/network/source/smtp_callbacks.h"
 
 namespace Envoy {
 namespace Extensions {

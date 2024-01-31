@@ -15,7 +15,6 @@ envoy_cc_test(
         "smtp_decoder_test.cc",
     ],
     deps = [
-        ":smtp_test_utils",
         "//contrib/smtp_proxy/filters/network/source:filter",
         "//test/mocks:common_lib",
         "//test/mocks/network:network_mocks",

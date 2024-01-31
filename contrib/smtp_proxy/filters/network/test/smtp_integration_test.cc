@@ -165,90 +165,168 @@ TEST_P(BasicSmtpIntegrationTest, NoTls) {
   tcp_client->close();
   ASSERT_TRUE(fake_upstream_connection->waitForDisconnect());
 
-  test_server_->waitForCounterEq("smtp.smtp_stats.smtp_session_requests", 1);
-  test_server_->waitForCounterEq("smtp.smtp_stats.smtp_session_completed", 1);
-  test_server_->waitForCounterEq("smtp.smtp_stats.smtp_transaction_completed", 1);
+  test_server_->waitForCounterEq("smtp.smtp_stats.session_requests", 1);
+  test_server_->waitForCounterEq("smtp.smtp_stats.session_completed", 1);
+  test_server_->waitForCounterEq("smtp.smtp_stats.transaction_completed", 1);
 }
 INSTANTIATE_TEST_SUITE_P(IpVersions, BasicSmtpIntegrationTest,
                          testing::ValuesIn(TestEnvironment::getIpVersionsForTest()));
 
-// // Base class for tests with `downstream_ssl` enabled and `starttls` transport socket added.
-// class DownstreamSSLSmtpIntegrationTest : public SmtpBaseIntegrationTest {
-// public:
-//   DownstreamSSLSmtpIntegrationTest()
-//       : SmtpBaseIntegrationTest(
-//             std::make_tuple(
-//                 "downstream_ssl: ENABLE",
-//                 fmt::format(
-//                     R"EOF(transport_socket:
-//         name: "starttls"
-//         typed_config:
-//           "@type": type.googleapis.com/envoy.extensions.transport_sockets.starttls.v3.StartTlsConfig
-//           cleartext_socket_config:
-//           tls_socket_config:
-//             common_tls_context:
-//               tls_certificates:
-//                 certificate_chain:
-//                   filename: {}
-//                 private_key:
-//                   filename: {}
-//    )EOF",
-//                     TestEnvironment::runfilesPath("test/config/integration/certs/servercert.pem"),
-//                     TestEnvironment::runfilesPath("test/config/integration/certs/serverkey.pem"))),
-//             NoUpstreamSSL) {}
-// };
+// Base class for tests with `downstream_ssl` REQUIRE and `starttls` transport socket added.
+class DownstreamSSLRequiredSmtpIntegrationTest : public SmtpBaseIntegrationTest {
+public:
+  DownstreamSSLRequiredSmtpIntegrationTest()
+      : SmtpBaseIntegrationTest(
+            std::make_tuple(
+                "downstream_tls: REQUIRE",
+                fmt::format(
+                    R"EOF(transport_socket:
+        name: "starttls"
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.starttls.v3.StartTlsConfig
+          cleartext_socket_config:
+          tls_socket_config:
+            common_tls_context:
+              tls_certificates:
+                certificate_chain:
+                  filename: {}
+                private_key:
+                  filename: {}
+   )EOF",
+                    TestEnvironment::runfilesPath("test/config/integration/certs/servercert.pem"),
+                    TestEnvironment::runfilesPath("test/config/integration/certs/serverkey.pem"))),
+            NoUpstreamSSL) {}
+};
 
-// // Test verifies that the Smtp proxy filter replies with the correct code upon
-// // receiving request to terminate SSL.
-// TEST_P(DownstreamSSLSmtpIntegrationTest, TerminateSSL) {
-//   Buffer::OwnedImpl data;
+// Test verifies that the filter responds with 5xx code when client tries to send MAIL FROM command
+// without doing STARTTLS first.
+TEST_P(DownstreamSSLRequiredSmtpIntegrationTest, StarttlsRequired) {
 
-//   IntegrationTcpClientPtr tcp_client = makeTcpConnection(lookupPort("listener_0"));
-//   FakeRawConnectionPtr fake_upstream_connection;
-//   ASSERT_TRUE(fake_upstreams_[0]->waitForRawConnection(fake_upstream_connection));
+  IntegrationTcpClientPtr tcp_client = makeTcpConnection(lookupPort("listener_0"));
+  FakeRawConnectionPtr fake_upstream_connection;
+  ASSERT_TRUE(fake_upstreams_[0]->waitForRawConnection(fake_upstream_connection));
 
-//   std::string greeting("200 upstream esmtp\r\n");
-//   ASSERT_TRUE(fake_upstream_connection->write(greeting));
-//   tcp_client->waitForData(greeting, true);
-//   tcp_client->clearData();
+  std::string greeting("220 Hi! This is upstream.com mail server\r\n");
+  ASSERT_TRUE(fake_upstream_connection->write(greeting));
+  tcp_client->waitForData(greeting, true);
+  tcp_client->clearData();
 
-//   std::string ehlo("EHLO example.com\r\n");
-//   ASSERT_TRUE(tcp_client->write(ehlo));
+  std::string ehlo("EHLO foo.com\r\n");
+  ASSERT_TRUE(tcp_client->write(ehlo));
 
-//   std::string rcvd;
-//   ASSERT_TRUE(fake_upstream_connection->waitForData(ehlo.size(), &rcvd));
-//   fake_upstream_connection->clearData();
-//   EXPECT_EQ(ehlo, rcvd);
-//   rcvd.clear();
+  std::string rcvd;
+  ASSERT_TRUE(fake_upstream_connection->waitForData(ehlo.size(), &rcvd));
+  fake_upstream_connection->clearData();
+  EXPECT_EQ(ehlo, rcvd);
+  rcvd.clear();
 
-//   std::string ehlo_resp("200-upstream at your service\r\n"
-//                         "200 PIPELINING\r\n");
-//   ASSERT_TRUE(fake_upstream_connection->write(ehlo_resp));
-//   // SmtpFilter appends STARTTLS to the list of capabilities returned
-//   // by the upstream
-//   std::string updated_ehlo_resp("200-upstream at your service\r\n"
-//                                 "200-PIPELINING\r\n"
-//                                 "200 STARTTLS\r\n");
-//   tcp_client->waitForData(updated_ehlo_resp, true);
-//   tcp_client->clearData();
+  std::string ehlo_resp("250-upstream.com at your service\r\n"
+                        "250-8BITMIME\r\n"
+                        "250-ENHANCEDSTATUSCODES\r\n"
+                        "250 STARTTLS\r\n");
+  ASSERT_TRUE(fake_upstream_connection->write(ehlo_resp));
+  tcp_client->waitForData(ehlo_resp, true);
+  tcp_client->clearData();
 
-//   std::string starttls("STARTTLS\r\n");
-//   ASSERT_TRUE(tcp_client->write(starttls));
+  std::string mail("MAIL FROM:<alice@foo.com>\r\n");
+  ASSERT_TRUE(tcp_client->write(mail));
+  // ASSERT_TRUE(fake_upstream_connection->waitForData(mail.size(), &rcvd));
+  // fake_upstream_connection->clearData();
+  // EXPECT_EQ(mail, rcvd);
+  // rcvd.clear();
 
-//   // SmtpFilter responds to the STARTTLS command directly.
-//   std::string starttls_resp("220 envoy ready for tls\r\n");
-//   tcp_client->waitForData(starttls_resp, true);
-//   tcp_client->clearData();
+  std::string mail_resp("530 5.7.10 plain-text connection is not allowed for this server. Please upgrade the connection to TLS\r\n");
+  // ASSERT_TRUE(fake_upstream_connection->write(mail_resp));
+  tcp_client->waitForData(mail_resp, true);
+  tcp_client->clearData();
 
-//   tcp_client->close();
-//   ASSERT_TRUE(fake_upstream_connection->waitForDisconnect());
+  tcp_client->close();
+  ASSERT_TRUE(fake_upstream_connection->waitForDisconnect());
 
-//   test_server_->waitForCounterEq("smtp.smtp_stats.sessions", 1);
-//   test_server_->waitForCounterEq("smtp.smtp_stats.sessions_downstream_terminated_ssl", 1);
-// }
+  test_server_->waitForCounterEq("smtp.smtp_stats.session_requests", 1);
+  test_server_->waitForCounterEq("smtp.smtp_stats.mail_req_rejected_due_to_non_tls", 1);
 
-// INSTANTIATE_TEST_SUITE_P(IpVersions, DownstreamSSLSmtpIntegrationTest,
-//                          testing::ValuesIn(TestEnvironment::getIpVersionsForTest()));
+}
+
+INSTANTIATE_TEST_SUITE_P(IpVersions, DownstreamSSLRequiredSmtpIntegrationTest,
+                         testing::ValuesIn(TestEnvironment::getIpVersionsForTest()));
+
+
+
+
+// Base class for tests with `downstream_ssl` enabled and `starttls` transport socket added.
+class DownstreamSSLSmtpIntegrationTest : public SmtpBaseIntegrationTest {
+public:
+  DownstreamSSLSmtpIntegrationTest()
+      : SmtpBaseIntegrationTest(
+            std::make_tuple(
+                "downstream_tls: ENABLE",
+                fmt::format(
+                    R"EOF(transport_socket:
+        name: "starttls"
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.starttls.v3.StartTlsConfig
+          cleartext_socket_config:
+          tls_socket_config:
+            common_tls_context:
+              tls_certificates:
+                certificate_chain:
+                  filename: {}
+                private_key:
+                  filename: {}
+   )EOF",
+                    TestEnvironment::runfilesPath("test/config/integration/certs/servercert.pem"),
+                    TestEnvironment::runfilesPath("test/config/integration/certs/serverkey.pem"))),
+            NoUpstreamSSL) {}
+};
+
+// Test verifies that the Smtp proxy filter replies with the correct code upon
+// receiving request to terminate SSL.
+TEST_P(DownstreamSSLSmtpIntegrationTest, TerminateSSL) {
+
+  IntegrationTcpClientPtr tcp_client = makeTcpConnection(lookupPort("listener_0"));
+  FakeRawConnectionPtr fake_upstream_connection;
+  ASSERT_TRUE(fake_upstreams_[0]->waitForRawConnection(fake_upstream_connection));
+
+  std::string greeting("220 Hi! This is upstream.com mail server\r\n");
+  ASSERT_TRUE(fake_upstream_connection->write(greeting));
+  tcp_client->waitForData(greeting, true);
+  tcp_client->clearData();
+
+  std::string ehlo("EHLO foo.com\r\n");
+  ASSERT_TRUE(tcp_client->write(ehlo));
+
+  std::string rcvd;
+  ASSERT_TRUE(fake_upstream_connection->waitForData(ehlo.size(), &rcvd));
+  fake_upstream_connection->clearData();
+  EXPECT_EQ(ehlo, rcvd);
+  rcvd.clear();
+
+  std::string ehlo_resp("250-upstream.com at your service\r\n"
+                        "250-8BITMIME\r\n"
+                        "250-ENHANCEDSTATUSCODES\r\n"
+                        "250 STARTTLS\r\n");
+  ASSERT_TRUE(fake_upstream_connection->write(ehlo_resp));
+  tcp_client->waitForData(ehlo_resp, true);
+  tcp_client->clearData();
+
+
+  std::string starttls("STARTTLS\r\n");
+  ASSERT_TRUE(tcp_client->write(starttls));
+
+  std::string starttls_resp("220 Ready to start TLS\r\n");
+  tcp_client->waitForData(starttls_resp, true);
+  tcp_client->clearData();
+
+  tcp_client->close();
+  ASSERT_TRUE(fake_upstream_connection->waitForDisconnect());
+
+  test_server_->waitForCounterEq("smtp.smtp_stats.session_requests", 1);
+  test_server_->waitForCounterEq("smtp.smtp_stats.downstream_tls_termination_success", 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(IpVersions, DownstreamSSLSmtpIntegrationTest,
+                         testing::ValuesIn(TestEnvironment::getIpVersionsForTest()));
 
 // class DownstreamSSLWrongConfigSmtpIntegrationTest : public SmtpBaseIntegrationTest {
 // public:

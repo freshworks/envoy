@@ -65,6 +65,7 @@ SmtpUtils::Result DecoderImpl::parseCommand(Buffer::Instance& data, Command& com
 */
 
   std::string current_line;
+  command.len = data.length();
   // result = getLine(data, kMaxCommandLine, line);
   result = isValidSmtpLine(data, SmtpUtils::maxCommandLen, current_line);
   if (result != SmtpUtils::Result::ReadyForNext) {
@@ -115,35 +116,6 @@ SmtpUtils::Result DecoderImpl::parseCommand(Buffer::Instance& data, Command& com
 
   data.drain(data.length());
   return result;
-}
-
-SmtpUtils::Result DecoderImpl::getLine(Buffer::Instance& data, size_t max_line,
-                                       std::string& line_out) {
-  const ssize_t crlf = data.search(SmtpUtils::CRLF.data(), SmtpUtils::CRLF.size(), 0, max_line);
-  if (crlf == -1) {
-    if (data.length() >= max_line) {
-      return SmtpUtils::Result::ProtocolError;
-    } else {
-      return SmtpUtils::Result::NeedMoreData;
-    }
-  }
-  ASSERT(crlf >= 0);
-  // empty line is invalid
-  if (crlf == 0) {
-    return SmtpUtils::Result::ProtocolError;
-  }
-
-  const size_t len = crlf + SmtpUtils::CRLF.size();
-  ASSERT(len > SmtpUtils::CRLF.size());
-  auto front_slice = data.frontSlice();
-  if (front_slice.len_ >= len) {
-    line_out.append(static_cast<char*>(front_slice.mem_), len);
-  } else {
-    std::unique_ptr<char[]> tmp(new char[len]);
-    data.copyOut(0, len, tmp.get());
-    line_out.append(tmp.get(), len);
-  }
-  return SmtpUtils::Result::ReadyForNext;
 }
 
 SmtpUtils::Result DecoderImpl::isValidSmtpLine(Buffer::Instance& data, size_t max_len,
@@ -226,6 +198,8 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data, Response& r
     }
 
   }
+  ENVOY_LOG(debug, "smtp_proxy: response code {}", response_code);
+  ENVOY_LOG(debug, "smtp_proxy: response msg {}",response_msg);
   response.resp_code = response_code;
   response.msg = response_msg;
   response.len = respose_len;

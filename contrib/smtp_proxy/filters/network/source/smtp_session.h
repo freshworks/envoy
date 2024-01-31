@@ -110,6 +110,7 @@ public:
   void handleDownstreamTls();
 
   void newCommand(const std::string& name, SmtpCommand::Type type);
+  void recordLocalRespInSession(const std::string& command, int resp_code, std::string resp, std::string resp_code_details);
   SmtpUtils::Result storeResponse(std::string response, std::string resp_code_details, int response_code, SmtpCommand::ResponseType resp_type);
   std::string& getResponseOnHold() { return response_on_hold_; }
   void setResponseOnHold(std::string& resp) { response_on_hold_ = resp; }

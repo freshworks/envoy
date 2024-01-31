@@ -16,7 +16,7 @@ SmtpTransaction::SmtpTransaction(std::string& session_id, DecoderCallbacks* call
       stream_info_(time_source_, callbacks_->connection().connectionInfoProviderSharedPtr()) {
 
   trxn_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-      callbacks_->getStats().smtp_transaction_length_, time_source_);
+      callbacks_->getStats().transaction_length_, time_source_);
   StreamInfo::StreamInfo& parent_stream_info = callbacks_->getStreamInfo();
 
   stream_info_.setUpstreamInfo(parent_stream_info.upstreamInfo());

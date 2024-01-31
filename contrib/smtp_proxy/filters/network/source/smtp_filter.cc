@@ -96,12 +96,14 @@ bool SmtpFilter::sendReplyDownstream(absl::string_view response) {
 
 bool SmtpFilter::upstreamTlsEnabled() const {
   return (config_->upstream_tls_ ==
-          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE || config_->upstream_tls_ ==
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE);
 }
 
 bool SmtpFilter::downstreamTlsEnabled() const {
   return (config_->downstream_tls_ ==
-          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE);
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::ENABLE || config_->downstream_tls_ ==
+          envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE);
 }
 
 bool SmtpFilter::downstreamTlsRequired() const {
@@ -114,72 +116,64 @@ bool SmtpFilter::upstreamTlsRequired() const {
           envoy::extensions::filters::network::smtp_proxy::v3alpha::SmtpProxy::REQUIRE);
 }
 
-bool SmtpFilter::protocolInspectionEnabled() const {
-  return config_->protocol_inspection_;
-}
+bool SmtpFilter::protocolInspectionEnabled() const { return config_->protocol_inspection_; }
 
 bool SmtpFilter::tracingEnabled() { return config_->tracing_; }
 
 bool SmtpFilter::upstreamStartTls() {
   // Try to switch upstream connection to use a secure channel.
   if (read_callbacks_->startUpstreamSecureTransport()) {
-    config_->stats_.smtp_session_upstream_tls_success_.inc();
+    config_->stats_.upstream_tls_success_.inc();
     ENVOY_CONN_LOG(trace, "smtp_proxy: upstream TLS enabled.", read_callbacks_->connection());
   } else {
     ENVOY_CONN_LOG(info,
                    "smtp_proxy: cannot enable upstream secure transport. Check "
                    "configuration. Terminating.",
                    read_callbacks_->connection());
-    config_->stats_.smtp_session_upstream_tls_failed_.inc();
+    config_->stats_.upstream_tls_error_.inc();
     return false;
   }
   return true;
 }
 
-void SmtpFilter::incSmtpTransactionRequests() { config_->stats_.smtp_transaction_req_.inc(); }
-void SmtpFilter::incSmtpTransactionsCompleted() {
-  config_->stats_.smtp_transaction_completed_.inc();
-}
+void SmtpFilter::incSmtpTransactionRequests() { config_->stats_.transaction_req_.inc(); }
+void SmtpFilter::incSmtpTransactionsCompleted() { config_->stats_.transaction_completed_.inc(); }
 
-void SmtpFilter::incSmtpTransactionsAborted() { config_->stats_.smtp_transaction_aborted_.inc(); }
-void SmtpFilter::incSmtpSessionRequests() { config_->stats_.smtp_session_requests_.inc(); }
-void SmtpFilter::incSmtpSessionsCompleted() { config_->stats_.smtp_session_completed_.inc(); }
-void SmtpFilter::incActiveTransaction() { config_->stats_.smtp_transaction_active_.inc(); }
-void SmtpFilter::decActiveTransaction() { config_->stats_.smtp_transaction_active_.dec(); }
-void SmtpFilter::incActiveSession() { config_->stats_.smtp_session_active_.inc(); }
-void SmtpFilter::decActiveSession() { config_->stats_.smtp_session_active_.dec(); }
+void SmtpFilter::incSmtpTransactionsAborted() { config_->stats_.transaction_aborted_.inc(); }
+void SmtpFilter::incSmtpSessionRequests() { config_->stats_.session_requests_.inc(); }
+void SmtpFilter::incSmtpSessionsCompleted() { config_->stats_.session_completed_.inc(); }
+void SmtpFilter::incActiveTransaction() { config_->stats_.transaction_active_.inc(); }
+void SmtpFilter::decActiveTransaction() { config_->stats_.transaction_active_.dec(); }
+void SmtpFilter::incActiveSession() { config_->stats_.session_active_.inc(); }
+void SmtpFilter::decActiveSession() { config_->stats_.session_active_.dec(); }
 
-void SmtpFilter::incSmtpSessionsTerminated() { config_->stats_.smtp_session_terminated_.inc(); }
+void SmtpFilter::incSmtpSessionsTerminated() { config_->stats_.session_terminated_.inc(); }
 
 void SmtpFilter::incSmtpConnectionEstablishmentErrors() {
-  config_->stats_.smtp_connection_establishment_errors_.inc();
+  config_->stats_.connection_establishment_errors_.inc();
 }
 
-void SmtpFilter::incMailDataTransferErrors() {
-  config_->stats_.smtp_mail_data_transfer_errors_.inc();
-}
+void SmtpFilter::incMailDataTransferErrors() { config_->stats_.mail_data_transfer_errors_.inc(); }
 
-void SmtpFilter::incSmtpTrxnFailed() { config_->stats_.smtp_transaction_failed_.inc(); }
+void SmtpFilter::incSmtpTrxnFailed() { config_->stats_.transaction_failed_.inc(); }
 
-void SmtpFilter::incMailRcptErrors() { config_->stats_.smtp_rcpt_errors_.inc(); }
-void SmtpFilter::inc4xxErrors() { config_->stats_.smtp_4xx_errors_.inc(); }
-void SmtpFilter::inc5xxErrors() { config_->stats_.smtp_5xx_errors_.inc(); }
+void SmtpFilter::incMailRcptErrors() { config_->stats_.rcpt_errors_.inc(); }
+void SmtpFilter::inc4xxErrors() { config_->stats_.upstream_4xx_errors_.inc(); }
+void SmtpFilter::inc5xxErrors() { config_->stats_.upstream_5xx_errors_.inc(); }
 
 void SmtpFilter::incTlsTerminatedSessions() {
-  config_->stats_.smtp_session_tls_termination_success_.inc();
+  config_->stats_.downstream_tls_termination_success_.inc();
 }
 
 void SmtpFilter::incTlsTerminationErrors() {
-  config_->stats_.smtp_session_tls_termination_error_.inc();
+  config_->stats_.downstream_tls_termination_error_.inc();
 }
 
-void SmtpFilter::incSmtpAuthErrors() { config_->stats_.smtp_auth_errors_.inc(); }
+void SmtpFilter::incSmtpAuthErrors() { config_->stats_.auth_errors_.inc(); }
 
-void SmtpFilter::incUpstreamTlsSuccess() {
-  config_->stats_.smtp_session_upstream_tls_success_.inc();
-}
+void SmtpFilter::incUpstreamTlsSuccess() { config_->stats_.upstream_tls_success_.inc(); }
 
-void SmtpFilter::incUpstreamTlsFailed() { config_->stats_.smtp_session_upstream_tls_failed_.inc(); }
+void SmtpFilter::incUpstreamTlsFailed() { config_->stats_.upstream_tls_error_.inc(); }
 
 void SmtpFilter::closeDownstreamConnection() {
   read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
@@ -187,7 +181,7 @@ void SmtpFilter::closeDownstreamConnection() {
 
 // onData method processes payloads sent by downstream client.
 Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream) {
-  ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", read_callbacks_->connection(), data.length(),
+  ENVOY_CONN_LOG(debug, "smtp_proxy: got {} bytes", read_callbacks_->connection(), data.length(),
                  "end_stream ", end_stream);
   ENVOY_LOG(debug, "smtp_proxy: received command {}", data.toString());
 
@@ -207,6 +201,7 @@ Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream
   switch (result) {
   case SmtpUtils::Result::ProtocolError: {
     read_buffer_.drain(read_buffer_.length());
+    getStats().passthrough_sessions_.inc();
     getSession()->setState(SmtpSession::State::Passthrough);
     getSession()->setStatus(SmtpUtils::protocol_error);
     return Network::FilterStatus::Continue;
@@ -228,6 +223,11 @@ Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream
   }
 
   switch (result) {
+  case SmtpUtils::Result::ProtocolError:
+    getStats().passthrough_sessions_.inc();
+    getSession()->setState(SmtpSession::State::Passthrough);
+    getSession()->setStatus(SmtpUtils::protocol_error);
+    return Network::FilterStatus::Continue;
   case SmtpUtils::Result::ReadyForNext:
     break;
   case SmtpUtils::Result::Stopped: {
@@ -243,53 +243,49 @@ Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream
 
 void SmtpFilter::printSessionState(SmtpSession::State state) {
 
-  switch(state) {
-    case SmtpSession::State::Passthrough:
-      std::cout << " current session state: Passthrough" << std::endl;
-      break;
-    case SmtpSession::State::SessionInProgress:
-      std::cout << " current session state: SessionInProgress" << std::endl;
-      break;
-    case SmtpSession::State::SessionTerminated:
-      std::cout << " current session state: SessionTerminated" << std::endl;
-      break;
-    case SmtpSession::State::SessionAuthRequest:
-      std::cout << " current session state: SessionAuthRequest" << std::endl;
-      break;
-     case SmtpSession::State::SessionInitRequest:
-      std::cout << " current session state: SessionInitRequest" << std::endl;
-      break;
-     case SmtpSession::State::XReqIdTransfer:
-      std::cout << " current session state: XReqIdTransfer" << std::endl;
-      break;
-     case SmtpSession::State::SessionResetRequest:
-      std::cout << " current session state: SessionResetRequest" << std::endl;
-      break;
-    case SmtpSession::State::SessionTerminationRequest:
-      std::cout << " current session state: SessionTerminationRequest" << std::endl;
-      break;
-    case SmtpSession::State::ConnectionSuccess:
-      std::cout << " current session state: ConnectionSuccess" << std::endl;
-      break;
-    default:
-      break;
+  switch (state) {
+  case SmtpSession::State::Passthrough:
+    std::cout << " current session state: Passthrough" << std::endl;
+    break;
+  case SmtpSession::State::SessionInProgress:
+    std::cout << " current session state: SessionInProgress" << std::endl;
+    break;
+  case SmtpSession::State::SessionTerminated:
+    std::cout << " current session state: SessionTerminated" << std::endl;
+    break;
+  case SmtpSession::State::SessionAuthRequest:
+    std::cout << " current session state: SessionAuthRequest" << std::endl;
+    break;
+  case SmtpSession::State::SessionInitRequest:
+    std::cout << " current session state: SessionInitRequest" << std::endl;
+    break;
+  case SmtpSession::State::XReqIdTransfer:
+    std::cout << " current session state: XReqIdTransfer" << std::endl;
+    break;
+  case SmtpSession::State::SessionResetRequest:
+    std::cout << " current session state: SessionResetRequest" << std::endl;
+    break;
+  case SmtpSession::State::SessionTerminationRequest:
+    std::cout << " current session state: SessionTerminationRequest" << std::endl;
+    break;
+  case SmtpSession::State::ConnectionSuccess:
+    std::cout << " current session state: ConnectionSuccess" << std::endl;
+    break;
+  default:
+    break;
   }
-
 }
 
 // onWrite method processes payloads sent by upstream to the client.
 Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_stream) {
-  ENVOY_CONN_LOG(trace, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
-                 "end_stream ", end_stream);
   ENVOY_CONN_LOG(debug, "smtp_proxy: got {} bytes", write_callbacks_->connection(), data.length(),
                  "end_stream ", end_stream);
   // ENVOY_LOG(debug, "smtp_proxy: received response {}", data.toString());
-
-  if(getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
+  // printSessionState(getSession()->getState());
+  if (getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
     return Network::FilterStatus::Continue;
   }
   write_buffer_.add(data);
-
 
   Decoder::Response response;
   SmtpUtils::Result result = decoder_->parseResponse(write_buffer_, response);
@@ -301,12 +297,12 @@ Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_strea
     write_buffer_.drain(write_buffer_.length());
     getSession()->setState(SmtpSession::State::Passthrough);
     getSession()->setStatus(SmtpUtils::protocol_error);
+    getStats().passthrough_sessions_.inc();
     return Network::FilterStatus::Continue;
   }
   case SmtpUtils::Result::NeedMoreData: {
     return Network::FilterStatus::Continue;
   }
-
   case SmtpUtils::Result::ReadyForNext:
     break;
   default:
@@ -319,6 +315,11 @@ Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_strea
   result = smtp_session_->handleResponse(response.resp_code, response.msg);
 
   switch (result) {
+  case SmtpUtils::Result::ProtocolError:
+    getSession()->setStatus(SmtpUtils::protocol_error);
+    getSession()->setState(SmtpSession::State::Passthrough);
+    getStats().passthrough_sessions_.inc();
+    return Network::FilterStatus::Continue;
   case SmtpUtils::Result::ReadyForNext:
     break;
   case SmtpUtils::Result::Stopped: {

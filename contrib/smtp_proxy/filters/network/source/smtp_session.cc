@@ -14,7 +14,7 @@ SmtpSession::SmtpSession(DecoderCallbacks* callbacks, TimeSource& time_source,
     : callbacks_(callbacks), time_source_(time_source), random_generator_(random_generator) {
   newCommand(StringUtil::toUpper("connect_req"), SmtpCommand::Type::NonTransactionCommand);
   session_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-      callbacks_->getStats().smtp_session_length_, time_source_);
+      callbacks_->getStats().session_length_, time_source_);
   callbacks_->incActiveSession();
 }
 
@@ -22,7 +22,7 @@ void SmtpSession::newCommand(const std::string& name, SmtpCommand::Type type) {
   current_command_ = std::make_shared<SmtpCommand>(name, type, time_source_);
   command_in_progress_ = true;
   command_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-      callbacks_->getStats().smtp_command_length_, time_source_);
+      callbacks_->getStats().command_length_, time_source_);
 }
 
 void SmtpSession::createNewTransaction() {
@@ -100,37 +100,40 @@ SmtpUtils::Result SmtpSession::handleEhlo(std::string& command) {
 
 SmtpUtils::Result SmtpSession::handleMail(std::string& arg) {
 
-  if(transaction_in_progress_) {
+  if(transaction_in_progress_ && getTransaction() != nullptr) {
     getTransaction()->setStatus(SmtpUtils::passthroughMode);
+    callbacks_->getStats().duplicate_cmd_.inc();
     return SmtpUtils::Result::ProtocolError;
   }
 
-  newCommand(SmtpUtils::smtpMailCommand, SmtpCommand::Type::TransactionCommand);
   if (state_ != SmtpSession::State::SessionInProgress) {
-    current_command_->storeLocalResponse("Please introduce yourself first with EHLO/HELO", "local",
-                                         502);
-    callbacks_->sendReplyDownstream(SmtpUtils::generateResponse(
-        502, {5, 5, 1}, "Please introduce yourself first with EHLO/HELO"));
+    std::string resp_msg = SmtpUtils::generateResponse(502, {5, 5, 1}, "Please introduce yourself first with EHLO/HELO");
+    recordLocalRespInSession(SmtpUtils::smtpMailCommand, 502, resp_msg, SmtpUtils::local_resp);
+    callbacks_->sendReplyDownstream(resp_msg);
+    callbacks_->getStats().local_5xx_errors_.inc();
+    callbacks_->getStats().bad_cmd_sequence_.inc();
     return SmtpUtils::Result::Stopped;
   }
 
   if (arg.length() < 6 || !absl::EqualsIgnoreCase(arg.substr(0, 5), "FROM:")) {
     // MAIL FROM command not in proper syntax, enter into passthrough mode.
-    storeResponse("Protocol Error", "local", 0, SmtpCommand::ResponseType::Local);
+      msg_ = "BAD MAIL FROM command syntax";
+      callbacks_->getStats().protocol_parse_error_.inc();
     return SmtpUtils::Result::ProtocolError;
   }
 
   // If STARTTLS is required for this session and client has not issued it earlier, abort the
   // session.
   if (callbacks_->downstreamTlsRequired() && !isSessionEncrypted()) {
-    current_command_->storeLocalResponse("plain-text connection is not allowed for this server. Please upgrade the connection to TLS", "local", 523);
-    callbacks_->sendReplyDownstream(
-        SmtpUtils::generateResponse(523, {5, 7, 10}, "plain-text connection is not allowed for this server. Please upgrade the connection to TLS"));
+    callbacks_->getStats().mail_req_rejected_due_to_non_tls_.inc();
+    std::string resp_msg = SmtpUtils::generateResponse(530, {5, 7, 10}, "plain-text connection is not allowed for this server. Please upgrade the connection to TLS");
+    recordLocalRespInSession(SmtpUtils::smtpMailCommand, 530, resp_msg, SmtpUtils::local_resp);
+    callbacks_->sendReplyDownstream(resp_msg);
     terminateSession(SmtpUtils::statusError, "plain-text connection is not allowed for this server. Please upgrade the connection to TLS");
     callbacks_->closeDownstreamConnection();
     return SmtpUtils::Result::Stopped;
   }
-
+  newCommand(SmtpUtils::smtpMailCommand, SmtpCommand::Type::TransactionCommand);
   createNewTransaction();
   std::string sender = SmtpUtils::extractAddress(arg);
   getTransaction()->setSender(sender);
@@ -141,20 +144,22 @@ SmtpUtils::Result SmtpSession::handleMail(std::string& arg) {
 }
 
 SmtpUtils::Result SmtpSession::handleRcpt(std::string& arg) {
-  newCommand(SmtpUtils::smtpRcptCommand, SmtpCommand::Type::TransactionCommand);
 
   if (!transaction_in_progress_) {
-    current_command_->storeLocalResponse("Missing MAIL FROM command", "local", 502);
-    callbacks_->sendReplyDownstream(
-        SmtpUtils::generateResponse(502, {5, 5, 1}, "Missing MAIL FROM command"));
+    std::string resp_msg = SmtpUtils::generateResponse(502, {5, 5, 1}, "Missing MAIL FROM command");
+    recordLocalRespInSession(SmtpUtils::smtpRcptCommand, 502, resp_msg, SmtpUtils::local_resp);
+    callbacks_->sendReplyDownstream(resp_msg);
+    callbacks_->getStats().local_5xx_errors_.inc();
+    callbacks_->getStats().bad_cmd_sequence_.inc();
     return SmtpUtils::Result::Stopped;
   }
 
   if (arg.length() <= 3 || !absl::EqualsIgnoreCase(arg.substr(0, 3), "TO:")) {
-    storeResponse("Protocol Error", "local", 0, SmtpCommand::ResponseType::Local);
+    msg_ = "BAD RCPT command syntax";
+    callbacks_->getStats().protocol_parse_error_.inc();
     return SmtpUtils::Result::ProtocolError;
   }
-
+  newCommand(SmtpUtils::smtpRcptCommand, SmtpCommand::Type::TransactionCommand);
   std::string recipient = SmtpUtils::extractAddress(arg);
   getTransaction()->addRcpt(recipient);
   updateBytesMeterOnCommand(callbacks_->getReadBuffer());
@@ -163,21 +168,22 @@ SmtpUtils::Result SmtpSession::handleRcpt(std::string& arg) {
 }
 
 SmtpUtils::Result SmtpSession::handleData(std::string& arg) {
-  newCommand(SmtpUtils::smtpDataCommand, SmtpCommand::Type::TransactionCommand);
+
   if (arg.length() > 0) {
-    current_command_->storeLocalResponse("No params allowed for DATA command", "local", 501);
-    callbacks_->sendReplyDownstream(
-        SmtpUtils::generateResponse(501, {5, 5, 4}, "No params allowed for DATA command"));
-    return SmtpUtils::Result::Stopped;
+    msg_ = "BAD DATA command syntax";
+    callbacks_->getStats().protocol_parse_error_.inc();
+    return SmtpUtils::Result::ProtocolError;
   }
 
   if (!transaction_in_progress_ || getTransaction()->getNoOfRecipients() == 0) {
-    current_command_->storeLocalResponse("Missing RCPT TO command", "local", 502);
-    callbacks_->sendReplyDownstream(
-        SmtpUtils::generateResponse(502, {5, 5, 1}, "Missing RCPT TO command"));
+    std::string resp_msg = SmtpUtils::generateResponse(502, {5, 5, 1}, "Missing RCPT TO command");
+    recordLocalRespInSession(SmtpUtils::smtpRcptCommand, 502, resp_msg, SmtpUtils::local_resp);
+    callbacks_->sendReplyDownstream(resp_msg);
+    callbacks_->getStats().local_5xx_errors_.inc();
+    callbacks_->getStats().bad_cmd_sequence_.inc();
     return SmtpUtils::Result::Stopped;
   }
-
+  newCommand(SmtpUtils::smtpDataCommand, SmtpCommand::Type::TransactionCommand);
   updateBytesMeterOnCommand(callbacks_->getReadBuffer());
   setTransactionState(SmtpTransaction::State::MailDataTransferRequest);
   return SmtpUtils::Result::ReadyForNext;
@@ -187,6 +193,7 @@ SmtpUtils::Result SmtpSession::handleAuth() {
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
   newCommand(SmtpUtils::smtpAuthCommand, SmtpCommand::Type::NonTransactionCommand);
   if (isAuthenticated()) {
+    callbacks_->getStats().duplicate_cmd_.inc();
     current_command_->storeLocalResponse("Already authenticated", "local", 502);
     callbacks_->sendReplyDownstream(
         SmtpUtils::generateResponse(502, {5, 5, 1}, "Already authenticated"));
@@ -206,6 +213,7 @@ SmtpUtils::Result SmtpSession::handleStarttls() {
     current_command_->storeLocalResponse(SmtpUtils::tlsSessionActiveAlready, "local", 502);
     callbacks_->sendReplyDownstream(
         SmtpUtils::generateResponse(502, {5, 5, 1}, SmtpUtils::tlsSessionActiveAlready));
+    callbacks_->getStats().duplicate_cmd_.inc();
     result = SmtpUtils::Result::Stopped;
     return result;
   }
@@ -233,15 +241,12 @@ SmtpUtils::Result SmtpSession::handleStarttls() {
 SmtpUtils::Result SmtpSession::handleReset(std::string& arg) {
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
 
-  newCommand(SmtpUtils::smtpRsetCommand, SmtpCommand::Type::NonTransactionCommand);
   if (arg.length() > 0) {
-    current_command_->storeLocalResponse("No params allowed for RSET command", "local", 501);
-    callbacks_->sendReplyDownstream(
-        SmtpUtils::generateResponse(501, {5, 5, 4}, "No params allowed for RSET command"));
-    result = SmtpUtils::Result::Stopped;
-    return result;
+    msg_ = "BAD RESET command syntax";
+    callbacks_->getStats().protocol_parse_error_.inc();
+    return SmtpUtils::Result::ProtocolError;
   }
-
+  newCommand(SmtpUtils::smtpRsetCommand, SmtpCommand::Type::NonTransactionCommand);
   if (getTransaction() != nullptr) {
     setTransactionState(SmtpTransaction::State::TransactionAbortRequest);
   }
@@ -251,14 +256,12 @@ SmtpUtils::Result SmtpSession::handleReset(std::string& arg) {
 SmtpUtils::Result SmtpSession::handleQuit(std::string& arg) {
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
 
-  newCommand(SmtpUtils::smtpQuitCommand, SmtpCommand::Type::NonTransactionCommand);
   if (arg.length() > 0) {
-    current_command_->storeLocalResponse("No params allowed for QUIT command", "local", 501);
-    callbacks_->sendReplyDownstream(
-        SmtpUtils::generateResponse(501, {5, 5, 4}, "No params allowed for QUIT command"));
-    result = SmtpUtils::Result::Stopped;
-    return result;
+    msg_ = "BAD QUIT command syntax";
+    callbacks_->getStats().protocol_parse_error_.inc();
+    return SmtpUtils::Result::ProtocolError;
   }
+  newCommand(SmtpUtils::smtpQuitCommand, SmtpCommand::Type::NonTransactionCommand);
   setState(SmtpSession::State::SessionTerminationRequest);
   if (getTransaction() != nullptr) {
     setTransactionState(SmtpTransaction::State::TransactionAbortRequest);
@@ -334,7 +337,7 @@ SmtpUtils::Result SmtpSession::handleConnResponse(int& response_code, std::strin
       return result;
     }
   } else if (response_code >= 400 && response_code <= 599) {
-    callbacks_->getStats().smtp_connection_establishment_errors_.inc();
+    callbacks_->getStats().connection_establishment_errors_.inc();
     connect_resp_.response_code = response_code;
     connect_resp_.response_code_details = SmtpUtils::via_upstream;
     connect_resp_.response_str = response;
@@ -441,7 +444,7 @@ SmtpUtils::Result SmtpSession::handleDataResponse(int& response_code, std::strin
     // Intermediate response.
     setDataTransferInProgress(true);
     data_tx_length_ = std::make_unique<Stats::HistogramCompletableTimespanImpl>(
-        callbacks_->getStats().smtp_data_transfer_length_, time_source_);
+        callbacks_->getStats().data_tx_length_, time_source_);
 
     return result;
   } else if (response_code >= 400 && response_code <= 599) {
@@ -537,6 +540,12 @@ SmtpUtils::Result SmtpSession::handleOtherResponse(int& response_code, std::stri
   return result;
 }
 
+
+void SmtpSession::recordLocalRespInSession(const std::string& command, int resp_code, std::string msg, std::string resp_code_details) {
+  std::shared_ptr<SmtpCommand> cmd = std::make_shared<SmtpCommand>(command, resp_code, msg, resp_code_details, time_source_);
+  session_commands_.push_back(cmd);
+}
+
 SmtpUtils::Result SmtpSession::storeResponse(std::string response, std::string resp_code_details,
                                              int response_code,
                                              SmtpCommand::ResponseType resp_type) {
@@ -548,15 +557,15 @@ SmtpUtils::Result SmtpSession::storeResponse(std::string response, std::string r
 
   if (response_code >= 400 && response_code < 500) {
     if (current_command_->isLocalResponseSet()) {
-      callbacks_->getStats().smtp_local_4xx_errors_.inc();
+      callbacks_->getStats().local_4xx_errors_.inc();
     } else {
-      callbacks_->getStats().smtp_4xx_errors_.inc();
+      callbacks_->getStats().upstream_4xx_errors_.inc();
     }
   } else if (response_code >= 500 && response_code <= 599) {
     if (current_command_->isLocalResponseSet()) {
-      callbacks_->getStats().smtp_local_5xx_errors_.inc();
+      callbacks_->getStats().local_5xx_errors_.inc();
     } else {
-      callbacks_->getStats().smtp_5xx_errors_.inc();
+      callbacks_->getStats().upstream_5xx_errors_.inc();
     }
   }
 

@@ -6,7 +6,6 @@
 
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
 #include "contrib/smtp_proxy/filters/network/source/smtp_utils.h"
-#include "contrib/smtp_proxy/filters/network/test/smtp_test_utils.h"
 
 using testing::_;
 using testing::Eq;
@@ -21,127 +20,161 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
-class MockSmtpSession : public SmtpSession {
-public:
-  MockSmtpSession(DecoderCallbacks* callbacks, TimeSource& time_source,
-                  Random::RandomGenerator& random_generator)
-      : SmtpSession(callbacks, time_source, random_generator) {}
-//   ~MockSmtpSession() {}
-  ~MockSmtpSession() override = default;
-  MOCK_METHOD(bool, isTerminated, (), (override));
-  MOCK_METHOD(bool, isDataTransferInProgress, (), (override));
-  MOCK_METHOD(bool, isCommandInProgress, (), (override));
-  // MOCK_METHOD(SmtpSession::State, getState, (), (override));
-  MOCK_METHOD(void, updateBytesMeterOnCommand, (Buffer::Instance & data), (override));
-  MOCK_METHOD(SmtpUtils::Result, handleCommand, (std::string & command, std::string& args),
-              (override));
-  MOCK_METHOD(SmtpUtils::Result, handleResponse, (uint16_t & response_code, std::string& response),
-              (override));
-};
+// class MockSmtpSession : public SmtpSession {
+// public:
+//   MockSmtpSession(DecoderCallbacks* callbacks, TimeSource& time_source,
+//                   Random::RandomGenerator& random_generator)
+//       : SmtpSession(callbacks, time_source, random_generator) {}
+// //   ~MockSmtpSession() {}
+//   ~MockSmtpSession() override = default;
+//   MOCK_METHOD(bool, isTerminated, (), (override));
+//   MOCK_METHOD(bool, isDataTransferInProgress, (), (override));
+//   MOCK_METHOD(bool, isCommandInProgress, (), (override));
+//   // MOCK_METHOD(SmtpSession::State, getState, (), (override));
+//   MOCK_METHOD(void, updateBytesMeterOnCommand, (Buffer::Instance & data), (override));
+//   MOCK_METHOD(SmtpUtils::Result, handleCommand, (std::string & command, std::string& args),
+//               (override));
+//   MOCK_METHOD(SmtpUtils::Result, handleResponse, (uint16_t & response_code, std::string& response),
+//               (override));
+// };
 
 class DecoderImplTest : public ::testing::Test {
 public:
   void SetUp() override {
-    data_ = std::make_unique<Buffer::OwnedImpl>();
-    session_ = std::make_unique<NiceMock<MockSmtpSession>>(&callbacks_, time_source_, random_);
-    decoder_ = std::make_unique<DecoderImpl>(&callbacks_, session_.get(), time_source_, random_);
-    // session_.reset(dynamic_cast<MockSmtpSession*>(decoder_->getSession()));
-    // decoder_->setSession(session_.get());
+    // data_ = std::make_unique<Buffer::OwnedImpl>();
+    decoder_ = std::make_unique<DecoderImpl>();
   }
 
 protected:
-  std::unique_ptr<Buffer::OwnedImpl> data_;
-  NiceMock<MockDecoderCallbacks> callbacks_;
-  std::unique_ptr<NiceMock<MockSmtpSession>> session_;
+  // std::unique_ptr<Buffer::OwnedImpl> data_;
+  Buffer::OwnedImpl data_;
+  // char buf_[256]{};
   std::unique_ptr<DecoderImpl> decoder_;
-  NiceMock<Random::MockRandomGenerator> random_;
-  NiceMock<MockTimeSystem> time_source_;
 };
 
 TEST_F(DecoderImplTest, TestParseCommand) {
-  // When session is terminated
-  data_->add("EHLO test.com\r\n");
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(true));
-  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
+  Decoder::Command command;
+  data_.add("EHLO");
+  EXPECT_EQ(SmtpUtils::Result::NeedMoreData, decoder_->parseCommand(data_, command));
+  data_.drain(data_.length());
+
+  data_.add("EHLO localhost\r\n");
+  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(data_, command));
+  EXPECT_EQ("EHLO", command.verb);
+  EXPECT_EQ("localhost", command.args);
+  EXPECT_EQ(16, command.len);
+  data_.drain(data_.length());
+
+  data_.add("\r\n\r\n");
+  EXPECT_EQ(SmtpUtils::Result::ProtocolError, decoder_->parseCommand(data_, command));
+  data_.drain(data_.length());
+
+  data_.add("\r\n");
+  EXPECT_EQ(SmtpUtils::Result::ProtocolError, decoder_->parseCommand(data_, command));
+  data_.drain(data_.length());
+
+}
+
+TEST_F(DecoderImplTest, TestParseResponse) {
+
+  Decoder::Response response;
+
+  data_.add("220 Hi! This is upstream.com mail server");
+  EXPECT_EQ(SmtpUtils::Result::NeedMoreData, decoder_->parseResponse(data_, response));
+  data_.drain(data_.length());
+
+  data_.add("220 Hi! This is upstream.com mail server\r\n");
+  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseResponse(data_, response));
+  EXPECT_EQ(220, response.resp_code);
+  EXPECT_EQ("Hi! This is upstream.com mail server\r\n", response.msg);
+  EXPECT_EQ(42, response.len);
+  data_.drain(data_.length());
+
+}
+
+// TEST_F(DecoderImplTest, TestParseCommand) {
+//   // When session is terminated
+//   data_->add("EHLO test.com\r\n");
+//   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
 
 
-  data_->add("EHLO test.com\r\n");
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(true));
-  EXPECT_CALL(*session_, updateBytesMeterOnCommand(Ref(*data_)));
+//   data_->add("EHLO test.com\r\n");
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(true));
+//   EXPECT_CALL(*session_, updateBytesMeterOnCommand(Ref(*data_)));
 
-  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
-
-
-  // SMTP command without CRLF ending - only few bytes received by the filter
-  data_->add("EHLO test.com");
-
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
-
-  EXPECT_EQ(SmtpUtils::Result::NeedMoreData, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 13);
+//   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
 
 
-  //Send remaining part of the command
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
-  data_->add("\r\n");
-  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
+//   // SMTP command without CRLF ending - only few bytes received by the filter
+//   data_->add("EHLO test.com");
+
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
+
+//   EXPECT_EQ(SmtpUtils::Result::NeedMoreData, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 13);
 
 
-  // Invalid command with mulitple CRLF characters
-  data_->drain(data_->length());
-  data_->add("EHLO\r\ntest\r\n.\r\ncom");
-
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
-
-  EXPECT_EQ(SmtpUtils::Result::ProtocolError, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
-
-  // Invalid command with just CRLF character
-  data_->drain(data_->length());
-  data_->add("\r\n");
-
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
-
-  EXPECT_EQ(SmtpUtils::Result::ProtocolError, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
-
-  // STARTTLS command
-  data_->drain(data_->length());
-  data_->add("STARTTLS\r\n");
-
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
-
-  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
+//   //Send remaining part of the command
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
+//   data_->add("\r\n");
+//   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
 
 
-  // MAIl FROM command
-  data_->drain(data_->length());
-  data_->add("MAIL FROM:<abc@xyz.com>\r\n");
+//   // Invalid command with mulitple CRLF characters
+//   data_->drain(data_->length());
+//   data_->add("EHLO\r\ntest\r\n.\r\ncom");
 
-  EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
-  EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
 
-  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
-  EXPECT_EQ(data_->length(), 0);
-  testing::Mock::VerifyAndClearExpectations(session_.get());
+//   EXPECT_EQ(SmtpUtils::Result::ProtocolError, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
+
+//   // Invalid command with just CRLF character
+//   data_->drain(data_->length());
+//   data_->add("\r\n");
+
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
+
+//   EXPECT_EQ(SmtpUtils::Result::ProtocolError, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
+
+//   // STARTTLS command
+//   data_->drain(data_->length());
+//   data_->add("STARTTLS\r\n");
+
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
+
+//   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
 
 
+//   // MAIl FROM command
+//   data_->drain(data_->length());
+//   data_->add("MAIL FROM:<abc@xyz.com>\r\n");
+
+//   EXPECT_CALL(*session_, isTerminated()).WillOnce(Return(false));
+//   EXPECT_CALL(*session_, isDataTransferInProgress()).WillOnce(Return(false));
+
+//   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
+//   EXPECT_EQ(data_->length(), 0);
+//   testing::Mock::VerifyAndClearExpectations(session_.get());
+
+// }
 
 
 /*
@@ -287,7 +320,7 @@ TEST_F(DecoderImplTest, TestParseCommand) {
 
   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseCommand(*data_));
 */
-}
+// }
 
 
 // TEST_F(DecoderImplTest, TestParseResponse) {

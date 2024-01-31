@@ -12,31 +12,36 @@ namespace SmtpProxy {
  * All SMTP proxy stats. @see stats_macros.h
  */
 #define ALL_SMTP_PROXY_STATS(COUNTER, GUAGE, HISTOGRAM)                                            \
-  COUNTER(smtp_session_requests)                                                                   \
-  COUNTER(smtp_connection_establishment_errors)                                                    \
-  COUNTER(smtp_session_completed)                                                                  \
-  COUNTER(smtp_session_terminated)                                                                 \
-  COUNTER(smtp_transaction_req)                                                                    \
-  COUNTER(smtp_transaction_completed)                                                              \
-  COUNTER(smtp_transaction_failed)                                                                 \
-  COUNTER(smtp_transaction_aborted)                                                                \
-  COUNTER(smtp_session_tls_termination_success)                                                    \
-  COUNTER(smtp_session_tls_termination_error)                                                      \
-  COUNTER(smtp_session_upstream_tls_success)                                                       \
-  COUNTER(smtp_session_upstream_tls_failed)                                                        \
-  COUNTER(smtp_auth_errors)                                                                        \
-  COUNTER(smtp_mail_data_transfer_errors)                                                          \
-  COUNTER(smtp_rcpt_errors)                                                                        \
-  COUNTER(smtp_4xx_errors)                                                                         \
-  COUNTER(smtp_local_4xx_errors)                                                                   \
-  COUNTER(smtp_5xx_errors)                                                                         \
-  COUNTER(smtp_local_5xx_errors)                                                                   \
-  GUAGE(smtp_transaction_active, Accumulate)                                                       \
-  GUAGE(smtp_session_active, Accumulate)                                                           \
-  HISTOGRAM(smtp_transaction_length, Milliseconds)                                                 \
-  HISTOGRAM(smtp_session_length, Milliseconds)                                                     \
-  HISTOGRAM(smtp_data_transfer_length, Milliseconds)                                               \
-  HISTOGRAM(smtp_command_length, Milliseconds)
+  COUNTER(session_requests)                                                                        \
+  COUNTER(connection_establishment_errors)                                                         \
+  COUNTER(session_completed)                                                                       \
+  COUNTER(session_terminated)                                                                      \
+  COUNTER(transaction_req)                                                                         \
+  COUNTER(transaction_completed)                                                                   \
+  COUNTER(transaction_failed)                                                                      \
+  COUNTER(transaction_aborted)                                                                     \
+  COUNTER(downstream_tls_termination_success)                                                      \
+  COUNTER(downstream_tls_termination_error)                                                        \
+  COUNTER(upstream_tls_success)                                                                    \
+  COUNTER(upstream_tls_error)                                                                      \
+  COUNTER(auth_errors)                                                                             \
+  COUNTER(mail_data_transfer_errors)                                                               \
+  COUNTER(rcpt_errors)                                                                             \
+  COUNTER(upstream_4xx_errors)                                                                     \
+  COUNTER(local_4xx_errors)                                                                        \
+  COUNTER(upstream_5xx_errors)                                                                     \
+  COUNTER(local_5xx_errors)                                                                        \
+  COUNTER(passthrough_sessions)                                                                    \
+  COUNTER(protocol_parse_error)                                                                    \
+  COUNTER(bad_cmd_sequence)                                                                        \
+  COUNTER(duplicate_cmd)                                                                           \
+  COUNTER(mail_req_rejected_due_to_non_tls)                                                        \
+  GUAGE(transaction_active, Accumulate)                                                            \
+  GUAGE(session_active, Accumulate)                                                                \
+  HISTOGRAM(transaction_length, Milliseconds)                                                      \
+  HISTOGRAM(session_length, Milliseconds)                                                          \
+  HISTOGRAM(data_tx_length, Milliseconds)                                                          \
+  HISTOGRAM(command_length, Milliseconds)
 
 /**
  * Struct definition for all SMTP proxy stats. @see stats_macros.h

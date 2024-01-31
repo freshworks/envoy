@@ -50,7 +50,7 @@ TEST_F(SmtpFilterTest, NewSessionStatsTest) {
   EXPECT_EQ(Envoy::Network::FilterStatus::Continue, filter_->onNewConnection());
   EXPECT_EQ(filter_->getSession()->getState(), SmtpSession::State::ConnectionRequest);
 
-  EXPECT_EQ(1, config_->stats().smtp_session_requests_.value());
+  EXPECT_EQ(1, config_->stats().session_requests_.value());
 }
 
 TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
@@ -63,7 +63,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   filter_->getSession()->setState(SmtpSession::State::ConnectionSuccess);
 
   data_.add("EHLO localhost\r\n");
-  std::cout << data_.toString() << std::endl;
+  // std::cout << data_.toString() << std::endl;
   ASSERT_THAT(Network::FilterStatus::Continue, filter_->onData(data_, false));
   EXPECT_EQ(SmtpSession::State::SessionInitRequest, filter_->getSession()->getState());
 
@@ -95,7 +95,7 @@ TEST_F(SmtpFilterTest, TestDownstreamStarttls) {
   cb(buf.length());
 
   EXPECT_EQ(SmtpSession::State::SessionInProgress, filter_->getSession()->getState());
-  EXPECT_EQ(config_->stats().smtp_session_tls_termination_success_.value(), 1);
+  EXPECT_EQ(config_->stats().downstream_tls_termination_success_.value(), 1);
 
   // Send starttls command again, receive 503 out of order command response from filter.
   buf.drain(buf.length());
@@ -159,7 +159,7 @@ TEST_F(SmtpFilterTest, TestUpstreamStartTls) {
   ASSERT_THAT(Network::FilterStatus::StopIteration, filter_->onWrite(data_, false));
 
   EXPECT_CALL(connection_, close(_)).Times(0);
-  EXPECT_EQ(config_->stats().smtp_session_upstream_tls_success_.value(), 1);
+  EXPECT_EQ(config_->stats().upstream_tls_success_.value(), 1);
 
   filter_->getSession()->setSessionEncrypted(false);
   filter_->getSession()->setState(SmtpSession::State::UpstreamTlsNegotiation);
@@ -171,7 +171,7 @@ TEST_F(SmtpFilterTest, TestUpstreamStartTls) {
 
   ASSERT_THAT(Network::FilterStatus::StopIteration, filter_->onWrite(data_, false));
   ASSERT_EQ(SmtpSession::State::SessionTerminated, filter_->getSession()->getState());
-  EXPECT_EQ(config_->stats().smtp_session_upstream_tls_failed_.value(), 1);
+  EXPECT_EQ(config_->stats().upstream_tls_error_.value(), 1);
 }
 
 } // namespace SmtpProxy

@@ -198,11 +198,15 @@ SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data, Response& r
     }
 
   }
-  ENVOY_LOG(debug, "smtp_proxy: response code {}", response_code);
-  ENVOY_LOG(debug, "smtp_proxy: response msg {}",response_msg);
+
+  response.len = respose_len;
+  size_t crlf_pos = response_msg.length() - 2;
+  response_msg = response_msg.erase(crlf_pos);
+  // ENVOY_LOG(debug, "smtp_proxy: response code {}", response_code);
+  // ENVOY_LOG(debug, "smtp_proxy: response msg {}",response_msg);
   response.resp_code = response_code;
   response.msg = response_msg;
-  response.len = respose_len;
+  // response.len = respose_len;
   data.drain(data.length());
   return SmtpUtils::Result::ReadyForNext;
 }

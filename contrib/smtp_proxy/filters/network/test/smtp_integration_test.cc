@@ -314,7 +314,7 @@ TEST_P(DownstreamSSLSmtpIntegrationTest, TerminateSSL) {
   std::string starttls("STARTTLS\r\n");
   ASSERT_TRUE(tcp_client->write(starttls));
 
-  std::string starttls_resp("220 Ready to start TLS\r\n");
+  std::string starttls_resp("220 2.0.0 Ready to start TLS\r\n");
   tcp_client->waitForData(starttls_resp, true);
   tcp_client->clearData();
 

@@ -86,8 +86,14 @@ TEST_F(DecoderImplTest, TestParseResponse) {
   data_.add("220 Hi! This is upstream.com mail server\r\n");
   EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseResponse(data_, response));
   EXPECT_EQ(220, response.resp_code);
-  EXPECT_EQ("Hi! This is upstream.com mail server\r\n", response.msg);
+  EXPECT_EQ("Hi! This is upstream.com mail server", response.msg);
   EXPECT_EQ(42, response.len);
+  data_.drain(data_.length());
+
+  data_.add("250-EHLO localhost\r\n250-AUTH PLAIN\r\n250 STARTTLS\r\n");
+  EXPECT_EQ(SmtpUtils::Result::ReadyForNext, decoder_->parseResponse(data_, response));
+  EXPECT_EQ(250, response.resp_code);
+  EXPECT_EQ("EHLO localhost\r\nAUTH PLAIN\r\nSTARTTLS", response.msg);
   data_.drain(data_.length());
 
 }

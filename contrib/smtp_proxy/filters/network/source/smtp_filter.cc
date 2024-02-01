@@ -186,7 +186,6 @@ Network::FilterStatus SmtpFilter::onData(Buffer::Instance& data, bool end_stream
   ENVOY_LOG(debug, "smtp_proxy: received command {}", data.toString());
 
   // printSessionState(getSession()->getState());
-
   if (getSession()->getState() == SmtpSession::State::Passthrough || getSession()->isTerminated()) {
     return Network::FilterStatus::Continue;
   }
@@ -289,8 +288,13 @@ Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_strea
 
   Decoder::Response response;
   SmtpUtils::Result result = decoder_->parseResponse(write_buffer_, response);
-  // ENVOY_LOG(debug, "smtp_proxy: response code {}", response.resp_code);
-  // ENVOY_LOG(debug, "smtp_proxy: response msg {}", response.msg);
+  ENVOY_LOG(debug, "smtp_proxy: response code {}", response.resp_code);
+  ENVOY_LOG(debug, "smtp_proxy: response msg {}", response.msg);
+  ENVOY_LOG(debug, "smtp_proxy: response len {}", response.len);
+
+  if(response.len != data.length()) {
+    result = SmtpUtils::Result::ProtocolError;
+  }
 
   switch (result) {
   case SmtpUtils::Result::ProtocolError: {

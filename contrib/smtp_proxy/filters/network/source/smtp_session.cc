@@ -205,7 +205,7 @@ SmtpUtils::Result SmtpSession::handleAuth() {
 }
 
 SmtpUtils::Result SmtpSession::handleStarttls() {
-  std::cout << "handling starttls command" << std::endl;
+  // std::cout << "handling starttls command" << std::endl;
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
 
   newCommand(SmtpUtils::startTlsCommand, SmtpCommand::Type::NonTransactionCommand);
@@ -220,7 +220,7 @@ SmtpUtils::Result SmtpSession::handleStarttls() {
   }
 
   if (callbacks_->downstreamTlsEnabled()) {
-    std::cout << "downstream tls is enabled" << std::endl;
+    // std::cout << "downstream tls is enabled" << std::endl;
     if (callbacks_->upstreamTlsEnabled()) {
       // Forward STARTTLS request to upstream for TLS termination at upstream end.
       setState(SmtpSession::State::UpstreamTlsNegotiation);

@@ -292,9 +292,9 @@ Network::FilterStatus SmtpFilter::onWrite(Buffer::Instance& data, bool end_strea
   ENVOY_LOG(debug, "smtp_proxy: response msg {}", response.msg);
   ENVOY_LOG(debug, "smtp_proxy: response len {}", response.len);
 
-  if(response.len != data.length()) {
-    result = SmtpUtils::Result::ProtocolError;
-  }
+  // if(response.len != data.length()) {
+  //   result = SmtpUtils::Result::ProtocolError;
+  // }
 
   switch (result) {
   case SmtpUtils::Result::ProtocolError: {

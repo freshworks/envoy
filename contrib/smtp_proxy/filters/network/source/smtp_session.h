@@ -134,6 +134,7 @@ public:
   void onTransactionFailed(std::string& response);
 
   bool isXReqIdSent() { return x_req_id_sent_; }
+  void setSessionStatus(const std::string& status, const std::string& msg);
 
 private:
   std::string session_id_;
@@ -142,6 +143,9 @@ private:
   SmtpSession::SmtpSessionStats session_stats_ = {};
   std::string status_;
   std::string msg_;
+  int error_resp_code_ = 0;
+  std::string error_resp_;
+  std::string error_resp_code_details_;
   bool session_encrypted_{false}; // tells if smtp session is encrypted
   DecoderCallbacks* callbacks_{};
   TimeSource& time_source_;

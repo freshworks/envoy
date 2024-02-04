@@ -45,10 +45,18 @@ public:
   void setStatus(const std::string status) { status_ = status; }
   const std::string& getStatus() const { return status_; }
 
+  void setErrResponse(const std::string err) { error_resp_ = err; }
+  const std::string& getErrResponse() const { return error_resp_; }
+
+  void setErrRespCodeDetails(const std::string resp_code_details) { error_resp_code_details_ = resp_code_details; }
+
+  void setErrRespCode(int resp_code) { error_resp_code_ = resp_code; }
+  int getErrRespCode() { return error_resp_code_;}
+
   void setSender(std::string& sender) { sender_ = sender; }
   std::string& getSender() { return sender_; }
 
-  void setMsg(std::string& msg) { msg_ = msg; }
+  void setMsg(const std::string& msg) { msg_ = msg; }
   std::string& getMsg() { return msg_; }
 
   void addRcpt(std::string& rcpt) { recipients_.push_back(rcpt); }
@@ -73,6 +81,9 @@ private:
   std::string status_;
   std::string sender_;
   std::string msg_;
+  int error_resp_code_ = 0;
+  std::string error_resp_;
+  std::string error_resp_code_details_;
   std::vector<std::string> recipients_;
   uint64_t payload_size_ = 0;
   std::vector<std::shared_ptr<SmtpCommand>> trxn_commands_;

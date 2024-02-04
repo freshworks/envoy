@@ -64,6 +64,19 @@ void SmtpTransaction::emitLog() {
   msg.set_string_value(msg_);
   fields["msg"] = msg;
 
+  ProtobufWkt::Value err_resp;
+  err_resp.set_string_value(error_resp_);
+  fields["error_response"] = err_resp;
+
+  ProtobufWkt::Value err_resp_code_details;
+  err_resp_code_details.set_string_value(error_resp_code_details_);
+  fields["error_resp_code_details"] = err_resp_code_details;
+
+  ProtobufWkt::Value err_resp_code;
+  err_resp_code.set_number_value(error_resp_code_);
+  fields["error_resp_code"] = err_resp_code;
+
+
   ProtobufWkt::Value log_type;
   log_type.set_string_value("transaction");
   fields["type"] = log_type;

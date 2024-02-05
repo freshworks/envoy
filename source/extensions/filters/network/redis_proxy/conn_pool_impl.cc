@@ -324,7 +324,7 @@ InstanceImpl::ThreadLocalPool::makeRequest(const std::string& key, RespVariant&&
   if ((transaction.active_ && transaction.is_transaction_mode_)&& !transaction.connection_established_) {
     transaction.clients_[client_idx] =
         client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                               auth_username_, auth_password_, true,false,transaction.pubsub_cb_);
+                               auth_username_, auth_password_, true,false,nullptr);
     if (transaction.connection_cb_) {
       transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
     }
@@ -390,7 +390,7 @@ InstanceImpl::ThreadLocalPool:: makeRequestNoKey(int32_t shard_index, RespVarian
     if (!transaction.connection_established_ && transaction.is_subscribed_mode_) {
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                                 auth_username_, auth_password_, false,true,transaction.pubsub_cb_);
+                                 auth_username_, auth_password_, false,true,transaction.getPubsubCallback());
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }

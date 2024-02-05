@@ -59,6 +59,7 @@ class DirectCallbacks  {
 public:
   virtual ~DirectCallbacks() = default;
   virtual void onDirectResponse(Common::Redis::RespValuePtr&& value) PURE;
+  virtual void onFailure() PURE;
 
 };
 
@@ -218,7 +219,7 @@ public:
                            const Config& config,
                            const RedisCommandStatsSharedPtr& redis_command_stats,
                            Stats::Scope& scope, const std::string& auth_username,
-                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client, DirectCallbacks* drcb) PURE;
+                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) PURE;
 };
 
 // A MULTI command sent when starting a transaction.
@@ -279,11 +280,11 @@ struct Transaction {
     }
     should_close_ = false;
   }
-  void setPubsubCallback(DirectCallbacks* callback) {
+  void setPubsubCallback(std::shared_ptr<DirectCallbacks> callback) {
     pubsub_cb_ = callback;
   }
 
-  DirectCallbacks* getPubsubCallback() {
+  std::shared_ptr<DirectCallbacks> getPubsubCallback() {
     return pubsub_cb_;
   }
   bool active_{false};
@@ -299,7 +300,7 @@ struct Transaction {
   // the mirroring policies.
   std::vector<ClientPtr> clients_;
   Network::ConnectionCallbacks* connection_cb_;
-  DirectCallbacks* pubsub_cb_=nullptr;
+  std::shared_ptr<DirectCallbacks> pubsub_cb_=nullptr;
 
   // This index represents the current client on which traffic is being sent to.
   // When sending to the main redis server it will be 0, and when sending to one of

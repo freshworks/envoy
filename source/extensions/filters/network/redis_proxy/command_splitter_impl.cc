@@ -513,8 +513,9 @@ SplitRequestPtr BlockingRequest::create(Router& router, Common::Redis::RespValue
 
   if (transaction.is_subscribed_mode_ &&(command_name == "quit" || command_name == "reset")){
     transaction.should_close_ = true;
-    //transaction.close();
+    localResponse(callbacks, "OK");
     return nullptr;
+    //transaction.close();
   }
  
 
@@ -539,7 +540,7 @@ SplitRequestPtr BlockingRequest::create(Router& router, Common::Redis::RespValue
       shard_index = i;
     }
 
-  const auto route = router.upstreamPool(key, stream_info);
+  //const auto route = router.upstreamPool(key, stream_info);
   if (route) {
     pending_request.handle_= makeNoKeyRequest(route, shard_index,base_request, pending_request, callbacks.transaction());
     }

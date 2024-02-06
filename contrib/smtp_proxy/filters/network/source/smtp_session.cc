@@ -535,10 +535,10 @@ SmtpUtils::Result SmtpSession::handleAuthResponse(int& response_code, std::strin
     return result;
   } else if (response_code >= 400 && response_code <= 499) {
     callbacks_->getStats().upstream_4xx_auth_.inc();
-    setSessionStatus("upstream_4xx_data", response);
+    setSessionStatus("upstream_4xx_auth", response);
   }  else if (response_code >= 500 && response_code <= 599) {
     callbacks_->getStats().upstream_5xx_auth_.inc();
-    setSessionStatus("upstream_5xx_data", response);
+    setSessionStatus("upstream_5xx_auth", response);
   } else if (response_code >= 200 && response_code <= 299) {
     setAuthStatus(true);
   }

@@ -46,6 +46,13 @@ using Response = ConstSingleton<ResponseValues>;
   COUNTER(error_fault)                                                                             \
   COUNTER(delay_fault)
 
+enum class AdminRespHandlerType{
+  singleshardresponse,
+  allresponses_mustbe_same,
+  aggregate_all_responses,
+  iteraterequest_on_response,
+  response_handler_none
+};
 /**
  * Struct definition for all command stats. @see stats_macros.h
  */
@@ -91,36 +98,59 @@ protected:
 };
 
 /**
- * NoKeyAllhostRequest is a base class for commands which has no keys but has to be applied on all primaries.
+ * AdministrationRequest is a base class for all admin commands or commands which does not work on keys.
  */
-class NoKeyAllPrimaryRequest : public SplitRequestBase {
+class AdministrationRequest : public SplitRequestBase {
 public:
-  ~NoKeyAllPrimaryRequest() override;
+  ~AdministrationRequest() override;
 
   // RedisProxy::CommandSplitter::SplitRequest
   void cancel() override;
 
 protected:
-  NoKeyAllPrimaryRequest(SplitCallbacks& callbacks, CommandStats& command_stats,
+  AdministrationRequest(SplitCallbacks& callbacks, CommandStats& command_stats,
                       TimeSource& time_source, bool delay_command_latency)
       : SplitRequestBase(command_stats, time_source, delay_command_latency), callbacks_(callbacks) {
   }
   struct PendingRequest : public ConnPool::PoolCallbacks {
-    PendingRequest(NoKeyAllPrimaryRequest& parent, uint32_t index) : parent_(parent), index_(index) {}
+    PendingRequest(AdministrationRequest& parent, uint32_t reqindex,int32_t shardindex, AdminRespHandlerType resphandletype) : parent_(parent), reqindex_(reqindex),shard_index_(shardindex),admin_resp_handler_type_(resphandletype){}
 
     // ConnPool::PoolCallbacks
     void onResponse(Common::Redis::RespValuePtr&& value) override {
-      parent_.onChildResponse(std::move(value), index_);
+      if(admin_resp_handler_type_ == AdminRespHandlerType::singleshardresponse){
+        parent_.onSingleShardresponse(std::move(value), reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::allresponses_mustbe_same){
+        parent_.onAllChildResponseSame(std::move(value), reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::aggregate_all_responses){
+        parent_.onallChildRespAgrregate(std::move(value), reqindex_,shard_index_);      
+      }else{
+        ASSERT(false);
+      }
     }
-    void onFailure() override { parent_.onChildFailure(index_); }
+    void onFailure() override {
+      if(admin_resp_handler_type_ == AdminRespHandlerType::singleshardresponse){
+        parent_.onSingleShardResponseFailure(reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::allresponses_mustbe_same){
+        parent_.onallChildResponseSameFailure(reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::aggregate_all_responses){
+        parent_.onallChildRespAgrregateFail(reqindex_,shard_index_);      
+      }else{
+        ASSERT(false);
+      }
+    }
 
-    NoKeyAllPrimaryRequest& parent_;
-    const int32_t index_;
+    AdministrationRequest& parent_;
+    const int32_t reqindex_;
+    int32_t shard_index_=-1;
     Common::Redis::Client::PoolRequest* handle_{};
+    AdminRespHandlerType admin_resp_handler_type_ = AdminRespHandlerType::response_handler_none;
   };
-
-  virtual void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) PURE;
-  void onChildFailure(int32_t index);
+  virtual void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) PURE;
+  virtual void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) PURE;
+  virtual void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) PURE;
+  void onSingleShardResponseFailure(int32_t reqindex, int32_t shardindex);
+  void onallChildResponseSameFailure(int32_t reqindex,int32_t shardindex);
+  void onallChildRespAgrregateFail(int32_t reqindex,int32_t shardindex);
 
   SplitCallbacks& callbacks_;
 
@@ -214,7 +244,7 @@ private:
   Common::Redis::RespValuePtr response_;
 };
 
-class NoKeyRequest : public NoKeyAllPrimaryRequest {
+class mgmtNoKeyRequest : public AdministrationRequest {
 public:
   static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                 SplitCallbacks& callbacks, CommandStats& command_stats,
@@ -222,28 +252,40 @@ public:
                                 const StreamInfo::StreamInfo& stream_info);
 
 private:
-  NoKeyRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+  mgmtNoKeyRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
                 bool delay_command_latency)
-      : NoKeyAllPrimaryRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+      : AdministrationRequest(callbacks, command_stats, time_source, delay_command_latency) {}
 
-  // RedisProxy::CommandSplitter::NoKeyAllPrimaryRequest
-  void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) override;
+  // RedisProxy::CommandSplitter::AdministrationRequest
+  void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
 
 };
 
-class BlockingRequest : public NoKeyAllPrimaryRequest {
+class PubSubRequest : public SingleServerRequest {
 public:
   static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                 SplitCallbacks& callbacks, CommandStats& command_stats,
                                 TimeSource& time_source, bool delay_command_latency,
                                 const StreamInfo::StreamInfo& stream_info);
 private:
-  BlockingRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+  PubSubRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
                 bool delay_command_latency)
-      : NoKeyAllPrimaryRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
 
-  // RedisProxy::CommandSplitter::NoKeyAllPrimaryRequest
-  void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) override;
+};
+
+class BlockingClientRequest : public SingleServerRequest {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+private:
+  BlockingClientRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
 
 };
 
@@ -468,8 +510,9 @@ private:
   CommandHandlerFactory<MSETRequest> mset_handler_;
   CommandHandlerFactory<SplitKeysSumResultRequest> split_keys_sum_result_handler_;
   CommandHandlerFactory<TransactionRequest> transaction_handler_;
-  CommandHandlerFactory<NoKeyRequest> nokeyrequest_handler_;
-  CommandHandlerFactory<BlockingRequest> blockingrequest_handler_;
+  CommandHandlerFactory<mgmtNoKeyRequest> mgmt_nokey_request_handler_;
+  CommandHandlerFactory<PubSubRequest> subscription_handler_;
+  CommandHandlerFactory<BlockingClientRequest> blocking_client_request_handler_;
   TrieLookupTable<HandlerDataPtr> handler_lookup_table_;
   InstanceStats stats_;
   TimeSource& time_source_;

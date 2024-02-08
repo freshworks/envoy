@@ -253,8 +253,15 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
       auto pubsub_cb = dynamic_cast<PubsubCallbacks*>(transaction_.getPubsubCallback().get());
       pubsub_cb->clearParent();
       transaction_.setPubsubCallback(nullptr);
+      transaction_.subscribed_client_shard_index_ = -1;
     }
     transaction_.close();
+    //Not sure if for transaction mode also we need to close the connection in downstream
+    if (transaction_.isSubscribedMode()){
+        callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
+    }
+    connection_quit_ = false;
+    return;
   }
 }
 

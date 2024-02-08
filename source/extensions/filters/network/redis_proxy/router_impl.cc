@@ -60,9 +60,6 @@ Prefix::Prefix(
 
 ConnPool::InstanceSharedPtr Prefix::upstream(const std::string& command) const {
 
-  if ( command.empty() ){
-    return upstream_;
-  }
 
   if (read_upstream_) {
     std::string to_lower_string = absl::AsciiStrToLower(command);

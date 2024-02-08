@@ -59,8 +59,8 @@ struct SupportedCommands {
    /**
    * @return commands which handle Redis blocking operations.
    */
-  static const absl::flat_hash_set<std::string>& blockingClientCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe", "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin");
+  static const absl::flat_hash_set<std::string>& subscriptionCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe");
   }
 
  /**
@@ -86,7 +86,7 @@ struct SupportedCommands {
     /**
    * @return commands which handle Redis commands without keys.
    */
-  static const absl::flat_hash_set<std::string>& noKeyNonBlockingCommands() {
+  static const absl::flat_hash_set<std::string>& adminNokeyCommands() {
     CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall","publish");
   }
     /**

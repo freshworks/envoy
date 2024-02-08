@@ -113,6 +113,16 @@ InstanceImpl::makeRequestNoKey(int32_t shard_index, RespVariant&& request, PoolC
                                                        transaction);
 }
 
+// This method is always called from a InstanceSharedPtr we don't have to worry about tls_->getTyped
+// failing due to InstanceImpl going away.
+Common::Redis::Client::PoolRequest*
+InstanceImpl::makeBlockingClientRequest(int32_t shard_index, const std::string& key, RespVariant&& request, PoolCallbacks& callbacks,
+                          Common::Redis::Client::Transaction& transaction) {
+  return tls_->getTyped<ThreadLocalPool>().makeBlockingClientRequest(shard_index,key,std::move(request), callbacks,
+                                                       transaction);
+}
+
+
 int32_t InstanceImpl::getNumofRedisShards() {
   
   return tls_->getTyped<ThreadLocalPool>().getNumofRedisShards();
@@ -358,7 +368,81 @@ InstanceImpl::ThreadLocalPool::makeRequest(const std::string& key, RespVariant&&
 }
 
 Common::Redis::Client::PoolRequest*
-InstanceImpl::ThreadLocalPool:: makeRequestNoKey(int32_t shard_index, RespVariant&& request,
+InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, const std::string& key,RespVariant&& request, PoolCallbacks& callbacks,
+                          Common::Redis::Client::Transaction& transaction) {
+  Upstream::HostConstSharedPtr host = nullptr;
+
+  if (cluster_ == nullptr) {
+    ASSERT(client_map_.empty());
+    ASSERT(host_set_member_update_cb_handle_ == nullptr);
+    return nullptr;
+  }
+// If shard index is negative its a blocking command with a key else its a pubsub command
+  if (shard_index < 0){
+    Clusters::Redis::RedisLoadBalancerContextImpl lb_context(
+      key, config_->enableHashtagging(), is_redis_cluster_, getRequest(request),
+      (transaction.active_ && transaction.is_transaction_mode_)? Common::Redis::Client::ReadPolicy::Primary : config_->readPolicy());
+
+    host = cluster_->loadBalancer().chooseHost(&lb_context);
+    
+  }else {
+
+    Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getallHosts(nullptr);
+    if (!hosts) {
+      ENVOY_LOG(debug, "host not found:");
+      onRequestCompleted();
+      return nullptr;
+    }
+    host = (*hosts)[shard_index];
+
+  }
+
+  if (!host) {
+      ENVOY_LOG(debug, "host not found: '{}'", key);
+      return nullptr;
+  }
+  pending_requests_.emplace_back(*this, std::move(request), callbacks, host);
+  PendingRequest& pending_request = pending_requests_.back();
+  // For now we create dedicated connection for blocking commands / pubsub commands to be optimised later to use the 
+  // existing connection if available ( Connection Multiplexing forpubsub and blocking commands needs to be addded later)
+  uint32_t client_idx = 0;
+  if (transaction.active_) {
+    client_idx = transaction.current_client_idx_;
+    if (!transaction.connection_established_ && transaction.isSubscribedMode()) {
+      transaction.clients_[client_idx] =
+          client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
+                                 auth_username_, auth_password_, false,true,transaction.getPubsubCallback());
+      if (transaction.connection_cb_) {
+        transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
+      }
+    }else if (!transaction.connection_established_ && transaction.isBlockingCommand()) {
+      transaction.clients_[client_idx] =
+          client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
+                                 auth_username_, auth_password_, false,false,transaction.getPubsubCallback());
+      if (transaction.connection_cb_) {
+        transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
+      }
+    }
+
+    pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
+        getRequest(pending_request.incoming_request_), pending_request);
+  }else{
+    ENVOY_LOG(debug, "Private connection only allowed for blocking/pubsub commands");
+    onRequestCompleted();
+    return nullptr;
+  }
+
+  if (pending_request.request_handler_) {
+    return &pending_request;
+  } else {
+    onRequestCompleted();
+    return nullptr;
+  }
+}
+
+
+Common::Redis::Client::PoolRequest*
+InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant&& request,
                                            PoolCallbacks& callbacks,
                                            Common::Redis::Client::Transaction& transaction) {
   if (cluster_ == nullptr) {

@@ -256,15 +256,13 @@ struct Transaction {
 
   void enterTransactionMode() { is_transaction_mode_ = true; }
 
+  void setBlockingCommand() {is_blocking_command_ = true;}
+
   bool isTransactionMode() { return is_transaction_mode_; }
 
   bool isSubscribedMode() { return is_subscribed_mode_; }
 
   bool isBlockingCommand() { return is_blocking_command_; }
-
-  void setBlockingCommand(bool is_blocking_command) {
-    is_blocking_command_ = is_blocking_command;
-  }
 
 
   void close() {
@@ -306,6 +304,7 @@ struct Transaction {
   // When sending to the main redis server it will be 0, and when sending to one of
   // the mirror servers it will be 1..n.
   uint32_t current_client_idx_{0};
+  int32_t subscribed_client_shard_index_{-1};
 };
 
 class NoOpTransaction : public Transaction {

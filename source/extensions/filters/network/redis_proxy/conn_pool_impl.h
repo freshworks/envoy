@@ -97,6 +97,10 @@ public:
   makeRequestNoKey(int32_t shard_index, RespVariant&& request, PoolCallbacks& callbacks,
               Common::Redis::Client::Transaction& transaction);
 
+  Common::Redis::Client::PoolRequest*
+  makeBlockingClientRequest(int32_t shard_index, const std::string& key, RespVariant&& request, PoolCallbacks& callbacks,
+                          Common::Redis::Client::Transaction& transaction);
+
   int32_t getNumofRedisShards();
   
   void init();
@@ -176,6 +180,9 @@ private:
     Common::Redis::Client::PoolRequest*
     makeRequestNoKey(int32_t shard_index, RespVariant&& request, PoolCallbacks& callbacks,
               Common::Redis::Client::Transaction& transaction);
+    Common::Redis::Client::PoolRequest*
+    makeBlockingClientRequest(int32_t shard_index, const std::string& key, RespVariant&& request, PoolCallbacks& callbacks,
+                          Common::Redis::Client::Transaction& transaction);
     int32_t getNumofRedisShards();
 
     void onClusterAddOrUpdateNonVirtual(absl::string_view cluster_name,

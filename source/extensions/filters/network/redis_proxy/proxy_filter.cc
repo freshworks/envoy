@@ -141,6 +141,7 @@ void ProxyFilter::onAuth(PendingRequest& request, const std::string& password) {
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
+    //PubsubCallbacks::getInstance(this);
   } else {
     response->type(Common::Redis::RespType::Error);
     response->asString() = "ERR invalid password";
@@ -161,10 +162,12 @@ void ProxyFilter::onAuth(PendingRequest& request, const std::string& username,
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
+    //PubsubCallbacks::getInstance(this);
   } else if (username == config_->downstream_auth_username_ && checkPassword(password)) {
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
+    //PubsubCallbacks::getInstance(this);
   } else {
     response->type(Common::Redis::RespType::Error);
     response->asString() = "WRONGPASS invalid username-password pair";
@@ -180,6 +183,42 @@ bool ProxyFilter::checkPassword(const std::string& password) {
     }
   }
   return false;
+}
+void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
+  encoder_->encode(*value, encoder_buffer_);
+
+  if (encoder_buffer_.length() > 0) {
+    callbacks_->connection().write(encoder_buffer_, false);
+  }
+
+  // Check if there is an active transaction that needs to be closed.
+  if (transaction_.should_close_ ) {
+      //Close all upsteam clients and ref to pubsub callbacks if any
+      transaction_.close();
+      // decrement the reference to proxy filter
+      transaction_.setPubsubCallback(nullptr);
+  }
+  
+}
+
+void ProxyFilter::onPubsubConnClose(){
+  ASSERT(!pending_requests_.empty());
+
+  // decrement the reference to proxy filter
+  auto pubsub_cb = dynamic_cast<PubsubCallbacks*>(transaction_.getPubsubCallback().get());
+  pubsub_cb->clearParent();
+  
+  transaction_.setPubsubCallback(nullptr);
+
+  //Close all upsteam clients and ref to pubsub callbacks if any
+  transaction_.close();
+
+  callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
+
+  
+  connection_quit_ = false;
+  return;
+
 }
 
 void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePtr&& value) {
@@ -213,12 +252,26 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
 
   // Check if there is an active transaction that needs to be closed.
   if (transaction_.should_close_ && pending_requests_.empty()) {
+    if (transaction_.isSubscribedMode()){
+      // decrement the reference to proxy filter
+      auto pubsub_cb = dynamic_cast<PubsubCallbacks*>(transaction_.getPubsubCallback().get());
+      pubsub_cb->clearParent();
+      transaction_.setPubsubCallback(nullptr);
+      transaction_.subscribed_client_shard_index_ = -1;
+    }
     transaction_.close();
+    //Not sure if for transaction mode also we need to close the connection in downstream
+    if (transaction_.isSubscribedMode()){
+        callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
+    }
+    connection_quit_ = false;
+    return;
   }
 }
 
 Network::FilterStatus ProxyFilter::onData(Buffer::Instance& data, bool) {
   TRY_NEEDS_AUDIT {
+    //PubsubCallbacks::getInstance(this);
     decoder_->decode(data);
     return Network::FilterStatus::Continue;
   }

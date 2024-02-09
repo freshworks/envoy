@@ -74,6 +74,7 @@ private:
 
 using ProxyFilterConfigSharedPtr = std::shared_ptr<ProxyFilterConfig>;
 
+
 /**
  * A redis multiplexing proxy filter. This filter will take incoming redis pipelined commands, and
  * multiplex them onto a consistently hashed connection pool of backend servers.
@@ -103,6 +104,11 @@ public:
   bool connectionAllowed() { return connection_allowed_; }
 
   Common::Redis::Client::Transaction& transaction() { return transaction_; }
+  void onAsyncResponse(Common::Redis::RespValuePtr&& value);
+  void onPubsubConnClose();
+  void setTransactionPubsubCallback(std::shared_ptr<Common::Redis::Client::DirectCallbacks> callback) {
+        transaction_.setPubsubCallback(std::move(callback));
+  }
 
 private:
   friend class RedisProxyFilterTest;
@@ -145,6 +151,35 @@ private:
   bool connection_allowed_;
   Common::Redis::Client::Transaction transaction_;
   bool connection_quit_;
+};
+
+class PubsubCallbacks : public Common::Redis::Client::DirectCallbacks{
+
+private:
+    std::shared_ptr<Envoy::Extensions::NetworkFilters::RedisProxy::ProxyFilter> parent_;
+
+
+public:
+    PubsubCallbacks( std::shared_ptr<Envoy::Extensions::NetworkFilters::RedisProxy::ProxyFilter> parent) : parent_(parent) {}
+
+    void clearParent() {
+        parent_.reset();  // This releases the shared_ptr's ownership and decrements the reference count.
+    }
+    /*
+    ~PubsubCallbacks() {
+      if (parent_) {
+        parent_->setTransactionPubsubCallback(nullptr);  // Deregister the callback
+      }
+      parent_=nullptr;
+    }
+    */
+    void onDirectResponse(Common::Redis::RespValuePtr&& value) override {
+        parent_->onAsyncResponse(std::move(value));
+    }
+
+    void onFailure() override {
+        parent_->onPubsubConnClose();
+    }
 };
 
 } // namespace RedisProxy

@@ -55,6 +55,15 @@ public:
                              bool ask_redirection) PURE;
 };
 
+class DirectCallbacks  {
+public:
+  virtual ~DirectCallbacks() = default;
+  virtual void onDirectResponse(Common::Redis::RespValuePtr&& value) PURE;
+  virtual void onFailure() PURE;
+
+};
+
+
 /**
  * DoNothingPoolCallbacks is used for internally generated commands whose response is
  * transparently filtered, and redirection never occurs (e.g., "asking", "auth", etc.).
@@ -210,7 +219,7 @@ public:
                            const Config& config,
                            const RedisCommandStatsSharedPtr& redis_command_stats,
                            Stats::Scope& scope, const std::string& auth_username,
-                           const std::string& auth_password, bool is_transaction_client) PURE;
+                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) PURE;
 };
 
 // A MULTI command sent when starting a transaction.
@@ -243,8 +252,23 @@ struct Transaction {
 
   void start() { active_ = true; }
 
+  void enterSubscribedMode() { is_subscribed_mode_ = true; }
+
+  void enterTransactionMode() { is_transaction_mode_ = true; }
+
+  void setBlockingCommand() {is_blocking_command_ = true;}
+
+  bool isTransactionMode() { return is_transaction_mode_; }
+
+  bool isSubscribedMode() { return is_subscribed_mode_; }
+
+  bool isBlockingCommand() { return is_blocking_command_; }
+
+
   void close() {
     active_ = false;
+    is_transaction_mode_ = false;
+    is_subscribed_mode_ = false;
     key_.clear();
     if (connection_established_) {
       for (auto& client : clients_) {
@@ -254,10 +278,19 @@ struct Transaction {
     }
     should_close_ = false;
   }
+  void setPubsubCallback(std::shared_ptr<DirectCallbacks> callback) {
+    pubsub_cb_ = callback;
+  }
 
+  std::shared_ptr<DirectCallbacks> getPubsubCallback() {
+    return pubsub_cb_;
+  }
   bool active_{false};
   bool connection_established_{false};
   bool should_close_{false};
+  bool is_blocking_command_{false};
+  bool is_subscribed_mode_{false};
+  bool is_transaction_mode_{false};
 
   // The key which represents the transaction hash slot.
   std::string key_;
@@ -265,11 +298,13 @@ struct Transaction {
   // the mirroring policies.
   std::vector<ClientPtr> clients_;
   Network::ConnectionCallbacks* connection_cb_;
+  std::shared_ptr<DirectCallbacks> pubsub_cb_=nullptr;
 
   // This index represents the current client on which traffic is being sent to.
   // When sending to the main redis server it will be 0, and when sending to one of
   // the mirror servers it will be 1..n.
   uint32_t current_client_idx_{0};
+  int32_t subscribed_client_shard_index_{-1};
 };
 
 class NoOpTransaction : public Transaction {

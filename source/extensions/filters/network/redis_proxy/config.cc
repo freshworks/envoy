@@ -96,9 +96,12 @@ Network::FilterFactoryCb RedisProxyFilterConfigFactory::createFilterFactoryFromP
           server_context.timeSource(), proto_config.latency_in_micros(), std::move(fault_manager));
   return [splitter, filter_config](Network::FilterManager& filter_manager) -> void {
     Common::Redis::DecoderFactoryImpl factory;
-    filter_manager.addReadFilter(std::make_shared<ProxyFilter>(
+    auto proxy_filter_shared = std::make_shared<ProxyFilter>(
         factory, Common::Redis::EncoderPtr{new Common::Redis::EncoderImpl()}, *splitter,
-        filter_config));
+        filter_config);
+    auto pubsub_cb_ptr = std::make_shared<PubsubCallbacks>(proxy_filter_shared);
+    proxy_filter_shared->setTransactionPubsubCallback(std::move(pubsub_cb_ptr));
+    filter_manager.addReadFilter(proxy_filter_shared);
   };
 }
 

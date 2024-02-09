@@ -63,10 +63,10 @@ ClientPtr ClientImpl::create(Upstream::HostConstSharedPtr host, Event::Dispatche
                              EncoderPtr&& encoder, DecoderFactory& decoder_factory,
                              const Config& config,
                              const RedisCommandStatsSharedPtr& redis_command_stats,
-                             Stats::Scope& scope, bool is_transaction_client) {
+                             Stats::Scope& scope, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) {
   auto client =
       std::make_unique<ClientImpl>(host, dispatcher, std::move(encoder), decoder_factory, config,
-                                   redis_command_stats, scope, is_transaction_client);
+                                   redis_command_stats, scope, is_transaction_client,is_pubsub_client,drcb);
   client->connection_ = host->createConnection(dispatcher, nullptr, nullptr).connection_;
   client->connection_->addConnectionCallbacks(*client);
   client->connection_->addReadFilter(Network::ReadFilterSharedPtr{new UpstreamReadFilter(*client)});
@@ -78,19 +78,22 @@ ClientPtr ClientImpl::create(Upstream::HostConstSharedPtr host, Event::Dispatche
 ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dispatcher,
                        EncoderPtr&& encoder, DecoderFactory& decoder_factory, const Config& config,
                        const RedisCommandStatsSharedPtr& redis_command_stats, Stats::Scope& scope,
-                       bool is_transaction_client)
+                       bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb)
     : host_(host), encoder_(std::move(encoder)), decoder_(decoder_factory.create(*this)),
       config_(config),
       connect_or_op_timer_(dispatcher.createTimer([this]() { onConnectOrOpTimeout(); })),
       flush_timer_(dispatcher.createTimer([this]() { flushBufferAndResetTimer(); })),
       time_source_(dispatcher.timeSource()), redis_command_stats_(redis_command_stats),
-      scope_(scope), is_transaction_client_(is_transaction_client) {
+      scope_(scope), is_transaction_client_(is_transaction_client),  is_pubsub_client_(is_pubsub_client) {
   Upstream::ClusterTrafficStats& traffic_stats = *host->cluster().trafficStats();
   traffic_stats.upstream_cx_total_.inc();
   host->stats().cx_total_.inc();
   traffic_stats.upstream_cx_active_.inc();
   host->stats().cx_active_.inc();
   connect_or_op_timer_->enableTimer(host->cluster().connectTimeout());
+  if (is_pubsub_client_){
+    pubsub_cb_ = std::move(drcb);
+  }
 }
 
 ClientImpl::~ClientImpl() {
@@ -98,9 +101,16 @@ ClientImpl::~ClientImpl() {
   ASSERT(connection_->state() == Network::Connection::State::Closed);
   host_->cluster().trafficStats()->upstream_cx_active_.dec();
   host_->stats().cx_active_.dec();
+  pubsub_cb_.reset();
+
 }
 
-void ClientImpl::close() { connection_->close(Network::ConnectionCloseType::NoFlush); }
+void ClientImpl::close() {
+  pubsub_cb_.reset();
+  if (connection_) {
+    connection_->close(Network::ConnectionCloseType::NoFlush); 
+  }
+}
 
 void ClientImpl::flushBufferAndResetTimer() {
   if (flush_timer_->enabled()) {
@@ -187,6 +197,12 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
         putOutlierEvent(Upstream::Outlier::Result::LocalOriginConnectFailed);
       }
     }
+    if (pending_requests_.empty() && is_pubsub_client_) {
+      host_->cluster().trafficStats()->upstream_cx_destroy_with_active_rq_.inc();
+      if (pubsub_cb_ != nullptr){
+        pubsub_cb_->onFailure();
+      }
+    }
 
     while (!pending_requests_.empty()) {
       PendingRequest& request = pending_requests_.front();
@@ -199,6 +215,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     }
 
     connect_or_op_timer_->disableTimer();
+    // If client is Pubsub handle the upstream close event such that downstream must also be closed.
   } else if (event == Network::ConnectionEvent::Connected) {
     connected_ = true;
     ASSERT(!pending_requests_.empty());
@@ -212,6 +229,15 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 }
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
+
+  if (pending_requests_.empty() && is_pubsub_client_) {
+    // This is a pubsub client, and we have received a message from the server.
+    // We need to pass this message to the registered callback.
+    if (pubsub_cb_ != nullptr){
+        pubsub_cb_->onDirectResponse(std::move(value));
+    }
+    return;
+  }
   ASSERT(!pending_requests_.empty());
   PendingRequest& request = pending_requests_.front();
   const bool canceled = request.canceled_;
@@ -313,10 +339,10 @@ ClientPtr ClientFactoryImpl::create(Upstream::HostConstSharedPtr host,
                                     Event::Dispatcher& dispatcher, const Config& config,
                                     const RedisCommandStatsSharedPtr& redis_command_stats,
                                     Stats::Scope& scope, const std::string& auth_username,
-                                    const std::string& auth_password, bool is_transaction_client) {
+                                    const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) {
   ClientPtr client =
       ClientImpl::create(host, dispatcher, EncoderPtr{new EncoderImpl()}, decoder_factory_, config,
-                         redis_command_stats, scope, is_transaction_client);
+                         redis_command_stats, scope, is_transaction_client, is_pubsub_client,drcb);
   client->initialize(auth_username, auth_password);
   return client;
 }

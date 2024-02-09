@@ -56,6 +56,46 @@ struct SupportedCommands {
     CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "multi", "exec", "discard");
   }
 
+   /**
+   * @return commands which handle Redis blocking operations.
+   */
+  static const absl::flat_hash_set<std::string>& subscriptionCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe");
+  }
+
+ /**
+   * @return commands allowed when a client is in subscribed state.
+   */
+  static const absl::flat_hash_set<std::string>& subcrStateallowedCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe","quit", "ping","reset");
+  }
+
+  /**
+   * @return commands that make a client to enter subscribed state.
+   */
+  static const absl::flat_hash_set<std::string>& subcrStateEnterCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe");
+  }
+
+   /**
+   * @return commands that are called blocking commands but not pubsub commands.
+   */
+  static const absl::flat_hash_set<std::string>& blockingCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin");
+  }
+    /**
+   * @return commands which handle Redis commands without keys.
+   */
+  static const absl::flat_hash_set<std::string>& adminNokeyCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall","publish");
+  }
+    /**
+   * @return commands which handle Redis commands without keys.
+   */
+  static const absl::flat_hash_set<std::string>& allShardCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall");
+    }
+
   /**
    * @return auth command
    */

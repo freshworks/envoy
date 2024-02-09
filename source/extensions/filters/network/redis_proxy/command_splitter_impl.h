@@ -46,6 +46,13 @@ using Response = ConstSingleton<ResponseValues>;
   COUNTER(error_fault)                                                                             \
   COUNTER(delay_fault)
 
+enum class AdminRespHandlerType{
+  singleshardresponse,
+  allresponses_mustbe_same,
+  aggregate_all_responses,
+  iteraterequest_on_response,
+  response_handler_none
+};
 /**
  * Struct definition for all command stats. @see stats_macros.h
  */
@@ -88,6 +95,71 @@ protected:
   }
   CommandStats& command_stats_;
   Stats::TimespanPtr command_latency_;
+};
+
+/**
+ * AdministrationRequest is a base class for all admin commands or commands which does not work on keys.
+ */
+class AdministrationRequest : public SplitRequestBase {
+public:
+  ~AdministrationRequest() override;
+
+  // RedisProxy::CommandSplitter::SplitRequest
+  void cancel() override;
+
+protected:
+  AdministrationRequest(SplitCallbacks& callbacks, CommandStats& command_stats,
+                      TimeSource& time_source, bool delay_command_latency)
+      : SplitRequestBase(command_stats, time_source, delay_command_latency), callbacks_(callbacks) {
+  }
+  struct PendingRequest : public ConnPool::PoolCallbacks {
+    PendingRequest(AdministrationRequest& parent, uint32_t reqindex,int32_t shardindex, AdminRespHandlerType resphandletype) : parent_(parent), reqindex_(reqindex),shard_index_(shardindex),admin_resp_handler_type_(resphandletype){}
+
+    // ConnPool::PoolCallbacks
+    void onResponse(Common::Redis::RespValuePtr&& value) override {
+      if(admin_resp_handler_type_ == AdminRespHandlerType::singleshardresponse){
+        parent_.onSingleShardresponse(std::move(value), reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::allresponses_mustbe_same){
+        parent_.onAllChildResponseSame(std::move(value), reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::aggregate_all_responses){
+        parent_.onallChildRespAgrregate(std::move(value), reqindex_,shard_index_);      
+      }else{
+        ASSERT(false);
+      }
+    }
+    void onFailure() override {
+      if(admin_resp_handler_type_ == AdminRespHandlerType::singleshardresponse){
+        parent_.onSingleShardResponseFailure(reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::allresponses_mustbe_same){
+        parent_.onallChildResponseSameFailure(reqindex_,shard_index_);
+      }else if(admin_resp_handler_type_ == AdminRespHandlerType::aggregate_all_responses){
+        parent_.onallChildRespAgrregateFail(reqindex_,shard_index_);      
+      }else{
+        ASSERT(false);
+      }
+    }
+
+    AdministrationRequest& parent_;
+    const int32_t reqindex_;
+    int32_t shard_index_=-1;
+    Common::Redis::Client::PoolRequest* handle_{};
+    AdminRespHandlerType admin_resp_handler_type_ = AdminRespHandlerType::response_handler_none;
+  };
+  virtual void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) PURE;
+  virtual void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) PURE;
+  virtual void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) PURE;
+  void onSingleShardResponseFailure(int32_t reqindex, int32_t shardindex);
+  void onallChildResponseSameFailure(int32_t reqindex,int32_t shardindex);
+  void onallChildRespAgrregateFail(int32_t reqindex,int32_t shardindex);
+
+  SplitCallbacks& callbacks_;
+
+  std::vector<Common::Redis::RespValuePtr> pending_responses_;
+  std::vector<PendingRequest> pending_requests_;
+  int32_t num_pending_responses_;
+  uint32_t error_count_{0};
+  int32_t response_index_{0};
+
 };
 
 /**
@@ -170,6 +242,51 @@ private:
   std::chrono::milliseconds delay_;
   Event::TimerPtr delay_timer_;
   Common::Redis::RespValuePtr response_;
+};
+
+class mgmtNoKeyRequest : public AdministrationRequest {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+
+private:
+  mgmtNoKeyRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : AdministrationRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+
+  // RedisProxy::CommandSplitter::AdministrationRequest
+  void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+
+};
+
+class PubSubRequest : public SingleServerRequest {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+private:
+  PubSubRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+
+};
+
+class BlockingClientRequest : public SingleServerRequest {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+private:
+  BlockingClientRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+
 };
 
 /**
@@ -393,6 +510,9 @@ private:
   CommandHandlerFactory<MSETRequest> mset_handler_;
   CommandHandlerFactory<SplitKeysSumResultRequest> split_keys_sum_result_handler_;
   CommandHandlerFactory<TransactionRequest> transaction_handler_;
+  CommandHandlerFactory<mgmtNoKeyRequest> mgmt_nokey_request_handler_;
+  CommandHandlerFactory<PubSubRequest> subscription_handler_;
+  CommandHandlerFactory<BlockingClientRequest> blocking_client_request_handler_;
   TrieLookupTable<HandlerDataPtr> handler_lookup_table_;
   InstanceStats stats_;
   TimeSource& time_source_;

@@ -219,7 +219,7 @@ public:
                            const Config& config,
                            const RedisCommandStatsSharedPtr& redis_command_stats,
                            Stats::Scope& scope, const std::string& auth_username,
-                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) PURE;
+                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<DirectCallbacks>& drcb) PURE;
 };
 
 // A MULTI command sent when starting a transaction.

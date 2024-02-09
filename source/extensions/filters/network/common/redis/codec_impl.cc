@@ -331,6 +331,9 @@ RespValue::CompositeArray::CompositeArrayConstIterator::empty() {
 
 void DecoderImpl::decode(Buffer::Instance& data) {
   for (const Buffer::RawSlice& slice : data.getRawSlices()) {
+    // Enable below commets only for debugging -> useful for debugging
+    // std::string slice_str(reinterpret_cast<const char*>(slice.mem_), slice.len_);
+    // ENVOY_LOG(warn, "Decoding slice: {}", slice_str);
     parseSlice(slice);
   }
 

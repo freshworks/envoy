@@ -63,10 +63,10 @@ ClientPtr ClientImpl::create(Upstream::HostConstSharedPtr host, Event::Dispatche
                              EncoderPtr&& encoder, DecoderFactory& decoder_factory,
                              const Config& config,
                              const RedisCommandStatsSharedPtr& redis_command_stats,
-                             Stats::Scope& scope, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) {
+                             Stats::Scope& scope, bool is_transaction_client, bool is_pubsub_client, bool is_blocking_client, const std::shared_ptr<DirectCallbacks>& drcb) {
   auto client =
       std::make_unique<ClientImpl>(host, dispatcher, std::move(encoder), decoder_factory, config,
-                                   redis_command_stats, scope, is_transaction_client,is_pubsub_client,drcb);
+                                   redis_command_stats, scope, is_transaction_client,is_pubsub_client,is_blocking_client,drcb);
   client->connection_ = host->createConnection(dispatcher, nullptr, nullptr).connection_;
   client->connection_->addConnectionCallbacks(*client);
   client->connection_->addReadFilter(Network::ReadFilterSharedPtr{new UpstreamReadFilter(*client)});
@@ -78,13 +78,13 @@ ClientPtr ClientImpl::create(Upstream::HostConstSharedPtr host, Event::Dispatche
 ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dispatcher,
                        EncoderPtr&& encoder, DecoderFactory& decoder_factory, const Config& config,
                        const RedisCommandStatsSharedPtr& redis_command_stats, Stats::Scope& scope,
-                       bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb)
+                       bool is_transaction_client, bool is_pubsub_client, bool is_blocking_client, const std::shared_ptr<DirectCallbacks>& drcb)
     : host_(host), encoder_(std::move(encoder)), decoder_(decoder_factory.create(*this)),
       config_(config),
       connect_or_op_timer_(dispatcher.createTimer([this]() { onConnectOrOpTimeout(); })),
       flush_timer_(dispatcher.createTimer([this]() { flushBufferAndResetTimer(); })),
       time_source_(dispatcher.timeSource()), redis_command_stats_(redis_command_stats),
-      scope_(scope), is_transaction_client_(is_transaction_client),  is_pubsub_client_(is_pubsub_client) {
+      scope_(scope), is_transaction_client_(is_transaction_client),  is_pubsub_client_(is_pubsub_client), is_blocking_client_(is_blocking_client) {
   Upstream::ClusterTrafficStats& traffic_stats = *host->cluster().trafficStats();
   traffic_stats.upstream_cx_total_.inc();
   host->stats().cx_total_.inc();
@@ -151,7 +151,9 @@ PoolRequest* ClientImpl::makeRequest(const RespValue& request, ClientCallbacks& 
   // - This is the first request on the pipeline. Otherwise the timeout would effectively start on
   //   the last operation.
   if (connected_ && pending_requests_.size() == 1) {
-    connect_or_op_timer_->enableTimer(config_.opTimeout());
+    if (!is_blocking_client_) {
+      connect_or_op_timer_->enableTimer(config_.opTimeout());
+    }
   }
 
   return &pending_requests_.back();
@@ -167,7 +169,11 @@ void ClientImpl::onConnectOrOpTimeout() {
     host_->stats().cx_connect_fail_.inc();
   }
 
-  connection_->close(Network::ConnectionCloseType::NoFlush);
+  if (!is_blocking_client_) {
+    connection_->close(Network::ConnectionCloseType::NoFlush);
+  } else {
+    ENVOY_LOG(debug, "Ignoring timeout for connection close for Blocking clients!");
+  }
 }
 
 void ClientImpl::onData(Buffer::Instance& data) {
@@ -219,7 +225,9 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
   } else if (event == Network::ConnectionEvent::Connected) {
     connected_ = true;
     ASSERT(!pending_requests_.empty());
-    connect_or_op_timer_->enableTimer(config_.opTimeout());
+    if (!is_blocking_client_) {
+      connect_or_op_timer_->enableTimer(config_.opTimeout());
+    }
   }
 
   if (event == Network::ConnectionEvent::RemoteClose && !connected_) {
@@ -256,7 +264,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   pending_requests_.pop_front();
   if (canceled) {
     host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
-  } else if (config_.enableRedirection() && !is_transaction_client_ &&
+  } else if (config_.enableRedirection() && (!is_blocking_client_ || !is_transaction_client_) &&
              (value->type() == Common::Redis::RespType::Error)) {
     std::vector<absl::string_view> err = StringUtil::splitToken(value->asString(), " ", false);
     if (err.size() == 3 &&
@@ -339,10 +347,10 @@ ClientPtr ClientFactoryImpl::create(Upstream::HostConstSharedPtr host,
                                     Event::Dispatcher& dispatcher, const Config& config,
                                     const RedisCommandStatsSharedPtr& redis_command_stats,
                                     Stats::Scope& scope, const std::string& auth_username,
-                                    const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,const std::shared_ptr<DirectCallbacks>& drcb) {
+                                    const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client, const std::shared_ptr<DirectCallbacks>& drcb) {
   ClientPtr client =
       ClientImpl::create(host, dispatcher, EncoderPtr{new EncoderImpl()}, decoder_factory_, config,
-                         redis_command_stats, scope, is_transaction_client, is_pubsub_client,drcb);
+                         redis_command_stats, scope, is_transaction_client, is_pubsub_client,is_blocking_client, drcb);
   client->initialize(auth_username, auth_password);
   return client;
 }

@@ -192,11 +192,13 @@ void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
   }
 
   // Check if there is an active transaction that needs to be closed.
-  if (transaction_.should_close_ ) {
+  if (transaction_.should_close_ || transaction_.is_blocking_command_) {
       //Close all upsteam clients and ref to pubsub callbacks if any
       transaction_.close();
       // decrement the reference to proxy filter
-      transaction_.setPubsubCallback(nullptr);
+      if (!transaction_.is_blocking_command_ ) {
+        transaction_.setPubsubCallback(nullptr);
+      }
   }
   
 }
@@ -251,7 +253,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   }
 
   // Check if there is an active transaction that needs to be closed.
-  if (transaction_.should_close_ && pending_requests_.empty()) {
+  if ((transaction_.should_close_ && pending_requests_.empty()) || (transaction_.is_blocking_command_ && pending_requests_.empty())) {
     if (transaction_.isSubscribedMode()){
       // decrement the reference to proxy filter
       auto pubsub_cb = dynamic_cast<PubsubCallbacks*>(transaction_.getPubsubCallback().get());

@@ -171,6 +171,8 @@ void ClientImpl::onConnectOrOpTimeout() {
 
   if (!is_blocking_client_) {
     connection_->close(Network::ConnectionCloseType::NoFlush);
+  } else {
+    ENVOY_LOG(debug, "Ignoring timeout for connection close for Blocking clients!")
   }
 }
 

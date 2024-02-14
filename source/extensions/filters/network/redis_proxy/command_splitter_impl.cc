@@ -48,7 +48,7 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
 AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    if (command_name == "pubsub") {
+    if (command_name == "pubsub" || command_name == "keys") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
     } else if (command_name == "script" || command_name == "flushall"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
@@ -454,12 +454,10 @@ bool areAllResponsesSame(const std::vector<Common::Redis::RespValuePtr>& respons
 void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
   ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
-  ENVOY_LOG(debug, "response: {}", value->toString()); 
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
         // Resize the vector to accommodate the new index
         pending_responses_.resize(reqindex + 1);
   }
-  ENVOY_LOG(debug,"response recived for index: '{}'", reqindex);
 
   if (value->type() == Common::Redis::RespType::Error){
     error_count_++;
@@ -472,7 +470,6 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
   if (--num_pending_responses_ == 0) {
     if (error_count_ > 0 ){
       if (!pending_responses_.empty()) {
-        ENVOY_LOG(debug, "Error Response received: '{}'", pending_responses_[response_index_]->toString());
         Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
         callbacks_.onResponse(std::move(response));
         pending_responses_.clear();
@@ -480,19 +477,17 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
     } else {
       updateStats(error_count_ == 0);
       if (!pending_responses_.empty()) {
-        if ( pending_requests_[reqindex].rediscommand_ == "pubsub" ) {
+        if ( pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "keys") {
               if ( pending_requests_[reqindex].redisarg_ == "numpat" ) {
                   int sum = 0; 
                   Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
                   response->type(Common::Redis::RespType::Integer);
                   for (auto& resp : pending_responses_) {
                     if (resp->type() == Common::Redis::RespType::Integer) {
-                    ENVOY_LOG(debug, "here 4");
                     sum += resp->asInteger(); // Add integer value to sum
                     }
                   }
                   response->asInteger() = sum;
-                  ENVOY_LOG(debug, "response: {}", response->toString()); 
                   callbacks_.onResponse(std::move(response));
                   pending_responses_.clear();
               } else {
@@ -501,23 +496,18 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   response->type(Common::Redis::RespType::Array);
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
-                  if ( pending_requests_[reqindex].redisarg_ == "channels" ) {
+                  if ( pending_requests_[reqindex].redisarg_ == "channels" || pending_requests_[reqindex].rediscommand_ == "keys") {
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array) {
                           if (resp->type() == Common::Redis::RespType::Array && resp->asArray().empty()) {
-                            ENVOY_LOG(debug, "here");
                             continue; // Skip empty arrays
                           }
                           innerResponse = std::move(*resp); // Move the content to innerResponse
-                          ENVOY_LOG(debug, "here 1 innerresp size {}", innerResponse.asArray().size());
                           if (innerResponse.type() == Common::Redis::RespType::Array) {
-                              ENVOY_LOG(debug, "here 1");
                               for (auto& elem : innerResponse.asArray()) {
-                                  ENVOY_LOG(debug, "here 1 res {}", elem.toString());
                                   response->asArray().emplace_back(std::move(elem));
                               }
                           } else {
-                              ENVOY_LOG(debug, "here 3");
                               // Append non-array responses directly
                               response->asArray().emplace_back(std::move(innerResponse));
                           }
@@ -528,16 +518,12 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array) {
                             innerResponse = std::move(*resp);
-                            ENVOY_LOG(debug, "numsub innerresp size {}", innerResponse.asArray().size());
                             for (size_t i = 0; i < innerResponse.asArray().size(); i += 2) {
                               auto& channelResp = innerResponse.asArray()[i];
                               auto& countResp = innerResponse.asArray()[i + 1];
-                              ENVOY_LOG(debug, "channel {}", channelResp.toString());
-                              ENVOY_LOG(debug, "count {}", countResp.toString());
                               auto channel = channelResp.asString();
                               auto count = countResp.asInteger();
                               subscriberCounts[channel] += count;
-                              ENVOY_LOG(debug, "subscriberCounts {}", subscriberCounts);
                           }
                         }
                       }
@@ -571,7 +557,6 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                       // Now you can get the string representation of the response
                       std::string responseString = response->toString();
                   }
-                  ENVOY_LOG(debug, "response: {}", response->toString()); 
                   callbacks_.onResponse(std::move(response));
                   pending_responses_.clear();
               }

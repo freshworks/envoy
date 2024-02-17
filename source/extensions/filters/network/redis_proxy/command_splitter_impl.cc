@@ -48,7 +48,7 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
 AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    if (command_name == "pubsub" || command_name == "keys") {
+    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
     } else if (command_name == "script" || command_name == "flushall"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
@@ -477,14 +477,27 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
     } else {
       updateStats(error_count_ == 0);
       if (!pending_responses_.empty()) {
-        if ( pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "keys") {
-              if ( pending_requests_[reqindex].redisarg_ == "numpat" ) {
+        if ( pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "keys" || pending_requests_[reqindex].rediscommand_ == "slowlog") {
+              if ((pending_requests_[reqindex].redisarg_ == "numpat" || pending_requests_[reqindex].redisarg_ == "len") && (pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "slowlog")) {
                   int sum = 0; 
                   Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
                   response->type(Common::Redis::RespType::Integer);
                   for (auto& resp : pending_responses_) {
                     if (resp->type() == Common::Redis::RespType::Integer) {
-                    sum += resp->asInteger(); // Add integer value to sum
+                      try {
+                          int integerValue = resp->asInteger(); // Convert to integer
+                          if (integerValue >= 0) {
+                              sum += integerValue; // Add integer value to sum if it's non-negative
+                          } else {
+                              // Handle negative integer value
+                              std::cerr << "Error: Negative integer value: " << integerValue << std::endl;
+                              ENVOY_LOG(error, "Error: Negative integer value: {}", integerValue);
+                          }
+                      } catch (const std::exception& e) {
+                          // Handle conversion error
+                          std::cerr << "Error converting integer: " << e.what() << std::endl;
+                          ENVOY_LOG(error, "Error converting integer: {}", e.what());
+                      }
                     }
                   }
                   response->asInteger() = sum;
@@ -496,7 +509,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   response->type(Common::Redis::RespType::Array);
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
-                  if ( pending_requests_[reqindex].redisarg_ == "channels" || pending_requests_[reqindex].rediscommand_ == "keys") {
+                  if ( pending_requests_[reqindex].redisarg_ == "channels" || pending_requests_[reqindex].rediscommand_ == "keys" || pending_requests_[reqindex].redisarg_ == "get") {
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array) {
                           if (resp->type() == Common::Redis::RespType::Array && resp->asArray().empty()) {
@@ -513,7 +526,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                           }
                         } 
                       }
-                  } else if ( pending_requests_[reqindex].redisarg_ == "numsub" ){
+                  } else if (pending_requests_[reqindex].redisarg_ == "numsub"){
                       std::unordered_map<std::string, int> subscriberCounts;
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array) {
@@ -556,6 +569,10 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
 
                       // Now you can get the string representation of the response
                       std::string responseString = response->toString();
+                  } else if ( pending_requests_[reqindex].redisarg_ == "reset" ) {
+                      if(areAllResponsesSame(pending_responses_)) {
+                        response = std::move(pending_responses_[0]);
+                      }
                   }
                   callbacks_.onResponse(std::move(response));
                   pending_responses_.clear();

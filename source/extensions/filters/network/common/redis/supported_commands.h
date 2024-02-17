@@ -64,6 +64,11 @@ struct SupportedCommands {
     }
 
   /**
+   * @return scan command
+   */
+  static const std::string& scan() { CONSTRUCT_ON_FIRST_USE(std::string, "scan"); }
+
+  /**
    * @return auth command
    */
   static const std::string& auth() { CONSTRUCT_ON_FIRST_USE(std::string, "auth"); }

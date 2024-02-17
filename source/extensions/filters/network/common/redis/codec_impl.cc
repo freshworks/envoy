@@ -303,17 +303,28 @@ bool RespValue::CompositeArray::operator==(const RespValue::CompositeArray& othe
 }
 
 const RespValue& RespValue::CompositeArray::CompositeArrayConstIterator::operator*() {
-  return first_ ? *command_ : array_[index_];
+    if (command_ && first_) {
+        return *command_;
+    } else if (!args_.empty() && argsIndex_ < args_.size()) {
+        return args_[argsIndex_];
+    } else {
+        return array_[index_];
+    }
 }
 
 RespValue::CompositeArray::CompositeArrayConstIterator&
 RespValue::CompositeArray::CompositeArrayConstIterator::operator++() {
-  if (first_) {
-    first_ = false;
-  } else {
-    ++index_;
-  }
-  return *this;
+    if (command_ && first_) {
+        first_ = false;
+    } else if (!args_.empty() && argsIndex_ < args_.size()) {
+        ++argsIndex_;
+        if (operation_ == "replace") {
+          ++index_;
+        }
+    } else {
+        ++index_;
+    }
+    return *this;
 }
 
 bool RespValue::CompositeArray::CompositeArrayConstIterator::operator!=(
@@ -325,12 +336,15 @@ bool RespValue::CompositeArray::CompositeArrayConstIterator::operator!=(
 const RespValue::CompositeArray::CompositeArrayConstIterator&
 RespValue::CompositeArray::CompositeArrayConstIterator::empty() {
   static const RespValue::CompositeArray::CompositeArrayConstIterator* instance =
-      new RespValue::CompositeArray::CompositeArrayConstIterator(nullptr, {}, 0, false);
+      new RespValue::CompositeArray::CompositeArrayConstIterator(nullptr, {}, {}, 0, false, "append");
   return *instance;
 }
 
 void DecoderImpl::decode(Buffer::Instance& data) {
   for (const Buffer::RawSlice& slice : data.getRawSlices()) {
+    // // Enable below commets only for debugging -> useful for debugging
+    // std::string slice_str(reinterpret_cast<const char*>(slice.mem_), slice.len_);
+    // ENVOY_LOG(warn, "Decoding slice: {}", slice_str);
     parseSlice(slice);
   }
 

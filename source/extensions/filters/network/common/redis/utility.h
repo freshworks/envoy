@@ -37,6 +37,17 @@ public:
   static const GetRequest& instance();
 };
 
+class ScanRequest : public Redis::RespValue {
+public:
+  ScanRequest();
+  static const ScanRequest& instance();
+};
+
+class ArgsGenerator : public Redis::RespValue {
+public:
+  ArgsGenerator(const std::vector<std::pair<RespType, std::string>>& args);
+};
+
 class SetRequest : public Redis::RespValue {
 public:
   SetRequest();

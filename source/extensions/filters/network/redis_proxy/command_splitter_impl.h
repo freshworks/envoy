@@ -123,13 +123,17 @@ protected:
   void onChildFailure(int32_t index);
 
   SplitCallbacks& callbacks_;
+  RouteSharedPtr route_;
 
   std::vector<Common::Redis::RespValuePtr> pending_responses_;
   std::vector<PendingRequest> pending_requests_;
+  Common::Redis::RespValueSharedPtr incoming_request_;
+  int32_t request_length_;
   int32_t num_pending_responses_;
   uint32_t error_count_{0};
   int32_t response_index_{0};
-
+  int32_t num_of_Shards_{0};
+  
 };
 
 /**
@@ -230,6 +234,27 @@ private:
   void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) override;
 
 };
+
+/**
+ * ScanRequest handles scanning the database of all shards sequentially.
+ */
+
+class ScanRequest : public NoKeyAllPrimaryRequest {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+
+private:
+  ScanRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : NoKeyAllPrimaryRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+
+  // RedisProxy::CommandSplitter::NoKeyAllPrimaryRequest
+  void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) override;
+};
+
 /**
  * SimpleRequest hashes the first argument as the key.
  */
@@ -452,6 +477,7 @@ private:
   CommandHandlerFactory<SplitKeysSumResultRequest> split_keys_sum_result_handler_;
   CommandHandlerFactory<TransactionRequest> transaction_handler_;
   CommandHandlerFactory<NoKeyRequest> nokeyrequest_handler_;
+  CommandHandlerFactory<ScanRequest> scanrequest_handler_;
   TrieLookupTable<HandlerDataPtr> handler_lookup_table_;
   InstanceStats stats_;
   TimeSource& time_source_;

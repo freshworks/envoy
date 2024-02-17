@@ -2,6 +2,7 @@
 
 #include "source/common/common/logger.h"
 #include "source/extensions/filters/network/common/redis/supported_commands.h"
+#include <string>
 
 namespace Envoy {
 namespace Extensions {
@@ -49,6 +50,20 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
 Common::Redis::Client::PoolRequest* makeNoKeyRequest(
     const RouteSharedPtr& route, int32_t shard_index, Common::Redis::RespValueConstSharedPtr incoming_request, ConnPool::PoolCallbacks& callbacks,
     Common::Redis::Client::Transaction& transaction) {
+  std::string key = std::string();
+  Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* req_instance =
+        dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(
+            route->upstream(key).get());
+  auto handler = req_instance->makeRequestNoKey(shard_index, ConnPool::RespVariant(incoming_request),
+                                                       callbacks, transaction);
+  return handler;
+}
+
+Common::Redis::Client::PoolRequest* 
+ makeScanRequest(const RouteSharedPtr& route, int32_t shard_index, 
+                const Common::Redis::RespValue& incoming_request, 
+                ConnPool::PoolCallbacks& callbacks,
+                Common::Redis::Client::Transaction& transaction) {
   std::string key = std::string();
   Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* req_instance =
         dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(
@@ -190,6 +205,212 @@ SplitRequestPtr SimpleRequest::create(Router& router,
   }
 
   return request_ptr;
+}
+
+SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                    SplitCallbacks& callbacks, CommandStats& command_stats,
+                                    TimeSource& time_source, bool delay_command_latency,
+                                    const StreamInfo::StreamInfo& stream_info) {
+  
+  // SCAN looks like: SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
+  // Ensure there are at least two args to the command or it cannot be scanned.
+  // Also the number of arguments should be in even number, otherwise command is invalid
+  if (incoming_request->asArray().size() < 2 || incoming_request->asArray().size() % 2 != 0) {
+    onWrongNumberOfArguments(callbacks, *incoming_request);
+    command_stats.error_.inc();
+    return nullptr;
+  }
+  std::string count = "1000";
+  std::string key = std::string();
+  size_t req_length = 2;
+  int32_t shard_idx = 0; 
+  int32_t numofRequests= 3;
+  std::vector<std::pair<Common::Redis::RespType, std::string>> args;
+
+  
+  // Getting the right cursor before sending request
+  // add log for ==4
+  std::string cursor = incoming_request->asArray()[1].asString();
+  if (cursor.length() > 4) {
+    std::string index = cursor.substr(cursor.length() - 4);
+    cursor = cursor.substr(0, cursor.length() - 4);
+    shard_idx = std::stoi(index);
+  }
+  args.emplace_back(Common::Redis::RespType::BulkString, cursor);
+
+  // Processing the incoming request to get the required details
+  // Here the count argument is not set hence we increment the request length and emplace in args
+  bool countFound = false;
+  // Iterate over the incoming request array to check for additional arguments
+  for (size_t i = 2; i < incoming_request->asArray().size(); i += 2) {
+      std::string arg = incoming_request->asArray()[i].asString();
+      if (arg == "match" || arg == "type") {
+          req_length += 2;
+          args.emplace_back(Common::Redis::RespType::BulkString, arg);
+          args.emplace_back(Common::Redis::RespType::BulkString, incoming_request->asArray()[i + 1].asString());
+      } else if (arg == "count") {
+          // Emplace count argument before match and type
+          if (!countFound) {
+              args.emplace_back(Common::Redis::RespType::BulkString, arg);
+              args.emplace_back(Common::Redis::RespType::BulkString, count);
+              countFound = true;
+              req_length += 2;
+          }
+      }
+  }
+
+  // If count argument is not found, add it with the default value
+  if (!countFound && incoming_request->asArray().size() == 2) {
+      args.emplace_back(Common::Redis::RespType::BulkString, "count");
+      args.emplace_back(Common::Redis::RespType::BulkString, count);
+      req_length += 2;
+  }
+
+  std::unique_ptr<ScanRequest> request_ptr{
+      new ScanRequest(callbacks, command_stats, time_source, delay_command_latency)};
+
+  request_ptr->request_length_ = req_length;
+
+  const std::vector<Common::Redis::RespValue> argsVector = Common::Redis::Utility::ArgsGenerator(args).asArray();
+            
+  Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
+  request_ptr->incoming_request_ = base_request;
+  const Common::Redis::RespValue get_scan_cmd(
+          base_request, Common::Redis::Utility::ScanRequest::instance(), argsVector, 1, req_length-1, "replace");
+  request_ptr->route_ = router.upstreamPool(key, stream_info);
+  // const auto route = router.upstreamPool(key, stream_info);
+  
+  if (request_ptr->route_) {
+    Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* instance =
+        dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(
+            request_ptr->route_->upstream(key).get());
+    
+    request_ptr->num_of_Shards_ = instance->getNumofRedisShards();
+    if (request_ptr->num_of_Shards_ == 0 ) {
+      callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+    }
+  }
+  else{
+    callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+  }
+
+  if (shard_idx > request_ptr->num_of_Shards_) {
+    shard_idx = 0;
+  } else {
+    numofRequests = request_ptr->num_of_Shards_ - shard_idx + 1; 
+  }
+
+  request_ptr->pending_requests_.reserve(numofRequests);
+  request_ptr->pending_responses_.reserve(numofRequests);
+  
+  for (int32_t i = request_ptr->num_of_Shards_-1; i >= shard_idx ; i--) {
+    request_ptr->pending_requests_.emplace_back(*request_ptr, i);
+  }
+  //keeping shard index and pending_requests_index same
+
+  PendingRequest& pending_request = request_ptr->pending_requests_.back();
+  if (request_ptr->route_) {
+    pending_request.handle_= makeScanRequest(request_ptr->route_, shard_idx, get_scan_cmd, pending_request, callbacks.transaction());
+  }
+
+  if (!pending_request.handle_) {
+    pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+    return nullptr;
+  }
+
+  return request_ptr;
+}
+
+void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index) {
+  // Request handled successfully
+  pending_requests_[index].handle_ = nullptr;
+  // Moving the response to pending response for doing validation later
+  // Incrementing the number of pending responses, it will drained during the validation
+  int64_t count = 1000;
+
+  // Checking the cursor and number of objects for child request
+  std::string cursor = value->asArray()[0].asString();
+  int64_t objects = value->asArray()[1].asArray().size();
+  std::string newCount = std::to_string(count - objects);
+
+  if (index >= static_cast<int32_t>(pending_responses_.size())) {
+        // Resize the vector to accommodate the new index
+        pending_responses_.resize(index + 1);
+  }
+  ENVOY_LOG(debug,"response recived for index: '{}'", index);
+
+  pending_responses_[index] = std::move(value);
+  ++num_pending_responses_;
+  bool send_response = true;
+
+  // 1) If cursor is zero, objects less than count
+  //  1.1) If No more shards to scan, there won't be any child request
+  //  1.2) If shards present, increment the shard index, update the count value, send child request
+  // 2) If cursor is not zero
+  //  2.1) If objects returned is equal to count, there won't be any child request
+
+  // cache type and match variable
+
+  if (cursor == "0" && objects < count && index+1 < num_of_Shards_) {
+    const std::vector<Common::Redis::RespValue> args = Common::Redis::Utility::ArgsGenerator({
+              {Common::Redis::RespType::BulkString, "0"},
+              {Common::Redis::RespType::BulkString, "count"},
+              {Common::Redis::RespType::BulkString, newCount}}).asArray();
+    const Common::Redis::RespValue get_scan_cmd(
+            incoming_request_, Common::Redis::Utility::ScanRequest::instance(), args, 1, request_length_-1, "replace");
+    pending_requests_.pop_back();
+    PendingRequest& pending_request = pending_requests_.back();
+    send_response = false;
+    pending_request.handle_= makeScanRequest(route_, index+1, get_scan_cmd, pending_request, callbacks_.transaction());
+    if (!pending_request.handle_) {
+      pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+    }
+  }
+
+  if (send_response) {
+    // Cleaning up the stale pending_requests_
+    for (auto& request : pending_requests_) {
+      request.handle_ = nullptr;
+    }
+    Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
+    response->type(Common::Redis::RespType::Array);
+
+    // Add the first element of the pending responses to the main response array
+    response->asArray().emplace_back(std::move(pending_responses_[index]->asArray()[0]));
+
+    // Create a temporary array to hold the nested elements
+    Common::Redis::RespValue tempArray;
+    tempArray.type(Common::Redis::RespType::Array);
+
+    // Iterate through the pending responses, skipping the first one
+    for (size_t i = 0; i < pending_responses_.size(); ++i) {
+      auto& resp = pending_responses_[i];
+      if (resp->type() == Common::Redis::RespType::Array) {
+          auto& res = resp->asArray()[1];
+          if (res.type() == Common::Redis::RespType::Array) {
+            // Iterate through the inner array and add its elements to the temporary array, starting from the second element
+            for (size_t k = 0; k < res.asArray().size(); ++k) {
+              tempArray.asArray().emplace_back(std::move(res.asArray()[k]));
+            }
+          }
+      }
+    }
+    pending_responses_.clear();
+
+    // Add the temporary array to the main response array as a nested array
+    response->asArray().emplace_back(std::move(tempArray));
+    if (response->type() == Common::Redis::RespType::Error){
+      ENVOY_LOG(debug,"recived error for index: '{}'", index);
+      Common::Redis::RespValuePtr response_t = std::move(response);
+      ENVOY_LOG(debug, "response: {}", response_t->toString());
+      callbacks_.onResponse(std::move(response_t));
+    } else {
+      updateStats(error_count_ == 0);
+      Common::Redis::RespValuePtr response_t = std::move(response);
+      ENVOY_LOG(debug, "response: {}", response_t->toString()); 
+      callbacks_.onResponse(std::move(response_t));
+    }
+  }
 }
 
 SplitRequestPtr EvalRequest::create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
@@ -704,8 +925,8 @@ InstanceImpl::InstanceImpl(RouterPtr&& router, Stats::Scope& scope, const std::s
     : router_(std::move(router)), simple_command_handler_(*router_),
       eval_command_handler_(*router_), mget_handler_(*router_), mset_handler_(*router_),
       split_keys_sum_result_handler_(*router_),
-      transaction_handler_(*router_),nokeyrequest_handler_(*router_), stats_{ALL_COMMAND_SPLITTER_STATS(
-                                          POOL_COUNTER_PREFIX(scope, stat_prefix + "splitter."))},
+      transaction_handler_(*router_),nokeyrequest_handler_(*router_),scanrequest_handler_(*router_), 
+      stats_{ALL_COMMAND_SPLITTER_STATS(POOL_COUNTER_PREFIX(scope, stat_prefix + "splitter."))},
       time_source_(time_source), fault_manager_(std::move(fault_manager)) {
   for (const std::string& command : Common::Redis::SupportedCommands::simpleCommands()) {
     addHandler(scope, stat_prefix, command, latency_in_micros, simple_command_handler_);
@@ -725,6 +946,9 @@ InstanceImpl::InstanceImpl(RouterPtr&& router, Stats::Scope& scope, const std::s
 
   addHandler(scope, stat_prefix, Common::Redis::SupportedCommands::mset(), latency_in_micros,
              mset_handler_);
+ 
+  addHandler(scope, stat_prefix, Common::Redis::SupportedCommands::scan(), latency_in_micros,
+             scanrequest_handler_);
 
   for (const std::string& command : Common::Redis::SupportedCommands::transactionCommands()) {
     addHandler(scope, stat_prefix, command, latency_in_micros, transaction_handler_);

@@ -113,7 +113,7 @@ protected:
       : SplitRequestBase(command_stats, time_source, delay_command_latency), callbacks_(callbacks) {
   }
   struct PendingRequest : public ConnPool::PoolCallbacks {
-    PendingRequest(AdministrationRequest& parent, uint32_t reqindex,int32_t shardindex, AdminRespHandlerType resphandletype) : parent_(parent), reqindex_(reqindex),shard_index_(shardindex),admin_resp_handler_type_(resphandletype){}
+    PendingRequest(AdministrationRequest& parent, uint32_t reqindex,int32_t shardindex, std::string rediscommand, std::string redisarg, AdminRespHandlerType resphandletype) : parent_(parent), reqindex_(reqindex),shard_index_(shardindex),rediscommand_(rediscommand),redisarg_(redisarg),admin_resp_handler_type_(resphandletype) {}
 
     // ConnPool::PoolCallbacks
     void onResponse(Common::Redis::RespValuePtr&& value) override {
@@ -142,6 +142,8 @@ protected:
     AdministrationRequest& parent_;
     const int32_t reqindex_;
     int32_t shard_index_=-1;
+    std::string rediscommand_;
+    std::string redisarg_;
     Common::Redis::Client::PoolRequest* handle_{};
     AdminRespHandlerType admin_resp_handler_type_ = AdminRespHandlerType::response_handler_none;
   };

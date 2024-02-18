@@ -101,6 +101,7 @@ Network::FilterFactoryCb RedisProxyFilterConfigFactory::createFilterFactoryFromP
         filter_config);
     auto pubsub_cb_ptr = std::make_shared<PubsubCallbacks>(proxy_filter_shared);
     proxy_filter_shared->setTransactionPubsubCallback(std::move(pubsub_cb_ptr));
+    ENVOY_LOG(debug, "redis: new proxy filter instance and creating pubsub callback");
     filter_manager.addReadFilter(proxy_filter_shared);
   };
 }

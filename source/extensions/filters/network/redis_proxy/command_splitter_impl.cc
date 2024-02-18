@@ -1043,7 +1043,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
   // For transaction type commands and blockingcommands , quit needs to be handled from within the command handler
-  if (command_name == Common::Redis::SupportedCommands::quit() && !callbacks.transaction().active_) {
+  if ((command_name == Common::Redis::SupportedCommands::quit() || command_name == Common::Redis::SupportedCommands::exit()) && !callbacks.transaction().active_) {
     callbacks.onQuit();
     return nullptr;
   }

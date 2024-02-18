@@ -50,7 +50,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
     if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
-    } else if (command_name == "script" || command_name == "flushall"){
+    } else if (command_name == "script" || command_name == "flushall" || command_name == "config"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
     }
   }else if (command_name == "publish"){
@@ -475,6 +475,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
         pending_responses_.clear();
       }
     } else {
+      bool positiveresponse = true;
       updateStats(error_count_ == 0);
       if (!pending_responses_.empty()) {
         if ( pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "keys" || pending_requests_[reqindex].rediscommand_ == "slowlog") {
@@ -489,20 +490,26 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                           if (integerValue >= 0) {
                               sum += integerValue; // Add integer value to sum if it's non-negative
                           } else {
+                              positiveresponse = false;
                               // Handle negative integer value
-                              std::cerr << "Error: Negative integer value: " << integerValue << std::endl;
                               ENVOY_LOG(error, "Error: Negative integer value: {}", integerValue);
+                              callbacks_.onResponse(Common::Redis::Utility::makeError(
+                                fmt::format("negative or unexpected response received from upstream")));
                           }
                       } catch (const std::exception& e) {
+                          positiveresponse = false;
                           // Handle conversion error
-                          std::cerr << "Error converting integer: " << e.what() << std::endl;
                           ENVOY_LOG(error, "Error converting integer: {}", e.what());
+                          callbacks_.onResponse(Common::Redis::Utility::makeError(
+                            fmt::format("negative or unexpected response received from upstream")));
                       }
                     }
                   }
-                  response->asInteger() = sum;
-                  callbacks_.onResponse(std::move(response));
-                  pending_responses_.clear();
+                  if (positiveresponse) {
+                    response->asInteger() = sum;
+                    callbacks_.onResponse(std::move(response));
+                    pending_responses_.clear();
+                  }
               } else {
                   Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
                   Common::Redis::RespValue innerResponse;
@@ -511,8 +518,8 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   // Iterate through pending_responses_ and append non-empty responses to the array
                   if ( pending_requests_[reqindex].redisarg_ == "channels" || pending_requests_[reqindex].rediscommand_ == "keys" || pending_requests_[reqindex].redisarg_ == "get") {
                       for (auto& resp : pending_responses_) {
-                        if (resp->type() == Common::Redis::RespType::Array) {
-                          if (resp->type() == Common::Redis::RespType::Array && resp->asArray().empty()) {
+                        if (resp->type() == Common::Redis::RespType::Array ) {
+                          if (resp->asArray().empty()) {
                             continue; // Skip empty arrays
                           }
                           innerResponse = std::move(*resp); // Move the content to innerResponse
@@ -521,7 +528,6 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                                   response->asArray().emplace_back(std::move(elem));
                               }
                           } else {
-                              // Append non-array responses directly
                               response->asArray().emplace_back(std::move(innerResponse));
                           }
                         } 
@@ -572,10 +578,20 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   } else if ( pending_requests_[reqindex].redisarg_ == "reset" ) {
                       if(areAllResponsesSame(pending_responses_)) {
                         response = std::move(pending_responses_[0]);
+                      } else {
+                        positiveresponse = false;
+                        ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->toString());
+                        callbacks_.onResponse(Common::Redis::Utility::makeError(
+                            fmt::format("all responses not same")));
+                        if (!pending_responses_.empty()) {    
+                          pending_responses_.clear();
+                        }
                       }
                   }
-                  callbacks_.onResponse(std::move(response));
-                  pending_responses_.clear();
+                  if (positiveresponse) {
+                    callbacks_.onResponse(std::move(response));
+                    pending_responses_.clear();
+                  }
               }
         }
       }

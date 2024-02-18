@@ -453,6 +453,8 @@ bool areAllResponsesSame(const std::vector<Common::Redis::RespValuePtr>& respons
 
 void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
+  const auto& redisarg = pending_requests_[reqindex].redisarg_;
+  const auto& rediscommand = pending_requests_[reqindex].rediscommand_;
   ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
         // Resize the vector to accommodate the new index
@@ -478,8 +480,8 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
       bool positiveresponse = true;
       updateStats(error_count_ == 0);
       if (!pending_responses_.empty()) {
-        if ( pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "keys" || pending_requests_[reqindex].rediscommand_ == "slowlog") {
-              if ((pending_requests_[reqindex].redisarg_ == "numpat" || pending_requests_[reqindex].redisarg_ == "len") && (pending_requests_[reqindex].rediscommand_ == "pubsub" || pending_requests_[reqindex].rediscommand_ == "slowlog")) {
+        if ( rediscommand == "pubsub" || rediscommand == "keys" || rediscommand == "slowlog") {
+              if ((redisarg == "numpat" || redisarg == "len") && (rediscommand == "pubsub" || rediscommand == "slowlog")) {
                   int sum = 0; 
                   Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
                   response->type(Common::Redis::RespType::Integer);
@@ -516,23 +518,19 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   response->type(Common::Redis::RespType::Array);
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
-                  if ( pending_requests_[reqindex].redisarg_ == "channels" || pending_requests_[reqindex].rediscommand_ == "keys" || pending_requests_[reqindex].redisarg_ == "get") {
+                  if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get") {
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array ) {
                           if (resp->asArray().empty()) {
                             continue; // Skip empty arrays
                           }
-                          innerResponse = std::move(*resp); // Move the content to innerResponse
-                          if (innerResponse.type() == Common::Redis::RespType::Array) {
-                              for (auto& elem : innerResponse.asArray()) {
-                                  response->asArray().emplace_back(std::move(elem));
-                              }
-                          } else {
-                              response->asArray().emplace_back(std::move(innerResponse));
+                          innerResponse = *resp; 
+                          for (auto& elem : innerResponse.asArray()) {
+                            response->asArray().emplace_back(std::move(elem));
                           }
                         } 
                       }
-                  } else if (pending_requests_[reqindex].redisarg_ == "numsub"){
+                  } else if (redisarg == "numsub"){
                       std::unordered_map<std::string, int> subscriberCounts;
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array) {
@@ -575,7 +573,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
 
                       // Now you can get the string representation of the response
                       std::string responseString = response->toString();
-                  } else if ( pending_requests_[reqindex].redisarg_ == "reset" ) {
+                  } else if ( redisarg == "reset" ) {
                       if(areAllResponsesSame(pending_responses_)) {
                         response = std::move(pending_responses_[0]);
                       } else {

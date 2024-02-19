@@ -37,7 +37,6 @@ public:
       : type_(RespType::CompositeArray) {
     new (&composite_array_) CompositeArray(std::move(base_array), command, start, end);
   }
-
   virtual ~RespValue() { cleanup(); }
 
   RespValue(const RespValue& other);                // copy constructor
@@ -112,7 +111,6 @@ public:
     const RespValue* command_;
     uint64_t start_;
     uint64_t end_;
-    std::string operation_;
   };
 
   /**

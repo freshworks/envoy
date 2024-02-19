@@ -64,26 +64,6 @@ const AskingRequest& AskingRequest::instance() {
   return *instance;
 }
 
-ScanRequest::ScanRequest() {
-  type(RespType::BulkString);
-  asString() = "scan";
-}
-
-const ScanRequest& ScanRequest::instance() {
-  static const ScanRequest* instance = new ScanRequest{};
-  return *instance;
-}
-
-ArgsGenerator::ArgsGenerator(const std::vector<std::pair<RespType, std::string>>& args) {
-  std::vector<RespValue> values(args.size());
-  for (size_t i = 0; i < values.size(); ++i) {
-    values[i].type(args[i].first);
-    values[i].asString() = args[i].second;
-  }
-  type(RespType::Array);
-  asArray().swap(values);
-}
-
 GetRequest::GetRequest() {
   type(RespType::BulkString);
   asString() = "get";

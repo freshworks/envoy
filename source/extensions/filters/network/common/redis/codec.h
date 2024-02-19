@@ -35,13 +35,7 @@ public:
   RespValue(std::shared_ptr<RespValue> base_array, const RespValue& command, const uint64_t start,
             const uint64_t end)
       : type_(RespType::CompositeArray) {
-    new (&composite_array_) CompositeArray(std::move(base_array), command, {}, start, end, "append");
-  }
-
-  RespValue(std::shared_ptr<RespValue> base_array, const RespValue& command, const std::vector<RespValue> args, const uint64_t start,
-            const uint64_t end, const std::string operation)
-      : type_(RespType::CompositeArray) {
-    new (&composite_array_) CompositeArray(std::move(base_array), command, args, start, end, operation);
+    new (&composite_array_) CompositeArray(std::move(base_array), command, start, end);
   }
 
   virtual ~RespValue() { cleanup(); }
@@ -74,16 +68,6 @@ public:
       ASSERT(end < base_array_->asArray().size());
     }
 
-    CompositeArray(std::shared_ptr<RespValue> base_array, const RespValue& command, const std::vector<RespValue> args,
-                   const uint64_t start, const uint64_t end, const std::string operation)
-        : base_array_(std::move(base_array)), command_(&command), args_(args), start_(start), end_(end), operation_(operation) {
-      ASSERT(command.type() == RespType::BulkString || command.type() == RespType::SimpleString);
-      ASSERT(base_array_ != nullptr);
-      ASSERT(base_array_->type() == RespType::Array);
-      ASSERT(start <= end);
-      // ASSERT(end < base_array_->asArray().size());
-    }
-
     const RespValue* command() const { return command_; }
     const std::shared_ptr<RespValue>& baseArray() const { return base_array_; }
 
@@ -97,9 +81,9 @@ public:
      *       the `for (const RespValue& value : array)` idiom.
      */
     struct CompositeArrayConstIterator {
-      CompositeArrayConstIterator(const RespValue* command, const std::vector<RespValue>& array, const std::vector<RespValue>& args,
-                                  uint64_t index, bool first, const std::string operation)
-          : command_(command), array_(array), args_(args), index_(index), first_(first), argsIndex_(0), operation_(operation) {}
+      CompositeArrayConstIterator(const RespValue* command, const std::vector<RespValue>& array,
+                                  uint64_t index, bool first)
+          : command_(command), array_(array), index_(index), first_(first) {}
       const RespValue& operator*();
       CompositeArrayConstIterator& operator++();
       bool operator!=(const CompositeArrayConstIterator& rhs) const;
@@ -107,29 +91,25 @@ public:
 
       const RespValue* command_;
       const std::vector<RespValue>& array_;
-      const std::vector<RespValue>& args_;
       uint64_t index_;
       bool first_;
-      uint64_t argsIndex_;
-      const std::string operation_;
     };
 
     CompositeArrayConstIterator begin() const noexcept {
       return (command_ && base_array_)
-                 ? CompositeArrayConstIterator{command_, base_array_->asArray(), args_, start_, true, operation_}
+                 ? CompositeArrayConstIterator{command_, base_array_->asArray(), start_, true}
                  : CompositeArrayConstIterator::empty();
     }
 
     CompositeArrayConstIterator end() const noexcept {
       return (command_ && base_array_)
-                 ? CompositeArrayConstIterator{command_, base_array_->asArray(), args_, end_ + 1, false, operation_}
+                 ? CompositeArrayConstIterator{command_, base_array_->asArray(), end_ + 1, false}
                  : CompositeArrayConstIterator::empty();
     }
 
   private:
     std::shared_ptr<RespValue> base_array_;
     const RespValue* command_;
-    std::vector<RespValue> args_;
     uint64_t start_;
     uint64_t end_;
     std::string operation_;

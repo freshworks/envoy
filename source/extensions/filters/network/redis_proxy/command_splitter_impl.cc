@@ -61,7 +61,7 @@ Common::Redis::Client::PoolRequest* makeNoKeyRequest(
 
 Common::Redis::Client::PoolRequest* 
  makeScanRequest(const RouteSharedPtr& route, int32_t shard_index, 
-                const Common::Redis::RespValue& incoming_request, 
+                Common::Redis::RespValueConstSharedPtr incoming_request, 
                 ConnPool::PoolCallbacks& callbacks,
                 Common::Redis::Client::Transaction& transaction) {
   std::string key = std::string();
@@ -220,12 +220,16 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     command_stats.error_.inc();
     return nullptr;
   }
-  std::string count = "2";
+  // std::string count = "2";
+  std::string Counter = "count";
   std::string key = std::string();
   size_t req_length = 2;
   int32_t shard_idx = 0; 
   int32_t numofRequests= 3;
   std::vector<std::pair<Common::Redis::RespType, std::string>> args;
+
+  Common::Redis::RespValueSharedPtr request = std::make_shared<Common::Redis::RespValue>();
+    request->type(Common::Redis::RespType::Array);
 
   
   // Getting the right cursor before sending request
@@ -236,49 +240,68 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     cursor = cursor.substr(0, cursor.length() - 4);
     shard_idx = std::stoi(index);
   }
-  args.emplace_back(Common::Redis::RespType::BulkString, cursor);
 
-  // Processing the incoming request to get the required details
-  // Here the count argument is not set hence we increment the request length and emplace in args
-  bool countFound = false;
-  // Iterate over the incoming request array to check for additional arguments
-  for (size_t i = 2; i < incoming_request->asArray().size(); i += 2) {
+  Common::Redis::RespValue cstr;
+  cstr.type(Common::Redis::RespType::BulkString);
+  cstr.asString() = std::move(cursor);
+
+  Common::Redis::RespValue count;
+  count.type(Common::Redis::RespType::BulkString);
+  count.asString() = std::move("2");
+
+  size_t arraySize = incoming_request->asArray().size();
+  for (size_t i = 0; i < arraySize; ++i) {
       std::string arg = incoming_request->asArray()[i].asString();
-      if (arg == "match" || arg == "type") {
-          req_length += 2;
-          args.emplace_back(Common::Redis::RespType::BulkString, arg);
-          args.emplace_back(Common::Redis::RespType::BulkString, incoming_request->asArray()[i + 1].asString());
-      } else if (arg == "count") {
-          // Emplace count argument before match and type
-          if (!countFound) {
-              args.emplace_back(Common::Redis::RespType::BulkString, arg);
-              args.emplace_back(Common::Redis::RespType::BulkString, count);
-              countFound = true;
-              req_length += 2;
+      Common::Redis::RespValue currentElement;
+      currentElement.type(Common::Redis::RespType::BulkString);
+
+      if (i == 1) {
+          request->asArray().emplace_back(std::move(cstr));
+      } else {
+          // Emplace the current argument
+          currentElement.asString() = std::move(arg);
+          request->asArray().emplace_back(currentElement);
+          // request->asArray().emplace_back(std::move(arg));
+
+          // Check if the argument requires a value
+          if (arg == "count" || arg == "match" || arg == "type") {
+              Common::Redis::RespValue nextElement;
+              nextElement.type(Common::Redis::RespType::BulkString);
+              nextElement.asString() = std::move(request->asArray()[i + 1].asString()) ;
+
+              // Setting custom count value for "count" argument
+              if (arg == "count") {
+                  request->asArray().emplace_back(std::move(count));
+              } else {
+                  // Emplace the value for the argument
+                  request->asArray().emplace_back(std::move(nextElement));
+              }
+              ++i; // Increment i to avoid iterating over the value
+              ++arraySize; // Increase array size to accommodate the additional element
           }
       }
   }
 
   // If count argument is not found, add it with the default value
-  if (!countFound && incoming_request->asArray().size() == 2) {
-      args.emplace_back(Common::Redis::RespType::BulkString, "count");
-      args.emplace_back(Common::Redis::RespType::BulkString, count);
-      req_length += 2;
+  if (incoming_request->asArray().size() == 2) {
+      Common::Redis::RespValue countElement;
+      countElement.type(Common::Redis::RespType::BulkString);
+      countElement.asString() = std::move("count");
+      request->asArray().emplace_back(countElement);
+
+      Common::Redis::RespValue defaultCountElement;
+      defaultCountElement.type(Common::Redis::RespType::BulkString);
+      request->asArray().emplace_back(std::move(count));
   }
 
   std::unique_ptr<ScanRequest> request_ptr{
       new ScanRequest(callbacks, command_stats, time_source, delay_command_latency)};
 
   request_ptr->request_length_ = req_length;
-
-  const std::vector<Common::Redis::RespValue> argsVector = Common::Redis::Utility::ArgsGenerator(args).asArray();
             
   Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
   request_ptr->incoming_request_ = base_request;
-  const Common::Redis::RespValue get_scan_cmd(
-          base_request, Common::Redis::Utility::ScanRequest::instance(), argsVector, 1, req_length-1, "replace");
   request_ptr->route_ = router.upstreamPool(key, stream_info);
-  // const auto route = router.upstreamPool(key, stream_info);
   
   if (request_ptr->route_) {
     Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* instance =
@@ -310,7 +333,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   PendingRequest& pending_request = request_ptr->pending_requests_.back();
   if (request_ptr->route_) {
-    pending_request.handle_= makeScanRequest(request_ptr->route_, shard_idx, get_scan_cmd, pending_request, callbacks.transaction());
+    pending_request.handle_= makeScanRequest(request_ptr->route_, shard_idx, request, pending_request, callbacks.transaction());
   }
 
   if (!pending_request.handle_) {
@@ -351,21 +374,21 @@ void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t i
 
   // cache type and match variable
 
-  if (cursor == "0" && objects < count && index+1 < num_of_Shards_) {
-    const std::vector<Common::Redis::RespValue> args = Common::Redis::Utility::ArgsGenerator({
-              {Common::Redis::RespType::BulkString, "0"},
-              {Common::Redis::RespType::BulkString, "count"},
-              {Common::Redis::RespType::BulkString, newCount}}).asArray();
-    const Common::Redis::RespValue get_scan_cmd(
-            incoming_request_, Common::Redis::Utility::ScanRequest::instance(), args, 1, request_length_-1, "replace");
-    pending_requests_.pop_back();
-    PendingRequest& pending_request = pending_requests_.back();
-    send_response = false;
-    pending_request.handle_= makeScanRequest(route_, index+1, get_scan_cmd, pending_request, callbacks_.transaction());
-    if (!pending_request.handle_) {
-      pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
-    }
-  }
+  // if (cursor == "0" && objects < count && index+1 < num_of_Shards_) {
+  //   const std::vector<Common::Redis::RespValue> args = Common::Redis::Utility::ArgsGenerator({
+  //             {Common::Redis::RespType::BulkString, "0"},
+  //             {Common::Redis::RespType::BulkString, "count"},
+  //             {Common::Redis::RespType::BulkString, newCount}}).asArray();
+  //   const Common::Redis::RespValue get_scan_cmd(
+  //           incoming_request_, Common::Redis::Utility::ScanRequest::instance(), args, 1, request_length_-1, "replace");
+  //   pending_requests_.pop_back();
+  //   PendingRequest& pending_request = pending_requests_.back();
+  //   send_response = false;
+  //   pending_request.handle_= makeScanRequest(route_, index+1, get_scan_cmd, pending_request, callbacks_.transaction());
+  //   if (!pending_request.handle_) {
+  //     pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+  //   }
+  // }
 
   if (send_response) {
     // Cleaning up the stale pending_requests_

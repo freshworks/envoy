@@ -127,8 +127,7 @@ protected:
 
   std::vector<Common::Redis::RespValuePtr> pending_responses_;
   std::vector<PendingRequest> pending_requests_;
-  Common::Redis::RespValueSharedPtr incoming_request_;
-  int32_t request_length_;
+  Common::Redis::RespValue request_;
   int32_t num_pending_responses_;
   uint32_t error_count_{0};
   int32_t response_index_{0};

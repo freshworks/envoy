@@ -65,7 +65,8 @@ private:
 class RedisProxyFilterConfigFactory
     : public Common::FactoryBase<
           envoy::extensions::filters::network::redis_proxy::v3::RedisProxy,
-          envoy::extensions::filters::network::redis_proxy::v3::RedisProtocolOptions> {
+          envoy::extensions::filters::network::redis_proxy::v3::RedisProtocolOptions>,
+          public Logger::Loggable<Logger::Id::redis>{
 public:
   RedisProxyFilterConfigFactory() : FactoryBase(NetworkFilterNames::get().RedisProxy, true) {}
 

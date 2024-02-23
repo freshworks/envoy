@@ -48,7 +48,7 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
 AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog") {
+    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
     } else if (command_name == "script" || command_name == "flushall" || command_name == "config"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
@@ -58,28 +58,35 @@ AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   }
   return responseHandlerType;
 }
-int32_t getShardIndex(const std::string command, int32_t numofRequests,int32_t numofRedisShards) {
+int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t redisShardsCount) {
   int32_t shard_index = -1;
   //This need optimisation , generate random seed only once per thread
   srand(time(nullptr));
   
-  if (Common::Redis::SupportedCommands::blockingCommands().contains(command) && numofRequests == 1) {
+  if (Common::Redis::SupportedCommands::blockingCommands().contains(command) && requestsCount == 1) {
     return shard_index;
-  }else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && numofRequests == 1 ){
+  }else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && requestsCount == 1 ){
     // Send request to a random shard so that we donot allways send to the same shard
-    shard_index = rand() % numofRedisShards;
+    shard_index = rand() % redisShardsCount;
   }
   return shard_index;
 }
 
+bool checkIfAdminCommandSupported(const std::string command,const std::string subcommand){
+  if (command == "client" && subcommand != "list"){
+    return false;
+  }else {
+    return true;
+  }
+}
 
-int32_t getNumberofRequests(const std::string command_name, int32_t numofRedisShards) {
-  int32_t numofRequests = 1;
+int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount) {
+  int32_t requestsCount = 1;
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    numofRequests = numofRedisShards;
+    requestsCount = redisShardsCount;
   }
 
-  return numofRequests;
+  return requestsCount;
 }
 
 Common::Redis::Client::PoolRequest* makeNoKeyRequest(
@@ -330,13 +337,18 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
   std::unique_ptr<mgmtNoKeyRequest> request_ptr{
       new mgmtNoKeyRequest(callbacks, command_stats, time_source, delay_command_latency)};
   std::string key = std::string();
-  int32_t numofRedisShards=0;
-  int32_t numofRequests=1;
+  int32_t redisShardsCount=0;
+  int32_t requestsCount=1;
   int32_t shard_index=0;
   bool iserror = false;
 
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
   std::string firstarg = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());
+  if (!checkIfAdminCommandSupported(command_name,firstarg)){
+    ENVOY_LOG(debug, "this admin command is not supported: '{}'", incoming_request->toString());
+      callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
+      return nullptr;
+  }
 
   const auto& route = router.upstreamPool(key, stream_info);
 
@@ -344,9 +356,9 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
     Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* instance =
         dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(
             route->upstream(key).get());
-    numofRedisShards = instance->getNumofRedisShards();
-    if (numofRedisShards <= 0){
-      ENVOY_LOG(debug, "numofRedisShards not found: '{}'", incoming_request->toString());
+    redisShardsCount = instance->getRedisShardsCount();
+    if (redisShardsCount <= 0){
+      ENVOY_LOG(debug, "redisShardsCount not found: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       return nullptr;
     }
@@ -356,8 +368,8 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
   }
-  numofRequests = getNumberofRequests(command_name,numofRedisShards);
-  request_ptr->num_pending_responses_ = numofRequests;
+  requestsCount = getRequestCount(command_name,redisShardsCount);
+  request_ptr->num_pending_responses_ = requestsCount;
   request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_);
 
     // Identify the response type based on the subcommand , needs to be written very clean 
@@ -365,12 +377,12 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
     // For now keeping it ugly like this and assuming we only add support for script comand.
   Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
   //reserve memory for list of responses if we have more than 1 request
-  if(numofRequests >1){
+  if(requestsCount >1){
     request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
   }
     
   for (int32_t i = 0; i < request_ptr->num_pending_responses_; i++) {
-    shard_index=getShardIndex(command_name,numofRequests,numofRedisShards);
+    shard_index=getShardIndex(command_name,requestsCount,redisShardsCount);
     if(shard_index < 0){
       shard_index = i;
     }
@@ -480,7 +492,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
       bool positiveresponse = true;
       updateStats(error_count_ == 0);
       if (!pending_responses_.empty()) {
-        if ( rediscommand == "pubsub" || rediscommand == "keys" || rediscommand == "slowlog") {
+        if ( rediscommand == "pubsub" || rediscommand == "keys" || rediscommand == "slowlog"|| rediscommand == "client") {
               if ((redisarg == "numpat" || redisarg == "len") && (rediscommand == "pubsub" || rediscommand == "slowlog")) {
                   int sum = 0; 
                   Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
@@ -518,7 +530,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   response->type(Common::Redis::RespType::Array);
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
-                  if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get") {
+                  if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get" ) {
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array ) {
                           if (resp->asArray().empty()) {
@@ -530,7 +542,14 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                           }
                         } 
                       }
-                  } else if (redisarg == "numsub"){
+                  }else if (rediscommand == "client" && redisarg == "list") {
+                    for (auto& resp : pending_responses_) {
+                        if (resp->type() == Common::Redis::RespType::BulkString) {
+                          innerResponse = *resp;
+                          response->asArray().emplace_back(std::move(innerResponse));
+                        } 
+                      }
+                  }else if (redisarg == "numsub"){
                       std::unordered_map<std::string, int> subscriberCounts;
                       for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::Array) {
@@ -717,7 +736,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
    std::unique_ptr<PubSubRequest> request_ptr{
       new PubSubRequest(callbacks, command_stats, time_source, delay_command_latency)};
   std::string key = std::string();
-  int32_t numofRedisShards=0;
+  int32_t redisShardsCount=0;
   int32_t shard_index=0;
   
   
@@ -726,9 +745,9 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* instance =
         dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(
             route->upstream(key).get());
-    numofRedisShards = instance->getNumofRedisShards();
-    if (numofRedisShards <= 0){
-      ENVOY_LOG(debug, "numofRedisShards not found: '{}'", incoming_request->toString());
+    redisShardsCount = instance->getRedisShardsCount();
+    if (redisShardsCount <= 0){
+      ENVOY_LOG(debug, "redisShardsCount not found: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       return nullptr;
     }
@@ -761,7 +780,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       transaction.clients_.resize(1);
       transaction.enterSubscribedMode();
       if(transaction.subscribed_client_shard_index_ == -1){
-        transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,numofRedisShards);
+        transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
       }
       transaction.start();
     }else{
@@ -783,6 +802,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     return nullptr;
   }
+  //Should we set to true irrespective of connpool handler returned
   transaction.connection_established_=true;
   transaction.should_close_ = false;
   return request_ptr;

@@ -196,6 +196,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
   if (event == Network::ConnectionEvent::RemoteClose ||
       event == Network::ConnectionEvent::LocalClose) {
 
+    std::string eventTypeStr = (event == Network::ConnectionEvent::RemoteClose ? "RemoteClose" : "LocalClose");
     Upstream::reportUpstreamCxDestroy(host_, event);
     if (!pending_requests_.empty()) {
       Upstream::reportUpstreamCxDestroyActiveRequest(host_, event);
@@ -203,10 +204,14 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
         putOutlierEvent(Upstream::Outlier::Result::LocalOriginConnectFailed);
       }
     }
+    // If client is Pubsub handle the upstream close event such that downstream must also be closed.
     if (pending_requests_.empty() && is_pubsub_client_) {
       host_->cluster().trafficStats()->upstream_cx_destroy_with_active_rq_.inc();
-      if (pubsub_cb_ != nullptr){
+      ENVOY_LOG(debug,"Pubsub Client Connection close event received:'{}'",eventTypeStr);
+      if ((pubsub_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
+        ENVOY_LOG(debug,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
         pubsub_cb_->onFailure();
+        pubsub_cb_.reset();
       }
     }
 
@@ -221,7 +226,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     }
 
     connect_or_op_timer_->disableTimer();
-    // If client is Pubsub handle the upstream close event such that downstream must also be closed.
+    
   } else if (event == Network::ConnectionEvent::Connected) {
     connected_ = true;
     ASSERT(!pending_requests_.empty());

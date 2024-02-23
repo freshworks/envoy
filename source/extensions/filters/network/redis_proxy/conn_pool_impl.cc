@@ -123,9 +123,9 @@ InstanceImpl::makeBlockingClientRequest(int32_t shard_index, const std::string& 
 }
 
 
-int32_t InstanceImpl::getNumofRedisShards() {
+int32_t InstanceImpl::getRedisShardsCount() {
   
-  return tls_->getTyped<ThreadLocalPool>().getNumofRedisShards();
+  return tls_->getTyped<ThreadLocalPool>().getRedisShardsCount();
 }
 
 InstanceImpl::ThreadLocalPool::ThreadLocalPool(
@@ -300,6 +300,7 @@ InstanceImpl::ThreadLocalPool::threadLocalActiveClient(Upstream::HostConstShared
     } else {
       client = std::make_unique<ThreadLocalActiveClient>(*this);
       client->host_ = host;
+      ENVOY_LOG(debug,"New Threadlocal active client created for:'{}'",host->address()->asString());
       client->redis_client_ =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
                                  auth_username_, auth_password_, false,false,false,nullptr);
@@ -387,9 +388,9 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     
   }else {
 
-    Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getallHosts(nullptr);
+    Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
     if (!hosts) {
-      ENVOY_LOG(debug, "host not found:");
+      ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");
       onRequestCompleted();
       return nullptr;
     }
@@ -457,9 +458,9 @@ InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant
     return nullptr;
   }
 
-  Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getallHosts(nullptr);
+  Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
   if (!hosts) {
-    ENVOY_LOG(debug, "host not found:");
+    ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");
     onRequestCompleted();
     return nullptr;
   }
@@ -470,6 +471,7 @@ InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant
   uint32_t client_idx = 0;
   // If there is an active transaction, establish a new connection if necessary.
   if (transaction.active_) {
+    ENVOY_LOG(error,"Ideally transanction client should not be used for admin commands ERROR!!!");
     client_idx = transaction.current_client_idx_;
     if ((!transaction.connection_established_ && transaction.is_subscribed_mode_) || (!transaction.connection_established_ && transaction.is_blocking_command_)) {
       transaction.clients_[client_idx] =
@@ -504,12 +506,12 @@ InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant
   }
 }
 
-int32_t InstanceImpl::ThreadLocalPool::getNumofRedisShards() {
+int32_t InstanceImpl::ThreadLocalPool::getRedisShardsCount() {
 
   int32_t numofRedisShards =0;
-  Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getallHosts(nullptr);
+  Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
   if (!hosts) {
-    ENVOY_LOG(debug, "host not found:");
+    ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");
     return numofRedisShards;
   }
   for (const auto& host : *hosts) {

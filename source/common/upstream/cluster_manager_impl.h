@@ -628,7 +628,6 @@ private:
 
       HostConstSharedPtr chooseHost(LoadBalancerContext* context);
       HostConstSharedPtr peekAnotherHost(LoadBalancerContext* context);
-      HostConstVectorSharedPtr getallHosts(LoadBalancerContext* context);
 
       ThreadLocalClusterManagerImpl& parent_;
       PrioritySetImpl priority_set_;

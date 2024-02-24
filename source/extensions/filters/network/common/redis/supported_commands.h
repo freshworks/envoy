@@ -95,6 +95,11 @@ struct SupportedCommands {
   static const absl::flat_hash_set<std::string>& allShardCommands() {
     CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "pubsub", "keys", "slowlog", "config");
     }
+  
+  /**
+   * @return scan command
+   */
+  static const std::string& scan() { CONSTRUCT_ON_FIRST_USE(std::string, "scan"); }
 
   /**
    * @return auth command

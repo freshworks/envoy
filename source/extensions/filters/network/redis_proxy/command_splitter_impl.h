@@ -164,6 +164,7 @@ protected:
 
 };
 
+// TODO: The base class and scan request class should be removed during the optimization
 class ScanRequestBase: public SplitRequestBase {
 public:
   ~ScanRequestBase() override;

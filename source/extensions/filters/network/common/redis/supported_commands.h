@@ -32,7 +32,8 @@ struct SupportedCommands {
         "watch", "zadd", "zcard", "zcount", "zincrby", "zlexcount", "zpopmin", "zpopmax", "zrange",
         "zrangebylex", "zrangebyscore", "zrank", "zrem", "zremrangebylex", "zremrangebyrank",
         "zremrangebyscore", "zrevrange", "zrevrangebylex", "zrevrangebyscore", "zrevrank", "zscan",
-        "zscore", "rpoplpush");
+        "zscore", "rpoplpush", "smove", "sunion", "sdiff", "sinter", "sinterstore", "zunionstore", 
+        "zinterstore", "pfmerge", "georadius", "georadiusbymember");
   }
 
   /**
@@ -148,7 +149,9 @@ struct SupportedCommands {
                            "pexpire", "pexpireat", "pfadd", "psetex", "restore", "rpop", "rpush",
                            "rpushx", "sadd", "set", "setbit", "setex", "setnx", "setrange", "spop",
                            "srem", "zadd", "zincrby", "touch", "zpopmin", "zpopmax", "zrem",
-                           "zremrangebylex", "zremrangebyrank", "zremrangebyscore", "unlink", "rpoplpush");
+                           "zremrangebylex", "zremrangebyrank", "zremrangebyscore", "unlink", "rpoplpush", 
+                           "smove", "sinterstore", "zunionstore", "zinterstore", "pfmerge",
+                           "georadius", "georadiusbymember");
   }
 
   static bool isReadCommand(const std::string& command) {

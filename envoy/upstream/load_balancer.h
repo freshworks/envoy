@@ -134,7 +134,10 @@ public:
    *        context information. Load balancers should be written to assume that context information
    *        is missing and use sensible defaults.
    */
-  virtual HostConstVectorSharedPtr getallHosts(LoadBalancerContext* context) PURE;
+  virtual HostConstVectorSharedPtr getAllHosts(LoadBalancerContext* context){
+    (void)context;  // Mark the context parameter as unused to avoid compiler warnings
+    return nullptr; // Return nullptr so that only required class can override this interface implementation
+  };
 
   /**
    * Returns a best effort prediction of the next host to be picked, or nullptr if not predictable.

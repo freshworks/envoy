@@ -214,23 +214,13 @@ void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
 }
 
 void ProxyFilter::onPubsubConnClose(){
-  ASSERT(!pending_requests_.empty());
-
-  // decrement the reference to proxy filter
-  auto pubsub_cb = dynamic_cast<PubsubCallbacks*>(transaction_.getPubsubCallback().get());
-  pubsub_cb->clearParent();
-  
-  transaction_.setPubsubCallback(nullptr);
-
-  //Close all upsteam clients and ref to pubsub callbacks if any
-  transaction_.close();
-
+  ASSERT(pending_requests_.empty());
+//Close the downstream connection on upstream connection close 
   callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
-
-  
+  //This callback is called only on remote close , so no need to close the client connnection again
+  transaction_.connection_established_=false;
   connection_quit_ = false;
   return;
-
 }
 
 void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePtr&& value) {
@@ -263,7 +253,9 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   }
 
   // Check if there is an active transaction that needs to be closed.
-  if ((transaction_.should_close_ && pending_requests_.empty()) || (transaction_.is_blocking_command_ && pending_requests_.empty())) {
+  if ((transaction_.should_close_ && pending_requests_.empty()) || 
+      (transaction_.is_blocking_command_ && pending_requests_.empty()) ||
+      (transaction_.isSubscribedMode() && transaction_.should_close_)) {
  
     transaction_.close();
     //Not sure if for transaction mode also we need to close the connection in downstream

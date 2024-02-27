@@ -95,7 +95,6 @@ private:
     Upstream::HostConstSharedPtr peekAnotherHost(Upstream::LoadBalancerContext*) override {
       return nullptr;
     }
-    Upstream::HostConstVectorSharedPtr getallHosts(Upstream::LoadBalancerContext*)  override { return nullptr; }
 
     absl::optional<Upstream::SelectedPoolAndConnection>
     selectExistingConnection(Upstream::LoadBalancerContext* context, const Upstream::Host& host,

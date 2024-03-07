@@ -1133,12 +1133,14 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
                                           SplitCallbacks& callbacks, Event::Dispatcher& dispatcher,
                                           const StreamInfo::StreamInfo& stream_info) {
   if ((request->type() != Common::Redis::RespType::Array) || request->asArray().empty()) {
+    ENVOY_LOG(debug,"invalid request - not an array or empty");
     onInvalidRequest(callbacks);
     return nullptr;
   }
 
   for (const Common::Redis::RespValue& value : request->asArray()) {
     if (value.type() != Common::Redis::RespType::BulkString) {
+      ENVOY_LOG(debug,"invalid request - not an array of bulk strings");
       onInvalidRequest(callbacks);
       return nullptr;
     }
@@ -1156,6 +1158,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
   if (command_name == Common::Redis::SupportedCommands::auth()) {
     if (request->asArray().size() < 2) {
+      ENVOY_LOG(debug,"invalid request - not enough arguments for auth command");
       onInvalidRequest(callbacks);
       return nullptr;
     }
@@ -1215,6 +1218,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
         && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)){
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
+    ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);
     return nullptr;
   }
@@ -1223,6 +1227,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   auto handler = handler_lookup_table_.find(command_name.c_str());
   if (handler == nullptr && !callbacks.transaction().isSubscribedMode()) {
     stats_.unsupported_command_.inc();
+    ENVOY_LOG(debug, "unsupported command '{}'", request->asArray()[0].asString());
     callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("unsupported command '{}'", request->asArray()[0].asString())));
     return nullptr;

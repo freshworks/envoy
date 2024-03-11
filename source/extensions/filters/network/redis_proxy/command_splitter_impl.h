@@ -404,6 +404,7 @@ private:
       : ScanRequestBase(callbacks, command_stats, time_source, delay_command_latency) {}
 
   void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shardindex) override;
+  void onChildError(Common::Redis::RespValuePtr&& value);
 };
 
 /**

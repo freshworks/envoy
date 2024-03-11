@@ -927,6 +927,22 @@ void addBulkString(Common::Redis::RespValue& requestArray, const std::string& va
     requestArray.asArray().emplace_back(std::move(element));
 }
 
+void ScanRequest::onChildError(Common::Redis::RespValuePtr&& value) {
+  // Setting null pointer to all pending requests
+  for (auto& request : pending_requests_) {
+    request.handle_ = nullptr;
+  }
+  // Clearing pending responses
+  if (!pending_responses_.empty()) {
+    pending_responses_.clear();
+  }
+
+  Common::Redis::RespValuePtr response_t = std::move(value);
+  ENVOY_LOG(debug, "response: {}", response_t->toString());
+  callbacks_.onResponse(std::move(response_t));
+
+}
+
 SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                     SplitCallbacks& callbacks, CommandStats& command_stats,
                                     TimeSource& time_source, bool delay_command_latency,
@@ -1060,18 +1076,8 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shard_index) {
   
   if (value->type() == Common::Redis::RespType::Error){
-      // Cleaning up the stale pending_requests_ before sending error response
-      for (auto& request : pending_requests_) {
-        request.handle_ = nullptr;
-      }
-      // Clearing pending responses
-      if (!pending_responses_.empty()) {
-        pending_responses_.clear();
-      }
       ENVOY_LOG(debug,"recived error for index: '{}'", shard_index);
-      Common::Redis::RespValuePtr response_t = std::move(value);
-      ENVOY_LOG(debug, "response: {}", response_t->toString());
-      callbacks_.onResponse(std::move(response_t));
+      onChildError(std::move(value));
   } else {
     // Request handled successfully
     pending_requests_[index].handle_ = nullptr;
@@ -1122,7 +1128,7 @@ void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t i
       PendingRequest& pending_request = pending_requests_.back();
       pending_request.handle_= makeScanRequest(route_, pending_request.shard_index_, child_request, pending_request, callbacks_.transaction());
       if (!pending_request.handle_) {
-        pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+        onChildError(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       }
     }
 

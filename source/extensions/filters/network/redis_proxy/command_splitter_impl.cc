@@ -1060,10 +1060,17 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shard_index) {
   
   if (value->type() == Common::Redis::RespType::Error){
+      // Cleaning up the stale pending_requests_ before sending error response
+      for (auto& request : pending_requests_) {
+        request.handle_ = nullptr;
+      }
+      // Clearing pending responses
+      if (!pending_responses_.empty()) {
+        pending_responses_.clear();
+      }
       ENVOY_LOG(debug,"recived error for index: '{}'", shard_index);
       Common::Redis::RespValuePtr response_t = std::move(value);
       ENVOY_LOG(debug, "response: {}", response_t->toString());
-      pending_responses_.clear();
       callbacks_.onResponse(std::move(response_t));
   } else {
     // Request handled successfully
@@ -1120,7 +1127,7 @@ void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t i
     }
 
     if (send_response) {
-      // Cleaning up the stale pending_requests_
+      // Setting null to the stale pending_requests_
       for (auto& request : pending_requests_) {
         request.handle_ = nullptr;
       }

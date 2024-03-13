@@ -188,6 +188,7 @@ protected:
 
     ScanRequestBase& parent_;
     const int32_t index_;
+    int32_t count_;
     int32_t shard_index_=-1;
     Common::Redis::Client::PoolRequest* handle_{};
   };
@@ -201,8 +202,9 @@ protected:
   std::vector<Common::Redis::RespValuePtr> pending_responses_;
   std::vector<PendingRequest> pending_requests_;
   Common::Redis::RespValue request_;
-  int32_t num_pending_responses_;
+  int32_t num_pending_responses_{0};
   uint32_t error_count_{0};
+  std::string resp_obj_count_;
   int32_t response_index_{0};
   int32_t num_of_Shards_{0};
   
@@ -402,6 +404,7 @@ private:
       : ScanRequestBase(callbacks, command_stats, time_source, delay_command_latency) {}
 
   void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shardindex) override;
+  void onChildError(Common::Redis::RespValuePtr&& value);
 };
 
 /**

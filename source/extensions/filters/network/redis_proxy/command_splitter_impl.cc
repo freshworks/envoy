@@ -927,6 +927,22 @@ void addBulkString(Common::Redis::RespValue& requestArray, const std::string& va
     requestArray.asArray().emplace_back(std::move(element));
 }
 
+void ScanRequest::onChildError(Common::Redis::RespValuePtr&& value) {
+  // Setting null pointer to all pending requests
+  for (auto& request : pending_requests_) {
+    request.handle_ = nullptr;
+  }
+  // Clearing pending responses
+  if (!pending_responses_.empty()) {
+    pending_responses_.clear();
+  }
+
+  Common::Redis::RespValuePtr response_t = std::move(value);
+  ENVOY_LOG(debug, "response: {}", response_t->toString());
+  callbacks_.onResponse(std::move(response_t));
+
+}
+
 SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                     SplitCallbacks& callbacks, CommandStats& command_stats,
                                     TimeSource& time_source, bool delay_command_latency,
@@ -943,8 +959,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   std::string key = std::string();
   int32_t shard_idx = 0; 
-  int32_t numofRequests= 3;
-  std::string count = "2";
+  int32_t numofRequests;
 
   Common::Redis::RespValue requestArray;
   requestArray.type(Common::Redis::RespType::Array);
@@ -966,8 +981,15 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
   addBulkString(requestArray, "SCAN");
   addBulkString(requestArray, cursor);
 
+  std::unique_ptr<ScanRequest> request_ptr{
+      new ScanRequest(callbacks, command_stats, time_source, delay_command_latency)};
+
+  // TODO : This value should be configurable through protobuf
+  // Setting default count value to 1000
+  request_ptr->resp_obj_count_ = "1000";
+
   // Iterate over the arguments modify count if necessary
-  // We are setting 1000 as the default count value
+  // We are setting 1000 as the default count value if the incoming request has more than that
   for (size_t i = 2; i < incoming_request->asArray().size(); ++i) {
       std::string arg = incoming_request->asArray()[i].asString();
       addBulkString(requestArray, arg);
@@ -975,7 +997,14 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
       // Check if the argument requires a value
       if (requiresValue(arg)) {
           if (arg == "count") {
-            addBulkString(requestArray, count);
+            std::string count = incoming_request->asArray()[++i].asString();
+            if (std::stoi(count) < 1000) {
+              addBulkString(requestArray, count);
+              request_ptr->resp_obj_count_ = count;
+            } else {
+               // Override with default value only when the count value is greater than 1000
+              addBulkString(requestArray, request_ptr->resp_obj_count_);
+            }
             ++i;
           } else {
             // If the current argument requires a value, add it to the request array
@@ -988,11 +1017,8 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
   // If the "count" argument is not found, add it with the default value
   if (incoming_request->asArray().size() == 2) {
       addBulkString(requestArray, "count");
-      addBulkString(requestArray, count);
+      addBulkString(requestArray, request_ptr->resp_obj_count_);
   }
-
-  std::unique_ptr<ScanRequest> request_ptr{
-      new ScanRequest(callbacks, command_stats, time_source, delay_command_latency)};
 
   // caching the request and route for making child request from response
   request_ptr->request_ = requestArray;
@@ -1014,20 +1040,24 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   // If shard index is some random value, we are setting the shard to 0 to avoid crashing
   // This ensures scan always returns value.
-  if (shard_idx > request_ptr->num_of_Shards_) {
+  // If the current shard index is zero, we assume that we may need to send request to all the shards
+  if (shard_idx > request_ptr->num_of_Shards_ || shard_idx == 0) {
     shard_idx = 0;
+    numofRequests = request_ptr->num_of_Shards_;
   } else {
-    numofRequests = request_ptr->num_of_Shards_ - shard_idx + 1; 
+  // If we receive shard index other than zero, we assume that the request should be sent to current shard and all the remaining next shards.
+    numofRequests = request_ptr->num_of_Shards_ - shard_idx;
   }
 
   // Reserving memory for pending_requests and pending_responses
-  // By default we are setting it to 3.
   request_ptr->pending_requests_.reserve(numofRequests);
   request_ptr->pending_responses_.reserve(numofRequests);
 
-  //keeping shard index and pending_requests_index same
-  for (int32_t i = request_ptr->num_of_Shards_-1; i >= shard_idx ; i--) {
-    request_ptr->pending_requests_.emplace_back(*request_ptr, i, i);
+  // Pending requests will be popped from the back so, pending request index is incremented and and shard index is decremented
+  //pi => Pending request index
+  //si => Shard index
+  for(int32_t pi = 0, si = request_ptr->num_of_Shards_-1; pi < numofRequests && si >= shard_idx; pi++, si-- ) {
+    request_ptr->pending_requests_.emplace_back(*request_ptr, pi, si);
   }
 
   PendingRequest& pending_request = request_ptr->pending_requests_.back();
@@ -1044,120 +1074,123 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 }
 
 void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shard_index) {
-  // Request handled successfully
-  pending_requests_[index].handle_ = nullptr;
-  // Moving the response to pending response for doing validation later
-  // Incrementing the number of pending responses, it will drained during the validation
-  int64_t count = 2;
+  
+  if (value->type() == Common::Redis::RespType::Error){
+      ENVOY_LOG(debug,"recived error for index: '{}'", shard_index);
+      onChildError(std::move(value));
+  } else {
+    // Request handled successfully
+    pending_requests_[index].handle_ = nullptr;
+    // Moving the response to pending   response for doing validation later
+    // Incrementing the number of pending responses, it will drained during the validation
+    int64_t count = std::stoi(resp_obj_count_);
 
-  // Checking the cursor and number of objects for child request
-  std::string cursor = value->asArray()[0].asString();
-  int64_t objects = value->asArray()[1].asArray().size();
-  std::string newCount = std::to_string(count - objects);
+    // Checking the cursor and number of objects for child request
+    std::string cursor = value->asArray()[0].asString();
+    int64_t objectsReceived = value->asArray()[1].asArray().size();
+    std::string objectsRemaining = std::to_string(count - objectsReceived);
 
-  // Resizing pending repsonses array based on the incoming reponses
-  if (index >= static_cast<int32_t>(pending_responses_.size())) {
-        // Resize the vector to accommodate the new index
-        pending_responses_.resize(index + 1);
-  }
-  ENVOY_LOG(debug,"response recived for index: '{}'", shard_index);
-
-  pending_responses_[index] = std::move(value);
-  ++num_pending_responses_;
-  bool send_response = true;
-
-  // Following conditions needs to be satisfied for making a child request
-  // 1) If cursor is zero, objects less than count
-  //  1.1) If No more shards to scan, there won't be any child request
-  //  1.2) If shards present, increment the shard index, update the count value, set cursor to 0 and send child request
-  // 2) If cursor is not zero
-  //  2.1) If objects returned is equal to count, there won't be any child request
-
-  if (cursor == "0" && objects < count && shard_index+1 < num_of_Shards_) {
-    // Popping the pending request, not needed anymore
-    pending_requests_.pop_back();
-    send_response = false;
-    // Cursor is always zero for child request
-    // Create the child request based on the original request
-    Common::Redis::RespValue child_request = request_;
-
-    // Set the cursor to "0" in the child request
-    child_request.asArray()[1].asString() = "0";
-    // Setting the new count for the child request
-    for (size_t i = 2; i < child_request.asArray().size() - 1; ++i) {
-      if (child_request.asArray()[i].asString() == "count") {
-          child_request.asArray()[i + 1].asString() = newCount;
-          break; // Stop searching after updating count
-      }
+    // Resizing pending repsonses array based on the incoming reponses
+    if (index >= static_cast<int32_t>(pending_responses_.size())) {
+          // Resize the vector to accommodate the new index
+          pending_responses_.resize(index + 1);
     }
-    ENVOY_LOG(debug, "Child request: {}", request_.toString());
-    PendingRequest& pending_request = pending_requests_.back();
-    pending_request.handle_= makeScanRequest(route_, shard_index+1, child_request, pending_request, callbacks_.transaction());
-    if (!pending_request.handle_) {
-      pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
-    }
-  }
+    ENVOY_LOG(debug,"response recived for index: '{}'", shard_index);
 
-  if (send_response) {
-    // Cleaning up the stale pending_requests_
-    for (auto& request : pending_requests_) {
-      request.handle_ = nullptr;
-    }
-    Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
-    response->type(Common::Redis::RespType::Array);
+    pending_responses_[num_pending_responses_++] = std::move(value);
+    bool send_response = true;
 
-    // Process cursor -> Append cursor with shard index so that next request will come to corresponding shard
-    // if cursor is non zero, there are few elements remaining in the shard so set the index to the same shard
-    // if cursor is zero, but the count is satisfied, the next request should go to next shard. so increament the index 
-    if (cursor != "0" ) {
-      std::string indexStr = std::to_string(shard_index);
-      cursor += std::string(4 - indexStr.length(), '0') + indexStr;
-    }
-    if (cursor == "0" && shard_index+1 < num_of_Shards_) {
-      std::string nextIndexStr = std::to_string(shard_index+1);
-      cursor += std::string(4 - nextIndexStr.length(), '0') + nextIndexStr;
-    }
+    // Following conditions needs to be satisfied for making a child request
+    // 1) If cursor is zero, objects less than count
+    //  1.1) If No more shards to scan, there won't be any child request
+    //  1.2) If shards present, increment the shard index, update the count value, set cursor to 0 and send child request
+    // 2) If cursor is not zero
+    //  2.1) If objects returned is equal to count, there won't be any child request
 
-    // Response array will be created in the following format
-    // [0] -> latest scan cursor for next iteration
-    // [1] -> array for returned objects from multiple pending responses
+    if (cursor == "0" && objectsReceived < count && shard_index+1 < num_of_Shards_) {
+      // Popping the pending request, not needed anymore
+      pending_requests_.pop_back();
+      send_response = false;
+      // Cursor is always zero for child request
+      // Create the child request based on the original request
+      Common::Redis::RespValue child_request = request_;
 
-    // Setting the cursor from last response, since that is the latest one
-    // We need iterate from here in the next request.
-    Common::Redis::RespValue cstr;
-    cstr.type(Common::Redis::RespType::BulkString);
-    cstr.asString() = std::move(cursor);
-    response->asArray().emplace_back(std::move(cstr));
-
-    // Creating a temporary array to hold the objects from multiple pending responses
-    Common::Redis::RespValue objArray;
-    objArray.type(Common::Redis::RespType::Array);
-
-    // Iterate through the pending responses
-    for (size_t i = 0; i < pending_responses_.size(); ++i) {
-      if (pending_responses_[i] != nullptr) {
-        auto& resp = pending_responses_[i];
-        if (resp->type() == Common::Redis::RespType::Array) {
-            auto& obj = resp->asArray()[1];
-            if (obj.type() == Common::Redis::RespType::Array) {
-              // Iterate through the inner objects array and add its elements to the object array
-              for (size_t k = 0; k < obj.asArray().size(); ++k) {
-                objArray.asArray().emplace_back(std::move(obj.asArray()[k]));
-              }
-            }
+      // Set the cursor to "0" in the child request
+      child_request.asArray()[1].asString() = "0";
+      // Setting the new count for the child request
+      for (size_t i = 2; i < child_request.asArray().size() - 1; ++i) {
+        if (child_request.asArray()[i].asString() == "count") {
+            child_request.asArray()[i + 1].asString() = objectsRemaining;
+            break; // Stop searching after updating count
         }
       }
+      ENVOY_LOG(debug, "Child request: {}", request_.toString());
+      PendingRequest& pending_request = pending_requests_.back();
+      pending_request.handle_= makeScanRequest(route_, pending_request.shard_index_, child_request, pending_request, callbacks_.transaction());
+      if (!pending_request.handle_) {
+        onChildError(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+      }
     }
-    pending_responses_.clear();
-    // Add the object array to the main response array as a nested array
-    response->asArray().emplace_back(std::move(objArray));
 
-    if (response->type() == Common::Redis::RespType::Error){
-      ENVOY_LOG(debug,"recived error for index: '{}'", shard_index);
-      Common::Redis::RespValuePtr response_t = std::move(response);
-      ENVOY_LOG(debug, "response: {}", response_t->toString());
-      callbacks_.onResponse(std::move(response_t));
-    } else {
+    if (send_response) {
+      // Setting null to the stale pending_requests_
+      for (auto& request : pending_requests_) {
+        request.handle_ = nullptr;
+      }
+      Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
+      response->type(Common::Redis::RespType::Array);
+
+      // Process cursor -> Append cursor with shard index so that next request will come to corresponding shard
+      // if cursor is non zero, there are few elements remaining in the shard so set the index to the same shard
+      // if cursor is zero, but the count is satisfied, the next request should go to next shard. so increament the index 
+      if (cursor != "0" ) {
+        std::string indexStr = std::to_string(shard_index);
+        cursor += std::string(4 - indexStr.length(), '0') + indexStr;
+      }
+      if (cursor == "0" && shard_index+1 < num_of_Shards_) {
+        std::string nextIndexStr = std::to_string(shard_index+1);
+        cursor += std::string(4 - nextIndexStr.length(), '0') + nextIndexStr;
+      }
+
+      // Response array will be created in the following format
+      // [0] -> latest scan cursor for next iteration
+      // [1] -> array for returned objects from multiple pending responses
+
+      // Setting the cursor from last response, since that is the latest one
+      // We need iterate from here in the next request.
+      Common::Redis::RespValue cstr;
+      cstr.type(Common::Redis::RespType::BulkString);
+      cstr.asString() = std::move(cursor);
+      response->asArray().emplace_back(std::move(cstr));
+
+      // Creating a temporary array to hold the objects from multiple pending responses
+      Common::Redis::RespValue objArray;
+      objArray.type(Common::Redis::RespType::Array);
+
+      // Iterate through the pending responses
+      for (size_t i = 0; i < pending_responses_.size(); ++i) {
+        if (pending_responses_[i] != nullptr) {
+          auto& resp = pending_responses_[i];
+          if (resp->type() == Common::Redis::RespType::Array) {
+              auto& obj = resp->asArray()[1];
+              if (obj.type() == Common::Redis::RespType::Array) {
+                // Iterate through the inner objects array and add its elements to the object array
+                for (size_t k = 0; k < obj.asArray().size(); ++k) {
+                  objArray.asArray().emplace_back(std::move(obj.asArray()[k]));
+                }
+              } else {
+                ENVOY_LOG(debug, "received non array response for the objects while scanning");
+              }
+          } else {
+            ENVOY_LOG(debug, "received non array response for the scan command");
+          }
+        } else {
+          ENVOY_LOG(debug, "received null pointer as response from one of the shard");
+        }
+      }
+      pending_responses_.clear();
+      // Add the object array to the main response array as a nested array
+      response->asArray().emplace_back(std::move(objArray));
       updateStats(error_count_ == 0);
       Common::Redis::RespValuePtr response_t = std::move(response);
       ENVOY_LOG(debug, "response: {}", response_t->toString()); 

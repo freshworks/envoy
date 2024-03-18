@@ -88,13 +88,13 @@ struct SupportedCommands {
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& adminNokeyCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall","publish","pubsub", "keys", "slowlog", "config","client");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall","publish","pubsub", "keys", "slowlog", "config","client","info");
   }
     /**
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& allShardCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "pubsub", "keys", "slowlog", "config","client");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "pubsub", "keys", "slowlog", "config","client","info");
     }
 
   /**
@@ -136,6 +136,11 @@ struct SupportedCommands {
    * @return quit command
    */
   static const std::string& exit() { CONSTRUCT_ON_FIRST_USE(std::string, "exit"); }
+
+    /**
+   * @return info command
+   */
+  static const std::string& info() { CONSTRUCT_ON_FIRST_USE(std::string, "info"); }
 
   /**
    * @return commands which alters the state of redis

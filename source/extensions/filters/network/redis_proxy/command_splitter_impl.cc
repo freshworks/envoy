@@ -48,7 +48,7 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
 AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client") {
+    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client" || command_name == "info") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
     } else if (command_name == "script" || command_name == "flushall" || command_name == "config"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
@@ -341,9 +341,15 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
   int32_t requestsCount=1;
   int32_t shard_index=0;
   bool iserror = false;
+  std::string firstarg = std::string();
 
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
-  std::string firstarg = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());
+  if (incoming_request->asArray().size() > 1) {
+    firstarg = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());
+  }else{
+    firstarg = "";
+  }
+  
   if (!checkIfAdminCommandSupported(command_name,firstarg)){
     ENVOY_LOG(debug, "this admin command is not supported: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
@@ -463,6 +469,33 @@ bool areAllResponsesSame(const std::vector<Common::Redis::RespValuePtr>& respons
     return true;
 }
 
+void parseInfoResponse(const std::string& inforesponse,Common::Redis::Utility::InfoCmdResponseProcessor& infoProcessor) {
+    std::istringstream inputStream(inforesponse);
+    std::string line;
+
+    while (std::getline(inputStream, line)) {
+        // Ignore lines that start with '#'
+        if (!line.empty() && line[0] == '#') {
+            continue;
+        }
+
+        std::size_t pos = line.find(':');
+        if (pos != std::string::npos) {
+            std::string key = line.substr(0, pos);
+            std::string value = line.substr(pos + 1);
+
+            // Trim whitespace from both ends
+            key.erase(key.find_last_not_of(" \n\r\t") + 1);
+            value.erase(0, value.find_first_not_of(" \n\r\t"));
+            infoProcessor.processInfoCmdResponse(key, value);
+
+        }
+    }
+
+    return;
+}
+
+
 void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
   const auto& redisarg = pending_requests_[reqindex].redisarg_;
@@ -492,6 +525,32 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
       bool positiveresponse = true;
       updateStats(error_count_ == 0);
       if (!pending_responses_.empty()) {
+        if ( rediscommand == "info"){
+          Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
+          response->type(Common::Redis::RespType::BulkString);
+          Envoy::Extensions::NetworkFilters::Common::Redis::Utility::InfoCmdResponseProcessor infoProcessor;
+          for (auto& resp : pending_responses_) {
+            if (resp->type() == Common::Redis::RespType::BulkString) {
+              parseInfoResponse(resp->asString(),infoProcessor);
+              //Add proxy filters connection stats to the response
+              auto downstreamstats = callbacks_.transaction().getDownstreamCallback()->getDownStreamMetrics();
+      
+              infoProcessor.updateInfoCmdResponseString("total_connections_received",std::to_string(downstreamstats->downstream_cx_total_));
+              
+            } else {
+              positiveresponse = false;
+              ENVOY_LOG(debug, "Error: Unexpected response Type , expected bulkstring");
+            } 
+          }
+          if (!positiveresponse) {
+            callbacks_.onResponse(Common::Redis::Utility::makeError(
+                  fmt::format("unexpected response type received from upstream")));
+          }else {
+            response->asString() += infoProcessor.getInfoCmdResponseString();
+            callbacks_.onResponse(std::move(response));
+          }
+          pending_responses_.clear();
+        }
         if ( rediscommand == "pubsub" || rediscommand == "keys" || rediscommand == "slowlog"|| rediscommand == "client") {
               if ((redisarg == "numpat" || redisarg == "len") && (rediscommand == "pubsub" || rediscommand == "slowlog")) {
                   int sum = 0; 
@@ -1215,8 +1274,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
-  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
-        && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)){
+  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)&& (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) && (command_name != Common::Redis::SupportedCommands::info())){
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);

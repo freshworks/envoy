@@ -159,7 +159,7 @@ private:
   bool is_transaction_client_;
   bool is_pubsub_client_=false;
   bool is_blocking_client_=false;
-  std::shared_ptr<Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> pubsub_cb_=nullptr;
+  std::shared_ptr<Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_cb_=nullptr;
 };
 
 class ClientFactoryImpl : public ClientFactory {

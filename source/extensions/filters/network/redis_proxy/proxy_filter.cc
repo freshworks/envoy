@@ -121,13 +121,13 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
       pending_requests_.pop_front();
     }
     ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
-  // As pubsubcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
+  // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
   // decrement the reference to proxy filter
-  auto pubsub_cb = dynamic_cast<PubsubCallbacks*>(transaction_.getPubsubCallback().get());
-  if (pubsub_cb != nullptr){
-    pubsub_cb->clearParent();
+  auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
+  if (downstream_cb != nullptr){
+    downstream_cb->clearParent();
   }
-  transaction_.setPubsubCallback(nullptr);
+  transaction_.setDownstreamCallback(nullptr);
     transaction_.close();
   }
 }
@@ -149,7 +149,6 @@ void ProxyFilter::onAuth(PendingRequest& request, const std::string& password) {
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
-    //PubsubCallbacks::getInstance(this);
   } else {
     response->type(Common::Redis::RespType::Error);
     response->asString() = "ERR invalid password";
@@ -170,12 +169,10 @@ void ProxyFilter::onAuth(PendingRequest& request, const std::string& username,
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
-    //PubsubCallbacks::getInstance(this);
   } else if (username == config_->downstream_auth_username_ && checkPassword(password)) {
     response->type(Common::Redis::RespType::SimpleString);
     response->asString() = "OK";
     connection_allowed_ = true;
-    //PubsubCallbacks::getInstance(this);
   } else {
     response->type(Common::Redis::RespType::Error);
     response->asString() = "WRONGPASS invalid username-password pair";
@@ -270,7 +267,6 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
 
 Network::FilterStatus ProxyFilter::onData(Buffer::Instance& data, bool) {
   TRY_NEEDS_AUDIT {
-    //PubsubCallbacks::getInstance(this);
     decoder_->decode(data);
     return Network::FilterStatus::Continue;
   }

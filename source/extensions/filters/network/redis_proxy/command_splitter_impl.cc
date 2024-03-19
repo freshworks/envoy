@@ -1105,7 +1105,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
         dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(
             request_ptr->route_->upstream(key).get());
 
-    request_ptr->num_of_Shards_ = instance->getNumofRedisShards();
+    request_ptr->num_of_Shards_ = instance->getRedisShardsCount();
     if (request_ptr->num_of_Shards_ == 0 ) {
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     }

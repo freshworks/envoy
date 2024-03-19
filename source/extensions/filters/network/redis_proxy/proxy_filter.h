@@ -15,6 +15,7 @@
 #include "source/extensions/common/dynamic_forward_proxy/dns_cache.h"
 #include "source/extensions/filters/network/common/redis/codec.h"
 #include "source/extensions/filters/network/redis_proxy/command_splitter.h"
+#include "source/extensions/filters/network/common/redis/utility.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -106,8 +107,22 @@ public:
   Common::Redis::Client::Transaction& transaction() { return transaction_; }
   void onAsyncResponse(Common::Redis::RespValuePtr&& value);
   void onPubsubConnClose();
-  void setTransactionPubsubCallback(std::shared_ptr<Common::Redis::Client::DirectCallbacks> callback) {
-        transaction_.setPubsubCallback(std::move(callback));
+  void setDownStreamCallbacks(std::shared_ptr<Common::Redis::Client::DirectCallbacks> callback) {
+        transaction_.setDownstreamCallback(std::move(callback));
+  }
+  std::unique_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics> getDownStreamInfo() {
+    std::unique_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics> downstream_metrics = std::make_unique<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics>();
+    downstream_metrics->downstream_rq_total_ = config_->stats_.downstream_rq_total_.value();
+    downstream_metrics->downstream_cx_drain_close_ = config_->stats_.downstream_cx_drain_close_.value();
+    downstream_metrics->downstream_cx_protocol_error_ = config_->stats_.downstream_cx_protocol_error_.value();
+    downstream_metrics->downstream_cx_rx_bytes_total_ = config_->stats_.downstream_cx_rx_bytes_total_.value();
+    downstream_metrics->downstream_cx_total_ = config_->stats_.downstream_cx_total_.value();
+    downstream_metrics->downstream_cx_tx_bytes_total_ = config_->stats_.downstream_cx_tx_bytes_total_.value();
+    downstream_metrics->downstream_cx_active_ = config_->stats_.downstream_cx_active_.value();
+    downstream_metrics->downstream_cx_rx_bytes_buffered_ = config_->stats_.downstream_cx_rx_bytes_buffered_.value();
+    downstream_metrics->downstream_cx_tx_bytes_buffered_ = config_->stats_.downstream_cx_tx_bytes_buffered_.value();
+    downstream_metrics->downstream_rq_active_ = config_->stats_.downstream_rq_active_.value();
+    return downstream_metrics;
   }
 
 private:
@@ -153,32 +168,37 @@ private:
   bool connection_quit_;
 };
 
-class PubsubCallbacks : public Common::Redis::Client::DirectCallbacks{
+class DownStreamCallbacks : public Common::Redis::Client::DirectCallbacks{
 
 private:
     std::shared_ptr<Envoy::Extensions::NetworkFilters::RedisProxy::ProxyFilter> parent_;
 
 
 public:
-    PubsubCallbacks( std::shared_ptr<Envoy::Extensions::NetworkFilters::RedisProxy::ProxyFilter> parent) : parent_(parent) {}
+    DownStreamCallbacks( std::shared_ptr<Envoy::Extensions::NetworkFilters::RedisProxy::ProxyFilter> parent) : parent_(parent) {}
 
     void clearParent() {
         parent_.reset();  // This releases the shared_ptr's ownership and decrements the reference count.
     }
     /*
-    ~PubsubCallbacks() {
+    ~DownStreamCallbacks() {
       if (parent_) {
-        parent_->setTransactionPubsubCallback(nullptr);  // Deregister the callback
+        parent_->setDownstreamCallback(nullptr);  // Deregister the callback
       }
       parent_=nullptr;
     }
     */
-    void onDirectResponse(Common::Redis::RespValuePtr&& value) override {
+    void sendResponseDownstream(Common::Redis::RespValuePtr&& value) override {
         parent_->onAsyncResponse(std::move(value));
     }
 
     void onFailure() override {
         parent_->onPubsubConnClose();
+    }
+
+    virtual std::unique_ptr<Common::Redis::Utility::DownStreamMetrics> getDownStreamMetrics() override {
+      return  parent_->getDownStreamInfo();
+      
     }
 };
 

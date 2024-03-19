@@ -47,6 +47,7 @@ envoy_cc_library(
     name = "client_interface",
     hdrs = ["client.h"],
     deps = [
+        ":utility_interface",
         ":codec_lib",
         ":redis_command_stats_lib",
         "//envoy/upstream:cluster_manager_interface",

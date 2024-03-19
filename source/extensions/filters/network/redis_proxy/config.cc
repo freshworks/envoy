@@ -99,8 +99,8 @@ Network::FilterFactoryCb RedisProxyFilterConfigFactory::createFilterFactoryFromP
     auto proxy_filter_shared = std::make_shared<ProxyFilter>(
         factory, Common::Redis::EncoderPtr{new Common::Redis::EncoderImpl()}, *splitter,
         filter_config);
-    auto pubsub_cb_ptr = std::make_shared<PubsubCallbacks>(proxy_filter_shared);
-    proxy_filter_shared->setTransactionPubsubCallback(std::move(pubsub_cb_ptr));
+    auto downstream_cb_ptr = std::make_shared<DownStreamCallbacks>(proxy_filter_shared);
+    proxy_filter_shared->setDownStreamCallbacks(std::move(downstream_cb_ptr));
     ENVOY_LOG(debug, "redis: new proxy filter instance and creating pubsub callback");
     filter_manager.addReadFilter(proxy_filter_shared);
   };

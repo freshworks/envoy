@@ -92,7 +92,7 @@ ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dis
   host->stats().cx_active_.inc();
   connect_or_op_timer_->enableTimer(host->cluster().connectTimeout());
   if (is_pubsub_client_){
-    pubsub_cb_ = std::move(drcb);
+    downstream_cb_ = std::move(drcb);
   }
 }
 
@@ -101,12 +101,12 @@ ClientImpl::~ClientImpl() {
   ASSERT(connection_->state() == Network::Connection::State::Closed);
   host_->cluster().trafficStats()->upstream_cx_active_.dec();
   host_->stats().cx_active_.dec();
-  pubsub_cb_.reset();
+  downstream_cb_.reset();
 
 }
 
 void ClientImpl::close() {
-  pubsub_cb_.reset();
+  downstream_cb_.reset();
   if (connection_) {
     connection_->close(Network::ConnectionCloseType::NoFlush); 
   }
@@ -208,10 +208,10 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     if (pending_requests_.empty() && is_pubsub_client_) {
       host_->cluster().trafficStats()->upstream_cx_destroy_with_active_rq_.inc();
       ENVOY_LOG(debug,"Pubsub Client Connection close event received:'{}'",eventTypeStr);
-      if ((pubsub_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
+      if ((downstream_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
         ENVOY_LOG(debug,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
-        pubsub_cb_->onFailure();
-        pubsub_cb_.reset();
+        downstream_cb_->onFailure();
+        downstream_cb_.reset();
       }
     }
 
@@ -246,8 +246,8 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   if (pending_requests_.empty() && is_pubsub_client_) {
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
-    if (pubsub_cb_ != nullptr){
-        pubsub_cb_->onDirectResponse(std::move(value));
+    if (downstream_cb_ != nullptr){
+        downstream_cb_->sendResponseDownstream(std::move(value));
     }
     return;
   }

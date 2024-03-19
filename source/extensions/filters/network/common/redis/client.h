@@ -6,6 +6,8 @@
 
 #include "source/extensions/filters/network/common/redis/codec_impl.h"
 #include "source/extensions/filters/network/common/redis/redis_command_stats.h"
+#include "source/extensions/filters/network/common/redis/utility.h"
+
 
 namespace Envoy {
 namespace Extensions {
@@ -58,8 +60,9 @@ public:
 class DirectCallbacks  {
 public:
   virtual ~DirectCallbacks() = default;
-  virtual void onDirectResponse(Common::Redis::RespValuePtr&& value) PURE;
+  virtual void sendResponseDownstream(Common::Redis::RespValuePtr&& value) PURE;
   virtual void onFailure() PURE;
+  virtual std::unique_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics>  getDownStreamMetrics() PURE;
 
 };
 
@@ -278,12 +281,12 @@ struct Transaction {
     }
     should_close_ = false;
   }
-  void setPubsubCallback(std::shared_ptr<DirectCallbacks> callback) {
-    pubsub_cb_ = callback;
+  void setDownstreamCallback(std::shared_ptr<DirectCallbacks> callback) {
+    downstream_cb_ = callback;
   }
 
-  std::shared_ptr<DirectCallbacks> getPubsubCallback() {
-    return pubsub_cb_;
+  std::shared_ptr<DirectCallbacks> getDownstreamCallback() {
+    return downstream_cb_;
   }
   bool active_{false};
   bool connection_established_{false};
@@ -298,7 +301,7 @@ struct Transaction {
   // the mirroring policies.
   std::vector<ClientPtr> clients_;
   Network::ConnectionCallbacks* connection_cb_;
-  std::shared_ptr<DirectCallbacks> pubsub_cb_=nullptr;
+  std::shared_ptr<DirectCallbacks> downstream_cb_=nullptr;
 
   // This index represents the current client on which traffic is being sent to.
   // When sending to the main redis server it will be 0, and when sending to one of

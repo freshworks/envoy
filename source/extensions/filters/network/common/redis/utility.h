@@ -31,19 +31,19 @@ enum InforesponseAggregatorType {
   sumvalues,
   highestvalue,
   customizevalue,
-  hardcodedvalue
+  hardcodedvalue,
+  proxymetrics
 };
 
 
 class InfoCmdResponseProcessor:public Logger::Loggable<Logger::Id::redis> {
 public:
 
-  InfoCmdResponseProcessor();
+  InfoCmdResponseProcessor(DownStreamMetrics& downstream_metrics);
   ~InfoCmdResponseProcessor();
 
   void processInfoCmdResponse(const std::string& infokey, const std::string& infovalue);
   std::string getInfoCmdResponseString();
-  void updateInfoCmdResponseString(const std::string& infokey, const std::string& infovalue);
 
   struct infoCmdResponseDecoder {
     std::string infocategory;
@@ -52,11 +52,16 @@ public:
     std::string strvalue;
     std::uint64_t intvalue;
     void (*customizer)(const std::string& infokey, const std::string& infovalue,infoCmdResponseDecoder& infoObj);
+    InfoCmdResponseProcessor* processor;
   };
+
+  void updateInfoResponseWithProxyMetrics(const std::string& infokey,infoCmdResponseDecoder& infoObj);
+  DownStreamMetrics& getDownstreamMetrics() { return downstream_metrics_; }
 private:
 
   std::vector<infoCmdResponseDecoder> inforesponsetemplate_;
   std::unordered_map<std::string, size_t> converters_;
+  DownStreamMetrics& downstream_metrics_;
 };
 
 class AuthRequest : public Redis::RespValue {

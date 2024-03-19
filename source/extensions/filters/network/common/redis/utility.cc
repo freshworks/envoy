@@ -103,6 +103,9 @@ void CommonInfoCmdResponseAggregator(const std::string& infokey,const std::strin
       infoCmdObj.strvalue = infovalue;
     }
     break;
+  case proxymetrics:
+    infoCmdObj.processor->updateInfoResponseWithProxyMetrics(infokey,infoCmdObj);
+    break;
   default:
     break;
   }
@@ -145,9 +148,16 @@ void InfoResponseAggrKeyspace(const std::string& infokey, const std::string& inf
   return;
 
 }
-void InfoCmdResponseProcessor::updateInfoCmdResponseString(const std::string& infokey, const std::string& infovalue) {
-  processInfoCmdResponse(infokey, infovalue);
+void InfoCmdResponseProcessor::updateInfoResponseWithProxyMetrics(const std::string& infokey,InfoCmdResponseProcessor::infoCmdResponseDecoder& infoCmdObj){
+
+if (infokey == "total_connections_received"){
+  auto cxtotal = infoCmdObj.processor->getDownstreamMetrics().downstream_cx_total_;
+  infoCmdObj.strvalue = std::to_string(cxtotal);
 }
+return;
+
+}
+
 
 std::string InfoCmdResponseProcessor::getInfoCmdResponseString(){
 
@@ -168,71 +178,72 @@ std::string InfoCmdResponseProcessor::getInfoCmdResponseString(){
 
 }
 
-InfoCmdResponseProcessor::InfoCmdResponseProcessor() {
+InfoCmdResponseProcessor::InfoCmdResponseProcessor(DownStreamMetrics& downstream_metrics) : downstream_metrics_(downstream_metrics){
 
   //Initialize the info response template
   inforesponsetemplate_ = {
-    {"# Server","redis_version", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","redis_git_sha1", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","redis_git_dirty", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","redis_build_id", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","redis_mode", hardcodedvalue, "standalone", 0, nullptr},
-    {"# Server","os", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","arch_bits", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","multiplexing_api", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","process_id", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","run_id", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
+    {"# Server","redis_version", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","redis_git_sha1", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","redis_git_dirty", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","redis_build_id", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","redis_mode", hardcodedvalue, "standalone", 0, nullptr,nullptr},
+    {"# Server","os", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","arch_bits", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","multiplexing_api", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","process_id", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","run_id", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
     //{"# Server","tcp_port", staticvalue, "", 0, CommonInfoCmdResponseAggregator}, //Need to find a way to get the TCP port from listener , currently its not exposed
-    {"# Server","uptime_in_seconds", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","uptime_in_days", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","hz", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","lru_clock", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Server","config_file", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","used_memory", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","used_memory_peak", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","used_memory_rss", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","used_memory_lua", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","maxmemory", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","maxmemory_policy", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","mem_fragmentation_ratio", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Memory","mem_allocator", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","loading", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","rdb_changes_since_last_save", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","rdb_bgsave_in_progress", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","rdb_last_save_time", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","rdb_last_bgsave_status", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","rdb_last_bgsave_time_sec", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Persistence","rdb_current_bgsave_time_sec", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","total_connections_received", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","total_commands_processed", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","instantaneous_ops_per_sec", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","total_net_input_bytes", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","total_net_output_bytes", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","instantaneous_input_kbps", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","instantaneous_output_kbps", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","rejected_connections", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","sync_full", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","sync_partial_ok", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","sync_partial_err", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","expired_keys", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","evicted_keys", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","keyspace_hits", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","keyspace_misses", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","pubsub_channels", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","pubsub_patterns", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Stats","latest_fork_usec", highestvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Replication","role", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Replication","connected_slaves", staticvalue, "", 0, CommonInfoCmdResponseAggregator},
-    {"# CPU","used_cpu_sys", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# CPU","used_cpu_user", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# CPU","used_cpu_sys_children", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# CPU","used_cpu_user_children", sumvalues, "", 0, CommonInfoCmdResponseAggregator},
-    {"# Cluster","cluster_enabled", hardcodedvalue, "0", 0, nullptr},
-    {"# Keyspace","db0",customizevalue, "", 0, InfoResponseAggrKeyspace}
+    {"# Server","uptime_in_seconds", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","uptime_in_days", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","hz", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","lru_clock", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Server","config_file", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","used_memory", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","used_memory_peak", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","used_memory_rss", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","used_memory_lua", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","maxmemory", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","maxmemory_policy", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","mem_fragmentation_ratio", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Memory","mem_allocator", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","loading", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","rdb_changes_since_last_save", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","rdb_bgsave_in_progress", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","rdb_last_save_time", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","rdb_last_bgsave_status", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","rdb_last_bgsave_time_sec", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Persistence","rdb_current_bgsave_time_sec", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","total_connections_received", proxymetrics, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","total_commands_processed", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","instantaneous_ops_per_sec", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","total_net_input_bytes", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","total_net_output_bytes", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","instantaneous_input_kbps", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","instantaneous_output_kbps", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","rejected_connections", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","sync_full", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","sync_partial_ok", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","sync_partial_err", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","expired_keys", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","evicted_keys", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","keyspace_hits", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","keyspace_misses", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","pubsub_channels", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","pubsub_patterns", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Stats","latest_fork_usec", highestvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Replication","role", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Replication","connected_slaves", staticvalue, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# CPU","used_cpu_sys", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# CPU","used_cpu_user", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# CPU","used_cpu_sys_children", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# CPU","used_cpu_user_children", sumvalues, "", 0, CommonInfoCmdResponseAggregator,nullptr},
+    {"# Cluster","cluster_enabled", hardcodedvalue, "0", 0, nullptr,nullptr},
+    {"# Keyspace","db0",customizevalue, "", 0, InfoResponseAggrKeyspace,nullptr}
   };
   // Populate the converters_ hash map with indices of the inforesponsetemplate_ vector
     for (size_t i = 0; i < inforesponsetemplate_.size(); ++i) {
         converters_[inforesponsetemplate_[i].infokey] = i;
+        inforesponsetemplate_[i].processor = this;
     }
 }
 

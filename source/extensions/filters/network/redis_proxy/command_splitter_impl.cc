@@ -528,18 +528,15 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
         if ( rediscommand == "info"){
           Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
           response->type(Common::Redis::RespType::BulkString);
-          Envoy::Extensions::NetworkFilters::Common::Redis::Utility::InfoCmdResponseProcessor infoProcessor;
+          auto downstreamstats = callbacks_.transaction().getDownstreamCallback()->getDownStreamMetrics();
+          Envoy::Extensions::NetworkFilters::Common::Redis::Utility::InfoCmdResponseProcessor infoProcessor(*downstreamstats);
           for (auto& resp : pending_responses_) {
             if (resp->type() == Common::Redis::RespType::BulkString) {
               parseInfoResponse(resp->asString(),infoProcessor);
-              //Add proxy filters connection stats to the response
-              auto downstreamstats = callbacks_.transaction().getDownstreamCallback()->getDownStreamMetrics();
-      
-              infoProcessor.updateInfoCmdResponseString("total_connections_received",std::to_string(downstreamstats->downstream_cx_total_));
-              
             } else {
               positiveresponse = false;
               ENVOY_LOG(debug, "Error: Unexpected response Type , expected bulkstring");
+              break;
             } 
           }
           if (!positiveresponse) {

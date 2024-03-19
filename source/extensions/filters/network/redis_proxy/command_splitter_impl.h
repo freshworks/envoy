@@ -155,13 +155,59 @@ protected:
   void onallChildRespAgrregateFail(int32_t reqindex,int32_t shardindex);
 
   SplitCallbacks& callbacks_;
-
   std::vector<Common::Redis::RespValuePtr> pending_responses_;
   std::vector<PendingRequest> pending_requests_;
   int32_t num_pending_responses_;
   uint32_t error_count_{0};
   int32_t response_index_{0};
+  int32_t num_of_Shards_{0};
 
+};
+
+// TODO: The base class and scan request class should be removed during the optimization
+class ScanRequestBase: public SplitRequestBase {
+public:
+  ~ScanRequestBase() override;
+
+  // RedisProxy::CommandSplitter::SplitRequest
+  void cancel() override;
+
+protected:
+  ScanRequestBase(SplitCallbacks& callbacks, CommandStats& command_stats,
+                      TimeSource& time_source, bool delay_command_latency)
+      : SplitRequestBase(command_stats, time_source, delay_command_latency), callbacks_(callbacks) {
+  }
+  struct PendingRequest : public ConnPool::PoolCallbacks {
+    PendingRequest(ScanRequestBase& parent, uint32_t index, int32_t shardindex) : parent_(parent), index_(index), shard_index_(shardindex) {}
+
+    // ConnPool::PoolCallbacks
+    void onResponse(Common::Redis::RespValuePtr&& value) override {
+      parent_.onChildResponse(std::move(value), index_, shard_index_);
+    }
+    void onFailure() override { parent_.onChildFailure(index_, shard_index_); }
+
+    ScanRequestBase& parent_;
+    const int32_t index_;
+    int32_t count_;
+    int32_t shard_index_=-1;
+    Common::Redis::Client::PoolRequest* handle_{};
+  };
+
+  virtual void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shardindex) PURE;
+  void onChildFailure(int32_t index, int32_t shardindex);
+
+  SplitCallbacks& callbacks_;
+  RouteSharedPtr route_;
+
+  std::vector<Common::Redis::RespValuePtr> pending_responses_;
+  std::vector<PendingRequest> pending_requests_;
+  Common::Redis::RespValue request_;
+  int32_t num_pending_responses_{0};
+  uint32_t error_count_{0};
+  std::string resp_obj_count_;
+  int32_t response_index_{0};
+  int32_t num_of_Shards_{0};
+  
 };
 
 /**
@@ -342,6 +388,26 @@ private:
 };
 
 /**
+ * ScanRequest handles scanning the database of all shards sequentially.
+ */
+
+class ScanRequest : public ScanRequestBase {
+public:
+  static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
+                                SplitCallbacks& callbacks, CommandStats& command_stats,
+                                TimeSource& time_source, bool delay_command_latency,
+                                const StreamInfo::StreamInfo& stream_info);
+
+private:
+  ScanRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
+                bool delay_command_latency)
+      : ScanRequestBase(callbacks, command_stats, time_source, delay_command_latency) {}
+
+  void onChildResponse(Common::Redis::RespValuePtr&& value, int32_t index, int32_t shardindex) override;
+  void onChildError(Common::Redis::RespValuePtr&& value);
+};
+
+/**
  * FragmentedRequest is a base class for requests that contains multiple keys. An individual request
  * is sent to the appropriate server for each key. The responses from all servers are combined and
  * returned to the client.
@@ -513,6 +579,7 @@ private:
   CommandHandlerFactory<SplitKeysSumResultRequest> split_keys_sum_result_handler_;
   CommandHandlerFactory<TransactionRequest> transaction_handler_;
   CommandHandlerFactory<mgmtNoKeyRequest> mgmt_nokey_request_handler_;
+  CommandHandlerFactory<ScanRequest> scanrequest_handler_;
   CommandHandlerFactory<PubSubRequest> subscription_handler_;
   CommandHandlerFactory<BlockingClientRequest> blocking_client_request_handler_;
   TrieLookupTable<HandlerDataPtr> handler_lookup_table_;

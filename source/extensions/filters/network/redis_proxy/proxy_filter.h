@@ -110,20 +110,9 @@ public:
   void setDownStreamCallbacks(std::shared_ptr<Common::Redis::Client::DirectCallbacks> callback) {
         transaction_.setDownstreamCallback(std::move(callback));
   }
-  std::unique_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics> getDownStreamInfo() {
-    std::unique_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics> downstream_metrics = std::make_unique<Envoy::Extensions::NetworkFilters::Common::Redis::Utility::DownStreamMetrics>();
-    downstream_metrics->downstream_rq_total_ = config_->stats_.downstream_rq_total_.value();
-    downstream_metrics->downstream_cx_drain_close_ = config_->stats_.downstream_cx_drain_close_.value();
-    downstream_metrics->downstream_cx_protocol_error_ = config_->stats_.downstream_cx_protocol_error_.value();
-    downstream_metrics->downstream_cx_rx_bytes_total_ = config_->stats_.downstream_cx_rx_bytes_total_.value();
-    downstream_metrics->downstream_cx_total_ = config_->stats_.downstream_cx_total_.value();
-    downstream_metrics->downstream_cx_tx_bytes_total_ = config_->stats_.downstream_cx_tx_bytes_total_.value();
-    downstream_metrics->downstream_cx_active_ = config_->stats_.downstream_cx_active_.value();
-    downstream_metrics->downstream_cx_rx_bytes_buffered_ = config_->stats_.downstream_cx_rx_bytes_buffered_.value();
-    downstream_metrics->downstream_cx_tx_bytes_buffered_ = config_->stats_.downstream_cx_tx_bytes_buffered_.value();
-    downstream_metrics->downstream_rq_active_ = config_->stats_.downstream_rq_active_.value();
-    return downstream_metrics;
-  }
+  std::unique_ptr<Common::Redis::Utility::DownStreamMetrics> getDownStreamInfo();
+  void setclientname(std::string clientname) { clientname_ = clientname; }
+  std::string getclientname() { return clientname_; }
 
 private:
   friend class RedisProxyFilterTest;
@@ -144,6 +133,9 @@ private:
     }
 
     Common::Redis::Client::Transaction& transaction() override { return parent_.transaction(); }
+    void setClientname(std::string clientname) override { parent_.setclientname(clientname); }
+    std::string getClientname() override { return parent_.getclientname(); }
+
 
     ProxyFilter& parent_;
     Common::Redis::RespValuePtr pending_response_;
@@ -166,6 +158,7 @@ private:
   bool connection_allowed_;
   Common::Redis::Client::Transaction transaction_;
   bool connection_quit_;
+  std::string clientname_{};
 };
 
 class DownStreamCallbacks : public Common::Redis::Client::DirectCallbacks{

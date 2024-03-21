@@ -54,7 +54,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
     } else if (command_name == "script" || command_name == "flushall" || command_name == "config"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
     }
-  }else if (command_name == "publish"){
+  }else if (command_name == "publish" || command_name == "cluster"){
     responseHandlerType = AdminRespHandlerType::singleshardresponse;
   }
   return responseHandlerType;
@@ -75,6 +75,8 @@ int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t r
 
 bool checkIfAdminCommandSupported(const std::string command,const std::string subcommand){
   if (command == "client" && subcommand != "list"){
+    return false;
+  }else if (command == "cluster" && ((subcommand != "keyslot") && (subcommand != "slots"))){
     return false;
   }else {
     return true;
@@ -1375,10 +1377,10 @@ SplitRequestPtr TransactionRequest::create(Router& router,
   Common::Redis::Client::Transaction& transaction = callbacks.transaction();
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
 
-  // Within transactions we only support simple commands.
-  // So if this is not a transaction command or a simple command, it is an error.
+  // Within transactions we support simple commands and also other commands with a limitation such that it will all be handled only in a single shard.
+  // So if this is not a transaction command or a simple command or transaction allowed cmmand, it is an error.
   if (Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0 &&
-      Common::Redis::SupportedCommands::simpleCommands().count(command_name) == 0) {
+      Common::Redis::SupportedCommands::simpleCommands().count(command_name) == 0 && Common::Redis::SupportedCommands::transactionAllowedNonSimpleCommands().count(command_name) == 0) {
     callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("'{}' command is not supported within transaction",
                     incoming_request->asArray()[0].asString())));
@@ -1552,6 +1554,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   }
 
   if (!callbacks.connectionAllowed()) {
+    stats_.auth_failure_.inc();
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().AuthRequiredError));
     return nullptr;
   }
@@ -1599,6 +1602,28 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);
+    return nullptr;
+  }
+
+  if (command_name == "client") {
+    std::string sub_command = absl::AsciiStrToLower(request->asArray()[1].asString());
+    if (Common::Redis::SupportedCommands::clientSubCommands().count(sub_command) == 0) {
+      stats_.unsupported_command_.inc();
+      ENVOY_LOG(debug, "unsupported command '{}' '{}'",command_name, sub_command);
+      callbacks.onResponse(Common::Redis::Utility::makeError(
+          fmt::format("unsupported command '{}' '{}'",command_name, sub_command)));
+      return nullptr;
+    }
+    Common::Redis::RespValuePtr ClientResp(new Common::Redis::RespValue());
+    if (sub_command == "setname") {
+      callbacks.setClientname(request->asArray()[2].asString());
+      ClientResp->type(Common::Redis::RespType::SimpleString);
+      ClientResp->asString() = "OK";
+    }else if (sub_command == "getname") {
+      ClientResp->type(Common::Redis::RespType::BulkString);
+      ClientResp->asString() = callbacks.getClientname();
+    }
+    callbacks.onResponse(std::move(ClientResp));
     return nullptr;
   }
 

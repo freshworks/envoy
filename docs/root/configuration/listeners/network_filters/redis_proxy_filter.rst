@@ -43,6 +43,7 @@ The Redis filter will gather statistics for the command splitter in the
 
   invalid_request, Counter, Number of requests with an incorrect number of arguments
   unsupported_command, Counter, Number of commands issued which are not recognized by the command splitter
+  auth_failure, Counter, Number of downstream authfailures
 
 Per command statistics
 ----------------------

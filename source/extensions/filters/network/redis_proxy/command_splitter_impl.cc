@@ -51,7 +51,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
     if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client" || command_name == "info") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
-    } else if (command_name == "script" || command_name == "flushall" || command_name == "config"){
+    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
     }
   }else if (command_name == "publish" || command_name == "cluster"){

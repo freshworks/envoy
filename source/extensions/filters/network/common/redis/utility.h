@@ -23,6 +23,9 @@ struct DownStreamMetrics {
   uint64_t downstream_cx_rx_bytes_buffered_{};
   uint64_t downstream_cx_tx_bytes_buffered_{};
   uint64_t downstream_rq_active_{};
+  uint64_t connection_id_{};
+  std::string local_address_{};
+  std::string remote_address_{};
 };
 
 

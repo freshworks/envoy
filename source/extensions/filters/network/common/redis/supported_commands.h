@@ -57,6 +57,13 @@ struct SupportedCommands {
     CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "multi", "exec", "discard");
   }
 
+  /**
+   * @return commands which handle Redis transactions allowed non simple commands.
+   */
+  static const absl::flat_hash_set<std::string>& transactionAllowedNonSimpleCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "del", "exists", "touch", "unlink");
+  }
+
    /**
    * @return commands which handle Redis blocking operations.
    */
@@ -88,8 +95,16 @@ struct SupportedCommands {
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& adminNokeyCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall","publish","pubsub", "keys", "slowlog", "config","client","info");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall","publish","pubsub", "keys", "slowlog", "config","client","info","cluster");
   }
+
+  /**
+  * @return client sub commands thats supported 
+  */
+  static const absl::flat_hash_set<std::string>& clientSubCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "getname", "list","setname");
+  }
+
     /**
    * @return commands which handle Redis commands without keys.
    */

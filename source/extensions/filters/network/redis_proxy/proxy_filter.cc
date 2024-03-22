@@ -291,6 +291,32 @@ ProxyFilter::PendingRequest::~PendingRequest() {
   parent_.config_->stats_.downstream_rq_active_.dec();
 }
 
+std::unique_ptr<Common::Redis::Utility::DownStreamMetrics>  ProxyFilter::getDownStreamInfo() {
+    std::unique_ptr<Common::Redis::Utility::DownStreamMetrics> downstream_metrics = std::make_unique<Common::Redis::Utility::DownStreamMetrics>();
+    downstream_metrics->downstream_rq_total_ = config_->stats_.downstream_rq_total_.value();
+    downstream_metrics->downstream_cx_drain_close_ = config_->stats_.downstream_cx_drain_close_.value();
+    downstream_metrics->downstream_cx_protocol_error_ = config_->stats_.downstream_cx_protocol_error_.value();
+    downstream_metrics->downstream_cx_rx_bytes_total_ = config_->stats_.downstream_cx_rx_bytes_total_.value();
+    downstream_metrics->downstream_cx_total_ = config_->stats_.downstream_cx_total_.value();
+    downstream_metrics->downstream_cx_tx_bytes_total_ = config_->stats_.downstream_cx_tx_bytes_total_.value();
+    downstream_metrics->downstream_cx_active_ = config_->stats_.downstream_cx_active_.value();
+    downstream_metrics->downstream_cx_rx_bytes_buffered_ = config_->stats_.downstream_cx_rx_bytes_buffered_.value();
+    downstream_metrics->downstream_cx_tx_bytes_buffered_ = config_->stats_.downstream_cx_tx_bytes_buffered_.value();
+    downstream_metrics->downstream_rq_active_ = config_->stats_.downstream_rq_active_.value();
+
+    //Fill the connection and soccket related metrics
+    downstream_metrics->local_address_ = callbacks_->connection().connectionInfoProvider().localAddress()->asString();
+    downstream_metrics->remote_address_ = callbacks_->connection().connectionInfoProvider().remoteAddress()->asString();
+    if (callbacks_->connection().connectionInfoProvider().connectionID().has_value()){
+      downstream_metrics->connection_id_ = callbacks_->connection().connectionInfoProvider().connectionID().value();
+    }
+    else{
+      downstream_metrics->connection_id_ = 0;
+    }
+    return downstream_metrics;
+  }
+
+
 } // namespace RedisProxy
 } // namespace NetworkFilters
 } // namespace Extensions

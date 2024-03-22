@@ -72,6 +72,19 @@ public:
    * @return reference to a Transaction instance of the current connection.
    */
   virtual Common::Redis::Client::Transaction& transaction() PURE;
+
+  /**
+   * Called to set name of the current downstream connection , which is used in client commands.
+   * @param clientname provide the client to be set for this connection
+   */
+  virtual void setClientname(std::string clientname) PURE;
+
+  /**
+   * Called to get name of the current downstream connection , which is used in client commands.
+   * @param clientname provide the client to be set for this connection
+   */
+  virtual std::string getClientname() PURE;
+
 };
 
 /**

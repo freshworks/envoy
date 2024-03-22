@@ -275,6 +275,9 @@ public:
   void onAuth(const std::string& username, const std::string& password) override {
     callbacks_.onAuth(username, password);
   }
+  void setClientname(std::string clientname) override { callbacks_.setClientname(clientname); }
+  std::string getClientname() override { return callbacks_.getClientname(); }
+
   void onResponse(Common::Redis::RespValuePtr&& response) override;
   Common::Redis::Client::Transaction& transaction() override { return callbacks_.transaction(); }
 
@@ -537,8 +540,8 @@ public:
  */
 #define ALL_COMMAND_SPLITTER_STATS(COUNTER)                                                        \
   COUNTER(invalid_request)                                                                         \
-  COUNTER(unsupported_command)
-
+  COUNTER(unsupported_command)                                                                     \
+  COUNTER(auth_failure)
 /**
  * Struct definition for all splitter stats. @see stats_macros.h
  */

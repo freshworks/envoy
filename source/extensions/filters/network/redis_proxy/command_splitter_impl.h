@@ -314,7 +314,7 @@ private:
 
 };
 
-class PubSubRequest : public SingleServerRequest {
+class PubSubRequest : public AdministrationRequest {
 public:
   static SplitRequestPtr create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                 SplitCallbacks& callbacks, CommandStats& command_stats,
@@ -323,7 +323,11 @@ public:
 private:
   PubSubRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
                 bool delay_command_latency)
-      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+      : AdministrationRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+  
+  void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
 
 };
 

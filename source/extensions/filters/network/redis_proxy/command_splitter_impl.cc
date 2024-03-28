@@ -980,7 +980,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     pending_request.handle_ = nullptr;
 
     ENVOY_LOG(debug, "SAS Blocking request to be created for shard index: '{}'", shard_index);
-
+    transaction.current_client_idx_ = shard_index;
     pending_request.handle_ = makeBlockingRequest(
         route,shard_index,key,base_request,pending_request,callbacks.transaction());
     if (!pending_request.handle_) {

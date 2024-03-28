@@ -402,12 +402,14 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
       ENVOY_LOG(debug, "host not found: '{}'", key);
       return nullptr;
   }
+  ENVOY_LOG(debug, "Host selected for blocking/pubsub command is '{}'", host->address()->asString());
   pending_requests_.emplace_back(*this, std::move(request), callbacks, host);
   PendingRequest& pending_request = pending_requests_.back();
   // For now we create dedicated connection for blocking commands / pubsub commands to be optimised later to use the 
   // existing connection if available ( Connection Multiplexing forpubsub and blocking commands needs to be addded later)
   uint32_t client_idx = 0;
   if (transaction.active_) {
+    ENVOY_LOG(debug, "transaction active");
     client_idx = transaction.current_client_idx_;
     if (!transaction.connection_established_ && transaction.isSubscribedMode()) {
       transaction.clients_[client_idx] =

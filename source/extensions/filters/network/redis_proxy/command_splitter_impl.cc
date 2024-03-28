@@ -53,12 +53,20 @@ AdminRespHandlerType getresponseHandlerType(const std::string command_name, cons
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
     if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client" || command_name == "info") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
-    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select"
-    || ((command_name == "subscribe" || command_name == "psubscribe") && 
-    (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern))){
+    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select") {
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
+    } else if (command_name == "subscribe" || command_name == "psubscribe") {
+      if (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern) {
+        responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
+      } else {
+        responseHandlerType = AdminRespHandlerType::singleshardresponse;
+      }
+    } else if (command_name == "unsubscribe" || command_name == "punsubscribe") {
+      responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
+    } else {
+      responseHandlerType = AdminRespHandlerType::singleshardresponse;
     }
-  }else if (command_name == "publish" || command_name == "cluster" || command_name == "subscribe" || command_name == "psubscribe"){
+  }else if (command_name == "publish" || command_name == "cluster"){
     responseHandlerType = AdminRespHandlerType::singleshardresponse;
   }
   return responseHandlerType;
@@ -95,10 +103,13 @@ int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount
   int32_t requestsCount = 1;
   std::string keyspacepattern = "__keyspace@0__";
   std::string keyeventpattern = "__keyevent@0__";
-  if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name) ||
-      ((command_name == "subscribe" || command_name == "psubscribe") && 
-      (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern)) ) {
-    requestsCount = redisShardsCount;
+  if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) { 
+      if ((command_name == "subscribe" || command_name == "psubscribe") && 
+          (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern)) {
+          requestsCount = redisShardsCount;
+      } else {
+        requestsCount = 1;
+      }
   }
   return requestsCount;
 }
@@ -400,7 +411,7 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
   if(requestsCount >1){
     request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
   }
-    
+
   for (int32_t i = 0; i < request_ptr->num_pending_responses_; i++) {
     shard_index=getShardIndex(command_name,requestsCount,redisShardsCount);
     if(shard_index < 0){
@@ -509,6 +520,14 @@ void parseInfoResponse(const std::string& inforesponse,Common::Redis::Utility::I
     return;
 }
 
+void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
+  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
+  pending_requests_[reqindex].handle_ = nullptr;
+  ENVOY_LOG(debug, "response: {}", value->toString());
+  updateStats(true);
+  callbacks_.onResponse(std::move(value));
+  pending_responses_.clear();
+}
 
 void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
@@ -696,15 +715,24 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
   pending_responses_.clear();
 }
 
+void PubSubRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
+  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
+  pending_requests_[reqindex].handle_ = nullptr;
+
+  ENVOY_LOG(debug, "response: {}", value->toString());
+  updateStats(true);
+  callbacks_.onResponse(std::move(value));
+  pending_responses_.clear();
+}
+
 void PubSubRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
+  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
   pending_requests_[reqindex].handle_ = nullptr;
 
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
         // Resize the vector to accommodate the new reqindex
         pending_responses_.resize(reqindex + 1);
   }
-  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
-
   if (value->type() == Common::Redis::RespType::Error){
     error_count_++;
     response_index_=reqindex;
@@ -882,6 +910,11 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   }
 
   requestsCount = getRequestCount(command_name,redisShardsCount,firstarg); 
+  ENVOY_LOG(debug, "command_name: '{}'", command_name); 
+  ENVOY_LOG(debug, "redisShardsCount: '{}'", redisShardsCount); 
+  ENVOY_LOG(debug, "firstarg: '{}'", firstarg);
+  ENVOY_LOG(debug, "requestsCount: '{}'", requestsCount); 
+
   request_ptr->num_pending_responses_ = requestsCount;
   request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_);
 
@@ -908,11 +941,13 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
         return nullptr;
     }
   }else {
+    ENVOY_LOG(debug, "SAS Transaction is not yet active: '{}'", command_name);
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
       transaction.clients_.resize(1);
       transaction.enterSubscribedMode();
       if(transaction.subscribed_client_shard_index_ == -1){
         transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
+        ENVOY_LOG(debug, "subscribed_client_shard_index_: '{}'", transaction.subscribed_client_shard_index_);
       }
       transaction.start();
     }else{
@@ -923,22 +958,31 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   }
 
   Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
+
+  if(requestsCount >1){
+    ENVOY_LOG(debug, "SAS Request count is greter than 1: '{}'", requestsCount);
+    request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
+  }
  
+  ENVOY_LOG(debug, "request ptr num pending respons: '{}'", request_ptr->num_pending_responses_);  
   //loop through number of requests and create request for each shard
   for (int32_t i = 0; i < request_ptr->num_pending_responses_; i++) {
+    ENVOY_LOG(debug, "Iteration: '{}'", i);
     //shard_index = transaction.subscribed_client_shard_index_;
     shard_index=getShardIndex(command_name,requestsCount,redisShardsCount);
+    ENVOY_LOG(debug, "SAS shard_index: '{}'", shard_index);
     if(shard_index < 0){
       shard_index = i;
     }
 
-    request_ptr->pending_requests_.emplace_back(*request_ptr, i, shard_index, command_name, firstarg, getresponseHandlerType(command_name));
-    
+    request_ptr->pending_requests_.emplace_back(*request_ptr, i, shard_index, command_name, firstarg, getresponseHandlerType(command_name, firstarg));
     PendingRequest& pending_request = request_ptr->pending_requests_.back();
     pending_request.handle_ = nullptr;
-    pending_request.handle_ = makeBlockingRequest(
-        route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
 
+    ENVOY_LOG(debug, "SAS Blocking request to be created for shard index: '{}'", shard_index);
+
+    pending_request.handle_ = makeBlockingRequest(
+        route,shard_index,key,base_request,pending_request,callbacks.transaction());
     if (!pending_request.handle_) {
       command_stats.error_.inc();
       transaction.should_close_ = true;
@@ -948,6 +992,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       iserror = true;
       break;
     }
+    ENVOY_LOG(debug, "SAS Blocking request successfully created for shard index: '{}'", shard_index);
   }
 
   if (request_ptr->num_pending_responses_ > 0  && !iserror) {

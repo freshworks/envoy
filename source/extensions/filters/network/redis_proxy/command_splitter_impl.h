@@ -328,7 +328,7 @@ private:
   void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
   void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
   void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
-
+  //Common::Redis::Client::PoolRequest* handle_{};
 };
 
 class BlockingClientRequest : public SingleServerRequest {

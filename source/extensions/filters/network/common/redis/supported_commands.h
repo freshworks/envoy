@@ -109,7 +109,7 @@ struct SupportedCommands {
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& allShardCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "pubsub", "keys", "slowlog", "config","client","info","select", "subscribe", "psubscribe");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "pubsub", "keys", "slowlog", "config","client","info","select", "subscribe", "psubscribe", "punsubscribe", "unsubscribe");
     } 
   
   /**

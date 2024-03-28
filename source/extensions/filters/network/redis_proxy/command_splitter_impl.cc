@@ -62,7 +62,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string command_name, cons
         responseHandlerType = AdminRespHandlerType::singleshardresponse;
       }
     } else if (command_name == "unsubscribe" || command_name == "punsubscribe") {
-      responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
+      responseHandlerType = AdminRespHandlerType::aggregate_all_responses;
     } else {
       responseHandlerType = AdminRespHandlerType::singleshardresponse;
     }
@@ -104,8 +104,9 @@ int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount
   std::string keyspacepattern = "__keyspace@0__";
   std::string keyeventpattern = "__keyevent@0__";
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) { 
-      if ((command_name == "subscribe" || command_name == "psubscribe") && 
-          (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern)) {
+      if (((command_name == "subscribe" || command_name == "psubscribe") && 
+          (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern))
+          || command_name == "unsubscribe" || command_name == "punsubscribe") {
           requestsCount = redisShardsCount;
       } else {
         requestsCount = 1;
@@ -521,12 +522,57 @@ void parseInfoResponse(const std::string& inforesponse,Common::Redis::Utility::I
 }
 
 void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
-  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
   pending_requests_[reqindex].handle_ = nullptr;
-  ENVOY_LOG(debug, "response: {}", value->toString());
-  updateStats(true);
-  callbacks_.onResponse(std::move(value));
-  pending_responses_.clear();
+  // const auto& redisarg = pending_requests_[reqindex].redisarg_;
+  // const auto& rediscommand = pending_requests_[reqindex].rediscommand_;
+  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
+  if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
+        // Resize the vector to accommodate the new index
+        pending_responses_.resize(reqindex + 1);
+  }
+
+  if (value->type() == Common::Redis::RespType::Error){
+    error_count_++;
+    response_index_=reqindex;
+  }
+  // Move the value into the pending_responses at the specified index
+  pending_responses_[reqindex] = std::move(value);
+
+  ASSERT(num_pending_responses_ > 0);
+  if (--num_pending_responses_ == 0) {
+    if (error_count_ > 0 ){
+      if (!pending_responses_.empty()) {
+        Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
+        callbacks_.onResponse(std::move(response));
+        pending_responses_.clear();
+      }
+    } else {
+      bool positiveresponse = true;
+      updateStats(error_count_ == 0);
+      if (!pending_responses_.empty()) {
+        Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
+        Common::Redis::RespValue innerResponse;
+        response->type(Common::Redis::RespType::Array);
+
+        // Iterate through pending_responses_ and append non-empty responses to the array
+        for (auto& resp : pending_responses_) {
+          if (resp->type() == Common::Redis::RespType::Array ) {
+            if (resp->asArray().empty()) {
+              continue; // Skip empty arrays
+            }
+            innerResponse = *resp; 
+            for (auto& elem : innerResponse.asArray()) {
+              response->asArray().emplace_back(std::move(elem));
+            }
+          } 
+        }
+        if (positiveresponse) {
+          callbacks_.onResponse(std::move(response));
+          pending_responses_.clear();
+        }
+      }
+    }
+  }
 }
 
 void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
@@ -939,6 +985,9 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
         callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not supported when in transaction mode")));
         transaction.should_close_ = true;
         return nullptr;
+    }
+    if (transaction.isSubscribedMode() && (command_name == "unsubscribe" || command_name == "unsubscribe")) {
+      transaction.clients_.resize(requestsCount);
     }
   }else {
     ENVOY_LOG(debug, "SAS Transaction is not yet active: '{}'", command_name);

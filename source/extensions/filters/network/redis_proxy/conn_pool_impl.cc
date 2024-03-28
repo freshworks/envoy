@@ -414,7 +414,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     if (!transaction.connection_established_ && transaction.isSubscribedMode()) {
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                                 auth_username_, auth_password_, false,true,false,transaction.getDownstreamCallback());
+                                 auth_username_, auth_password_, false,true,false,transaction.getDownstreamCallback());                          
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
@@ -426,7 +426,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
     }
-
+    ENVOY_LOG(debug, "transaction active client index '{}'", client_idx);
     pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
         getRequest(pending_request.incoming_request_), pending_request);
   }else{

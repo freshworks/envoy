@@ -943,7 +943,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   }else {
     ENVOY_LOG(debug, "SAS Transaction is not yet active: '{}'", command_name);
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
-      transaction.clients_.resize(1);
+      transaction.clients_.resize(requestsCount);
       transaction.enterSubscribedMode();
       if(transaction.subscribed_client_shard_index_ == -1){
         transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
@@ -981,6 +981,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 
     ENVOY_LOG(debug, "SAS Blocking request to be created for shard index: '{}'", shard_index);
     transaction.current_client_idx_ = shard_index;
+    //ENVOY_LOG(debug, "pending_request.handle_ : '{}'", pending_request);
     pending_request.handle_ = makeBlockingRequest(
         route,shard_index,key,base_request,pending_request,callbacks.transaction());
     if (!pending_request.handle_) {
@@ -1736,7 +1737,9 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
-  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)&& (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) && (command_name != Common::Redis::SupportedCommands::info())){
+  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
+  && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) 
+  && (command_name != Common::Redis::SupportedCommands::info())){
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);

@@ -246,7 +246,6 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   if (pending_requests_.empty() && is_pubsub_client_) {
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
-    ENVOY_LOG(debug, "Pubsub Client Received message from server");
     if (downstream_cb_ != nullptr){
         downstream_cb_->sendResponseDownstream(std::move(value));
     }

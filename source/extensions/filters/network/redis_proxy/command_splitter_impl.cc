@@ -956,10 +956,6 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   }
 
   requestsCount = getRequestCount(command_name,redisShardsCount,firstarg); 
-  ENVOY_LOG(debug, "command_name: '{}'", command_name); 
-  ENVOY_LOG(debug, "redisShardsCount: '{}'", redisShardsCount); 
-  ENVOY_LOG(debug, "firstarg: '{}'", firstarg);
-  ENVOY_LOG(debug, "requestsCount: '{}'", requestsCount); 
 
   request_ptr->num_pending_responses_ = requestsCount;
   request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_);
@@ -986,17 +982,18 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
         transaction.should_close_ = true;
         return nullptr;
     }
-    if (transaction.isSubscribedMode() && (command_name == "unsubscribe" || command_name == "unsubscribe")) {
-      transaction.clients_.resize(requestsCount);
+    // This flow is used when we have one private client (subscribe test) but now we are issuing unsub/punsun which will require three clients and hence we need to resize.
+    if (transaction.isSubscribedMode() && (command_name == "unsubscribe" || command_name == "punsubscribe")) {
+      if (transaction.clients_.size() != static_cast<size_t>(requestsCount)) {
+        transaction.clients_.resize(requestsCount);
+      }
     }
   }else {
-    ENVOY_LOG(debug, "SAS Transaction is not yet active: '{}'", command_name);
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
       transaction.clients_.resize(requestsCount);
       transaction.enterSubscribedMode();
       if(transaction.subscribed_client_shard_index_ == -1){
         transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
-        ENVOY_LOG(debug, "subscribed_client_shard_index_: '{}'", transaction.subscribed_client_shard_index_);
       }
       transaction.start();
     }else{
@@ -1009,17 +1006,12 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
 
   if(requestsCount >1){
-    ENVOY_LOG(debug, "SAS Request count is greter than 1: '{}'", requestsCount);
     request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
   }
  
-  ENVOY_LOG(debug, "request ptr num pending respons: '{}'", request_ptr->num_pending_responses_);  
   //loop through number of requests and create request for each shard
   for (int32_t i = 0; i < request_ptr->num_pending_responses_; i++) {
-    ENVOY_LOG(debug, "Iteration: '{}'", i);
-    //shard_index = transaction.subscribed_client_shard_index_;
     shard_index=getShardIndex(command_name,requestsCount,redisShardsCount);
-    ENVOY_LOG(debug, "SAS shard_index: '{}'", shard_index);
     if(shard_index < 0){
       shard_index = i;
     }
@@ -1028,9 +1020,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     PendingRequest& pending_request = request_ptr->pending_requests_.back();
     pending_request.handle_ = nullptr;
 
-    ENVOY_LOG(debug, "SAS Blocking request to be created for shard index: '{}'", shard_index);
     transaction.current_client_idx_ = shard_index;
-    //ENVOY_LOG(debug, "pending_request.handle_ : '{}'", pending_request);
     pending_request.handle_ = makeBlockingRequest(
         route,shard_index,key,base_request,pending_request,callbacks.transaction());
     if (!pending_request.handle_) {
@@ -1042,7 +1032,6 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       iserror = true;
       break;
     }
-    ENVOY_LOG(debug, "SAS Blocking request successfully created for shard index: '{}'", shard_index);
   }
 
   if (request_ptr->num_pending_responses_ > 0  && !iserror) {

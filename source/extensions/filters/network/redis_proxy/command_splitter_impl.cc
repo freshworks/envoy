@@ -982,8 +982,8 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
         transaction.should_close_ = true;
         return nullptr;
     }
-    // This flow is used when we have one private client (subscribe test) but now we are issuing unsub/punsun which will require three clients and hence we need to resize.
-    if (transaction.isSubscribedMode() && (command_name == "unsubscribe" || command_name == "punsubscribe")) {
+    // This flow is used when we have one private client (subscribe test) but now we are issuing unsub/punsun/subscribe keyspace or keyevent which will require three clients and hence we need to resize.
+    if (transaction.isSubscribedMode()) {
       if (transaction.clients_.size() != static_cast<size_t>(requestsCount)) {
         transaction.clients_.resize(requestsCount);
       }

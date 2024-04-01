@@ -495,6 +495,25 @@ bool areAllResponsesSame(const std::vector<Common::Redis::RespValuePtr>& respons
     return true;
 }
 
+bool areAllResponsesSamePubSub(const std::vector<Common::Redis::RespValuePtr>& responses) {
+    if (responses.empty()) {
+        return true; 
+    }
+
+    const Common::Redis::RespValue* first_response = responses.front().get();
+    // comparison here would be based on the first two elements of the array.
+    // Sample output response ["subscribe", "__keyevent@0__:del", 2] -> The count 2 represents number of channels on a particular shard, 
+    // In other shards, there could lesser or more number of channels so count will not be valid to compare, but the first two elements should be same.
+    for (const auto& response : responses) {
+        if (!response || !first_response ||
+            first_response->asArray()[0].asString() != response->asArray()[0].asString() ||
+            first_response->asArray()[1].asString() != response->asArray()[1].asString()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void parseInfoResponse(const std::string& inforesponse,Common::Redis::Utility::InfoCmdResponseProcessor& infoProcessor) {
     std::istringstream inputStream(inforesponse);
     std::string line;
@@ -796,9 +815,9 @@ void PubSubRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, 
         callbacks_.onResponse(std::move(response));
         pending_responses_.clear();
       }
-    } else if(! areAllResponsesSame(pending_responses_)) {
+    } else if(! areAllResponsesSamePubSub(pending_responses_)) {
       updateStats(false);
-      ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->toString());
+      ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->asArray()[0].asString());
       callbacks_.onResponse(Common::Redis::Utility::makeError(
           fmt::format("all responses not same")));
       if (!pending_responses_.empty())    

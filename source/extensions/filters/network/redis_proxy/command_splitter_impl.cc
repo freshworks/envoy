@@ -46,43 +46,29 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
   }
   return handler;
 }
-AdminRespHandlerType getresponseHandlerType(const std::string command_name, const std::string command_arg = "") {
-  std::string keyspacepattern = "__keyspace@0__";
-  std::string keyeventpattern = "__keyevent@0__";
+AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
   AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
   if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
     if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client" || command_name == "info") {
       responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
-    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select") {
+    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select"){
       responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
-    } else if (command_name == "subscribe" || command_name == "psubscribe") {
-      if (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern) {
-        responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
-      } else {
-        responseHandlerType = AdminRespHandlerType::singleshardresponse;
-      }
-    } else if (command_name == "unsubscribe" || command_name == "punsubscribe") {
-      responseHandlerType = AdminRespHandlerType::aggregate_all_responses;
-    } else {
-      responseHandlerType = AdminRespHandlerType::singleshardresponse;
     }
   }else if (command_name == "publish" || command_name == "cluster"){
     responseHandlerType = AdminRespHandlerType::singleshardresponse;
+  }else if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name)) {
+    responseHandlerType = AdminRespHandlerType::aggregate_all_responses;
   }
   return responseHandlerType;
 }
-int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t redisShardsCount, const std::string command_arg = "") {
+int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t redisShardsCount) {
   int32_t shard_index = -1;
-  std::string keyspacepattern = "__keyspace@0__";
-  std::string keyeventpattern = "__keyevent@0__";
   //This need optimisation , generate random seed only once per thread
   srand(time(nullptr));
   
   if (Common::Redis::SupportedCommands::blockingCommands().contains(command) && requestsCount == 1) {
     return shard_index;
-  } else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && requestsCount == 1 && 
-   !( (command == "subscribe" || command == "psubscribe") && 
-   (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern) )) {
+  } else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && requestsCount == 1 ){
     // Send request to a random shard so that we donot allways send to the same shard
     shard_index = rand() % redisShardsCount;
   }
@@ -113,6 +99,19 @@ int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount
       }
   }
   return requestsCount;
+}
+
+
+bool isKeyspaceRequest(const std::string command_name, const std::string command_arg = "") {
+  // int32_t requestsCount = 1;
+  std::string keyspacepattern = "__keyspace@0__";
+  std::string keyeventpattern = "__keyevent@0__";
+  if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name)) {
+    if (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Common::Redis::Client::PoolRequest* makeNoKeyRequest(
@@ -495,23 +494,31 @@ bool areAllResponsesSame(const std::vector<Common::Redis::RespValuePtr>& respons
     return true;
 }
 
-bool areAllResponsesSamePubSub(const std::vector<Common::Redis::RespValuePtr>& responses) {
-    if (responses.empty()) {
-        return true; 
+bool areAllResponsesSamePubSub(const std::vector<Common::Redis::RespValuePtr>& responses, int singleShardIndex) {
+    if (responses.size() < 2) {
+        return true; // There's only one or no response, so they are the same
     }
-
-    const Common::Redis::RespValue* first_response = responses.front().get();
-    // comparison here would be based on the first two elements of the array.
-    // Sample output response ["subscribe", "__keyevent@0__:del", 2] -> The count 2 represents number of channels on a particular shard, 
-    // In other shards, there could lesser or more number of channels so count will not be valid to compare, but the first two elements should be same.
-    for (const auto& response : responses) {
-        if (!response || !first_response ||
-            first_response->asArray()[0].asString() != response->asArray()[0].asString() ||
-            first_response->asArray()[1].asString() != response->asArray()[1].asString()) {
+    
+    size_t startIndex = singleShardIndex != -1 ? 1 : 0;
+    const Common::Redis::RespValue* compareResponse = responses[startIndex].get();
+    
+    for (size_t i = startIndex + 1; i < responses.size(); ++i) {
+        const auto& response = responses[i];
+        if (!response || !compareResponse ||
+            compareResponse->asArray()[0].asString() != response->asArray()[0].asString() ||
+            compareResponse->asArray()[1].asString() != response->asArray()[1].asString()) {
             return false;
         }
     }
     return true;
+}
+
+// Generic function to build an array with bulkstring
+void addBulkString(Common::Redis::RespValue& requestArray, const std::string& value) {
+    Common::Redis::RespValue element;
+    element.type(Common::Redis::RespType::BulkString);
+    element.asString() = value;
+    requestArray.asArray().emplace_back(std::move(element));
 }
 
 void parseInfoResponse(const std::string& inforesponse,Common::Redis::Utility::InfoCmdResponseProcessor& infoProcessor) {
@@ -538,60 +545,6 @@ void parseInfoResponse(const std::string& inforesponse,Common::Redis::Utility::I
     }
 
     return;
-}
-
-void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
-  pending_requests_[reqindex].handle_ = nullptr;
-  // const auto& redisarg = pending_requests_[reqindex].redisarg_;
-  // const auto& rediscommand = pending_requests_[reqindex].rediscommand_;
-  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
-  if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
-        // Resize the vector to accommodate the new index
-        pending_responses_.resize(reqindex + 1);
-  }
-
-  if (value->type() == Common::Redis::RespType::Error){
-    error_count_++;
-    response_index_=reqindex;
-  }
-  // Move the value into the pending_responses at the specified index
-  pending_responses_[reqindex] = std::move(value);
-
-  ASSERT(num_pending_responses_ > 0);
-  if (--num_pending_responses_ == 0) {
-    if (error_count_ > 0 ){
-      if (!pending_responses_.empty()) {
-        Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
-        callbacks_.onResponse(std::move(response));
-        pending_responses_.clear();
-      }
-    } else {
-      bool positiveresponse = true;
-      updateStats(error_count_ == 0);
-      if (!pending_responses_.empty()) {
-        Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
-        Common::Redis::RespValue innerResponse;
-        response->type(Common::Redis::RespType::Array);
-
-        // Iterate through pending_responses_ and append non-empty responses to the array
-        for (auto& resp : pending_responses_) {
-          if (resp->type() == Common::Redis::RespType::Array ) {
-            if (resp->asArray().empty()) {
-              continue; // Skip empty arrays
-            }
-            innerResponse = *resp; 
-            for (auto& elem : innerResponse.asArray()) {
-              response->asArray().emplace_back(std::move(elem));
-            }
-          } 
-        }
-        if (positiveresponse) {
-          callbacks_.onResponse(std::move(response));
-          pending_responses_.clear();
-        }
-      }
-    }
-  }
 }
 
 void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
@@ -815,7 +768,7 @@ void PubSubRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, 
         callbacks_.onResponse(std::move(response));
         pending_responses_.clear();
       }
-    } else if(! areAllResponsesSamePubSub(pending_responses_)) {
+    } else if(! areAllResponsesSamePubSub(pending_responses_, 0)) {
       updateStats(false);
       ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->asArray()[0].asString());
       callbacks_.onResponse(Common::Redis::Utility::makeError(
@@ -833,6 +786,127 @@ void PubSubRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, 
     }
   }
 }
+
+void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
+  pending_requests_[reqindex].handle_ = nullptr;
+  // const auto& redisarg = pending_requests_[reqindex].redisarg_;
+  // const auto& rediscommand = pending_requests_[reqindex].rediscommand_;
+  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
+
+  // Resize the vector to accommodate the new index if needed
+  if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
+        // Resize the vector to accommodate the new reqindex
+        pending_responses_.resize(reqindex + 1);
+  }
+
+  //If error response received, increment error count and set response index
+  if (value->type() == Common::Redis::RespType::Error){
+    error_count_++;
+    response_index_=reqindex;
+  }
+   
+  pending_responses_[reqindex] = std::move(value);
+  ASSERT(num_pending_responses_ > 0);
+  
+  if(--num_pending_responses_ == 0) {
+    if (error_count_ > 0 ){
+      updateStats(false);
+      if (!pending_responses_.empty()) {
+        ENVOY_LOG(debug, "Error Response received: '{}'", pending_responses_[response_index_]->toString());
+        Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
+        callbacks_.onResponse(std::move(response));
+        pending_responses_.clear();
+      }
+    } else if(! areAllResponsesSamePubSub(pending_responses_, singleShardPendingRequestIndex_)) {
+      updateStats(false);
+      ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[1]->asArray()[1].asString());
+      callbacks_.onResponse(Common::Redis::Utility::makeError(
+          fmt::format("all responses not same")));
+      if (!pending_responses_.empty()) {
+        pending_responses_.clear();
+      }   
+    } else {
+      bool positiveresponse = true;
+      updateStats(error_count_ == 0);
+      if (!pending_responses_.empty()) {
+        Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
+        Common::Redis::RespValue innerResponse;
+        response->type(Common::Redis::RespType::Array);
+
+        if (singleShardPendingRequestIndex_ == 0) {
+          for (int i = 0; i <=1; i++) {
+            auto& resp = pending_responses_[i];
+            if (resp->type() == Common::Redis::RespType::Array ) {
+              if (resp->asArray().empty()) {
+                continue; // Skip empty arrays
+               }
+              innerResponse = *resp; 
+              for (auto& elem : innerResponse.asArray()) {
+                response->asArray().emplace_back(std::move(elem));
+              }
+            } 
+          }
+        } else {
+          auto& resp = pending_responses_[0];
+          if (resp->type() == Common::Redis::RespType::Array ) {
+              if (resp->asArray().empty()) {
+                positiveresponse = false; // Skip empty arrays
+               }
+              innerResponse = *resp; 
+              for (auto& elem : innerResponse.asArray()) {
+                response->asArray().emplace_back(std::move(elem));
+              }
+            } 
+
+        }
+
+        if (positiveresponse) {
+          callbacks_.onResponse(std::move(response));
+          pending_responses_.clear();
+        }
+      }
+    }  
+  }
+}
+
+// void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
+
+//   ASSERT(num_pending_responses_ > 0);
+//   if (--num_pending_responses_ == 0) {
+//     if (error_count_ > 0 ){
+//       if (!pending_responses_.empty()) {
+//         Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
+//         callbacks_.onResponse(std::move(response));
+//         pending_responses_.clear();
+//       }
+//     } else {
+//       bool positiveresponse = true;
+//       updateStats(error_count_ == 0);
+//       if (!pending_responses_.empty()) {
+//         Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
+//         Common::Redis::RespValue innerResponse;
+//         response->type(Common::Redis::RespType::Array);
+
+//         // Iterate through pending_responses_ and append non-empty responses to the array
+//         for (auto& resp : pending_responses_) {
+//           if (resp->type() == Common::Redis::RespType::Array ) {
+//             if (resp->asArray().empty()) {
+//               continue; // Skip empty arrays
+//             }
+//             innerResponse = *resp; 
+//             for (auto& elem : innerResponse.asArray()) {
+//               response->asArray().emplace_back(std::move(elem));
+//             }
+//           } 
+//         }
+//         if (positiveresponse) {
+//           callbacks_.onResponse(std::move(response));
+//           pending_responses_.clear();
+//         }
+//       }
+//     }
+//   }
+// }
 
 void mgmtNoKeyRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
@@ -946,16 +1020,36 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   std::string key = std::string();
   int32_t redisShardsCount=0;
   int32_t requestsCount=1;
-  int32_t shard_index=0;
   bool iserror = false;
-  std::string firstarg = std::string();
+  request_ptr->singleShardPendingRequestIndex_ = -1;
 
+  Common::Redis::RespValue plainRequestArray;
+  plainRequestArray.type(Common::Redis::RespType::Array);
+
+  Common::Redis::RespValue keyspaceRequestArray;
+  plainRequestArray.type(Common::Redis::RespType::Array);
+
+  addBulkString(plainRequestArray, command_name);
+  addBulkString(keyspaceRequestArray, command_name);
+
+  int32_t keyspaceResponsesCount = 0, plainResponsesCount = 0;
+  int32_t pendingRequestIndex = -1;
+
+  // constructing two resp arrays, one for keyspace commands and other for plain commands
   if (incoming_request->asArray().size() > 1) {
-    firstarg = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());
-  }else{
-    firstarg = "";
+    for(size_t i = 1; i < incoming_request->asArray().size(); i++){
+      std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
+      if (isKeyspaceRequest(command_name, key)) {
+        addBulkString(keyspaceRequestArray, key);
+        keyspaceResponsesCount = redisShardsCount;
+      } else {
+        addBulkString(plainRequestArray, key);
+        plainResponsesCount = 1;
+      }
+    }
   }
   
+  // route logic
   const auto& route = router.upstreamPool(key, stream_info);
   if (route) {
     Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* instance =
@@ -974,16 +1068,11 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
   }
 
-  requestsCount = getRequestCount(command_name,redisShardsCount,firstarg); 
+  request_ptr->num_pending_responses_ = keyspaceResponsesCount + plainResponsesCount;
+  request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_ );
+  request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
 
-  request_ptr->num_pending_responses_ = requestsCount;
-  request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_);
-
-  //reserve memory for list of responses if we have more than 1 request
-  if(requestsCount >1){
-    request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
-  }
-
+  // transaction logic
   if (transaction.active_ ){
     // when we are in subscribe command, we cannnot accept all other commands
     if (transaction.isSubscribedMode() && !Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
@@ -1003,8 +1092,8 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     }
     // This flow is used when we have one private client (subscribe test) but now we are issuing unsub/punsun/subscribe keyspace or keyevent which will require three clients and hence we need to resize.
     if (transaction.isSubscribedMode()) {
-      if (transaction.clients_.size() != static_cast<size_t>(requestsCount)) {
-        transaction.clients_.resize(requestsCount);
+      if (transaction.clients_.size() != static_cast<size_t>(request_ptr->num_pending_responses_)) {
+        transaction.clients_.resize(request_ptr->num_pending_responses_);
       }
     }
   }else {
@@ -1022,31 +1111,42 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     }
   }
 
-  Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
-
-  if(requestsCount >1){
-    request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
+  // Emplacing pending requests
+  // If we have any plain requests, we will have to create a single request for that and then loop through the shards to create pending requests for keyspace commands
+  if (plainResponsesCount != 0) {
+    int32_t shard_index = getShardIndex(command_name,plainResponsesCount,redisShardsCount);
+    request_ptr->singleShardPendingRequestIndex_ = ++pendingRequestIndex;
+    // TOD0: Fix response handler type
+    request_ptr->pending_requests_.emplace_back(*request_ptr, pendingRequestIndex, shard_index, command_name, "", getresponseHandlerType(command_name));
   }
- 
-  //loop through number of requests and create request for each shard
-  for (int32_t i = 0; i < request_ptr->num_pending_responses_; i++) {
-    shard_index=getShardIndex(command_name,requestsCount,redisShardsCount);
-    if(shard_index < 0){
-      shard_index = i;
-    }
 
-    request_ptr->pending_requests_.emplace_back(*request_ptr, i, shard_index, command_name, firstarg, getresponseHandlerType(command_name, firstarg));
+  if (keyspaceResponsesCount != 0) {
+    // passing dummy keyspace to get the right handler type
+    for (int i = 0; i < redisShardsCount; i++) {
+      request_ptr->pending_requests_.emplace_back(*request_ptr, ++pendingRequestIndex, i, command_name, "", getresponseHandlerType(command_name));
+    }
+  }
+
+  for(size_t i = pendingRequestIndex; i >= 0; i--) {
     PendingRequest& pending_request = request_ptr->pending_requests_.back();
     pending_request.handle_ = nullptr;
+    transaction.current_client_idx_ = pending_request.shard_index_;
+    // here singler shard pending response index should be zero to satisfy 
+    if (request_ptr->singleShardPendingRequestIndex_ == i) {
+      Common::Redis::RespValueSharedPtr base_request = std::make_shared<Common::Redis::RespValue>(plainRequestArray);
+      pending_request.handle_ = makeBlockingRequest(
+          route,pending_request.shard_index_,key,base_request,pending_request,callbacks.transaction());
+    } else {
+      Common::Redis::RespValueSharedPtr base_request = std::make_shared<Common::Redis::RespValue>(keyspaceRequestArray);
+      pending_request.handle_ = makeBlockingRequest(
+          route,pending_request.shard_index_,key,base_request,pending_request,callbacks.transaction());
+    }
 
-    transaction.current_client_idx_ = shard_index;
-    pending_request.handle_ = makeBlockingRequest(
-        route,shard_index,key,base_request,pending_request,callbacks.transaction());
     if (!pending_request.handle_) {
       command_stats.error_.inc();
       transaction.should_close_ = true;
       transaction.subscribed_client_shard_index_= -1;
-      ENVOY_LOG(debug, "Error in  makeBlockingRequest : '{}', to shard index: '{}'", incoming_request->toString(),shard_index);
+      ENVOY_LOG(debug, "Error in  makeBlockingRequest : '{}', to shard index: '{}'", incoming_request->toString(),pending_request.shard_index_);
       pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       iserror = true;
       break;
@@ -1059,9 +1159,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     transaction.should_close_ = false;
     return request_ptr;
   }
-
   return nullptr;
-
 }
 
 
@@ -1191,14 +1289,6 @@ Common::Redis::Client::PoolRequest*
 
 bool requiresValue(const std::string& arg) {
     return (arg == "count" || arg == "match" || arg == "type");
-}
-
-// Generic function to build an array with bulkstring
-void addBulkString(Common::Redis::RespValue& requestArray, const std::string& value) {
-    Common::Redis::RespValue element;
-    element.type(Common::Redis::RespType::BulkString);
-    element.asString() = value;
-    requestArray.asArray().emplace_back(std::move(element));
 }
 
 void ScanRequest::onChildError(Common::Redis::RespValuePtr&& value) {

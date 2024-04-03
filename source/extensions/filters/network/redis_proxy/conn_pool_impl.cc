@@ -431,40 +431,11 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     // Make the request using the client
     pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
         getRequest(pending_request.incoming_request_), pending_request);
-  } else {
-      ENVOY_LOG(debug, "Private connection only allowed for blocking/pubsub commands");
-      onRequestCompleted();
-      return nullptr;
+  }else{
+    ENVOY_LOG(debug, "Private connection only allowed for blocking/pubsub commands");
+    onRequestCompleted();
+    return nullptr;
   }
-  // if (transaction.active_) {
-  //   client_idx = transaction.current_client_idx_;
-  //   // Added this in || (transaction.clients_[client_idx] == nullptr) to handle the case where the connection is not established for some hosts but transaction is already active.
-  //   // Ex: When we give Subscribe test -> One host will be selected and transactive will be active, 
-  //   // Now it we give unsub/punsub it will be sent to all shards but since transaction connection_established_ will be set to true, 
-  //   // new conn will never be initiated, so to overcome this we need to check if the client is null or not. This will help in crating connection for hosts which are not connected.
-  //   if ((!transaction.connection_established_ && transaction.isSubscribedMode()) || (transaction.clients_[client_idx] == nullptr)) {
-  //     transaction.clients_[client_idx] =
-  //         client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-  //                                auth_username_, auth_password_, false,true,false,transaction.getDownstreamCallback());                          
-  //     if (transaction.connection_cb_) {
-  //       transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
-  //     }
-  //   }else if ((!transaction.connection_established_ && transaction.isBlockingCommand()) || (transaction.clients_[client_idx] == nullptr)) {
-  //     transaction.clients_[client_idx] =
-  //         client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-  //                                auth_username_, auth_password_, false,false,true,transaction.getDownstreamCallback());
-  //     if (transaction.connection_cb_) {
-  //       transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
-  //     }
-  //   }
-  //   pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
-  //       getRequest(pending_request.incoming_request_), pending_request);
-  // }else{
-  //   ENVOY_LOG(debug, "Private connection only allowed for blocking/pubsub commands");
-  //   onRequestCompleted();
-  //   return nullptr;
-  // }
-
   if (pending_request.request_handler_) {
     return &pending_request;
   } else {

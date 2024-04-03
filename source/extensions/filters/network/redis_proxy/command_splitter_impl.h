@@ -157,7 +157,6 @@ protected:
   SplitCallbacks& callbacks_;
   std::vector<Common::Redis::RespValuePtr> pending_responses_;
   std::vector<PendingRequest> pending_requests_;
-  int32_t singleShardPendingRequestIndex_;
   int32_t num_pending_responses_;
   uint32_t error_count_{0};
   int32_t response_index_{0};
@@ -326,8 +325,17 @@ private:
                 bool delay_command_latency)
       : AdministrationRequest(callbacks, command_stats, time_source, delay_command_latency) {}
   
-  void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
-  void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
+  void onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override { 
+    (void)value;
+    (void)reqindex;
+    (void)shardindex;
+    return;};
+  void onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override {
+    (void)value;
+    (void)reqindex;
+    (void)shardindex;
+    return;
+  };
   void onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex,int32_t shardindex) override;
   //Common::Redis::Client::PoolRequest* handle_{};
 };

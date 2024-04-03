@@ -85,34 +85,13 @@ bool checkIfAdminCommandSupported(const std::string command,const std::string su
   }
 }
 
-int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount, const std::string command_arg = "") {
+int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount) {
   int32_t requestsCount = 1;
-  std::string keyspacepattern = "__keyspace@0__";
-  std::string keyeventpattern = "__keyevent@0__";
-  if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) { 
-      if (((command_name == "subscribe" || command_name == "psubscribe") && 
-          (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern))
-          || command_name == "unsubscribe" || command_name == "punsubscribe") {
-          requestsCount = redisShardsCount;
-      } else {
-        requestsCount = 1;
-      }
+  if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
+    requestsCount = redisShardsCount;
   }
   return requestsCount;
 }
-
-
-// bool isKeyspaceRequest(const std::string command_name, const std::string command_arg = "") {
-//   // int32_t requestsCount = 1;
-//   std::string keyspacepattern = "__keyspace@0__";
-//   std::string keyeventpattern = "__keyevent@0__";
-//   if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name)) {
-//     if (command_arg.substr(0, keyspacepattern.length()) == keyspacepattern || command_arg.substr(0, keyeventpattern.length()) == keyeventpattern) {
-//       return true;
-//     }
-//   }
-//   return false;
-// }
 
 bool isKeyspaceCommand(const std::string& command) {
   std::string keyspacepattern = "__keyspace@0__";
@@ -503,24 +482,25 @@ bool areAllResponsesSame(const std::vector<Common::Redis::RespValuePtr>& respons
     return true;
 }
 
-bool areAllResponsesSamePubSub(const std::vector<Common::Redis::RespValuePtr>& responses, int singleShardIndex) {
-    if (responses.size() < 2) {
-        return true; // There's only one or no response, so they are the same
-    }
+// TODO : We are not doing this comparision for now. Need to implement this
+// bool areAllResponsesSamePubSub(const std::vector<Common::Redis::RespValuePtr>& responses, int singleShardIndex) {
+//     if (responses.size() < 2) {
+//         return true; // There's only one or no response, so they are the same
+//     }
     
-    size_t startIndex = singleShardIndex != -1 ? 1 : 0;
-    const Common::Redis::RespValue* compareResponse = responses[startIndex].get();
+//     size_t startIndex = singleShardIndex != -1 ? 1 : 0;
+//     const Common::Redis::RespValue* compareResponse = responses[startIndex].get();
     
-    for (size_t i = startIndex + 1; i < responses.size(); ++i) {
-        const auto& response = responses[i];
-        if (!response || !compareResponse ||
-            compareResponse->asArray()[0].asString() != response->asArray()[0].asString() ||
-            compareResponse->asArray()[1].asString() != response->asArray()[1].asString()) {
-            return false;
-        }
-    }
-    return true;
-}
+//     for (size_t i = startIndex + 1; i < responses.size(); ++i) {
+//         const auto& response = responses[i];
+//         if (!response || !compareResponse ||
+//             compareResponse->asArray()[0].asString() != response->asArray()[0].asString() ||
+//             compareResponse->asArray()[1].asString() != response->asArray()[1].asString()) {
+//             return false;
+//         }
+//     }
+//     return true;
+// }
 
 // Generic function to build an array with bulkstring
 void addBulkString(Common::Redis::RespValue& requestArray, const std::string& value) {
@@ -742,60 +722,6 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
   pending_responses_.clear();
 }
 
-void PubSubRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
-  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
-  pending_requests_[reqindex].handle_ = nullptr;
-
-  ENVOY_LOG(debug, "response: {}", value->toString());
-  updateStats(true);
-  callbacks_.onResponse(std::move(value));
-  pending_responses_.clear();
-}
-
-void PubSubRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
-  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
-  pending_requests_[reqindex].handle_ = nullptr;
-
-  if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
-        // Resize the vector to accommodate the new reqindex
-        pending_responses_.resize(reqindex + 1);
-  }
-  if (value->type() == Common::Redis::RespType::Error){
-    error_count_++;
-    response_index_=reqindex;
-  }
-  // Move the value into the pending_responses at the specified reqindex
-  pending_responses_[reqindex] = std::move(value);
-
-  ASSERT(num_pending_responses_ > 0);
-  if (--num_pending_responses_ == 0) {
-    if (error_count_ > 0 ){
-      updateStats(false);
-      if (!pending_responses_.empty()) {
-        ENVOY_LOG(debug, "Error Response received: '{}'", pending_responses_[response_index_]->toString());
-        Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
-        callbacks_.onResponse(std::move(response));
-        pending_responses_.clear();
-      }
-    } else if(! areAllResponsesSamePubSub(pending_responses_, 0)) {
-      updateStats(false);
-      ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->asArray()[0].asString());
-      callbacks_.onResponse(Common::Redis::Utility::makeError(
-          fmt::format("all responses not same")));
-      if (!pending_responses_.empty())    
-        pending_responses_.clear();
-    }else {
-      updateStats(true);
-      if (!pending_responses_.empty()) {
-      Common::Redis::RespValuePtr response = std::move(pending_responses_[0]);
-      ENVOY_LOG(debug, "response: {}", response->toString()); 
-      callbacks_.onResponse(std::move(response));
-      pending_responses_.clear();
-      }
-    }
-  }
-}
-
 void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
   // const auto& redisarg = pending_requests_[reqindex].redisarg_;
@@ -835,45 +761,6 @@ void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value,
     }  
   }
 }
-
-// void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
-
-//   ASSERT(num_pending_responses_ > 0);
-//   if (--num_pending_responses_ == 0) {
-//     if (error_count_ > 0 ){
-//       if (!pending_responses_.empty()) {
-//         Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
-//         callbacks_.onResponse(std::move(response));
-//         pending_responses_.clear();
-//       }
-//     } else {
-//       bool positiveresponse = true;
-//       updateStats(error_count_ == 0);
-//       if (!pending_responses_.empty()) {
-//         Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
-//         Common::Redis::RespValue innerResponse;
-//         response->type(Common::Redis::RespType::Array);
-
-//         // Iterate through pending_responses_ and append non-empty responses to the array
-//         for (auto& resp : pending_responses_) {
-//           if (resp->type() == Common::Redis::RespType::Array ) {
-//             if (resp->asArray().empty()) {
-//               continue; // Skip empty arrays
-//             }
-//             innerResponse = *resp; 
-//             for (auto& elem : innerResponse.asArray()) {
-//               response->asArray().emplace_back(std::move(elem));
-//             }
-//           } 
-//         }
-//         if (positiveresponse) {
-//           callbacks_.onResponse(std::move(response));
-//           pending_responses_.clear();
-//         }
-//       }
-//     }
-//   }
-// }
 
 void mgmtNoKeyRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
@@ -987,7 +874,6 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   std::string key = std::string();
   int32_t redisShardsCount=0;
   bool iserror = false;
-  request_ptr->singleShardPendingRequestIndex_ = -1;
 
   // by default setting single shard request true
   bool singleShardRequest = false;

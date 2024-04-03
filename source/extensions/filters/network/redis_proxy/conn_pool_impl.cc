@@ -427,7 +427,6 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
             transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
         }
     }
-    
     // Make the request using the client
     pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
         getRequest(pending_request.incoming_request_), pending_request);
@@ -436,6 +435,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     onRequestCompleted();
     return nullptr;
   }
+  
   if (pending_request.request_handler_) {
     return &pending_request;
   } else {

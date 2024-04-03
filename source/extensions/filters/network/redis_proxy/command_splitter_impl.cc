@@ -68,7 +68,7 @@ int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t r
   
   if (Common::Redis::SupportedCommands::blockingCommands().contains(command) && requestsCount == 1) {
     return shard_index;
-  } else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && requestsCount == 1 ){
+  }else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && requestsCount == 1 ){
     // Send request to a random shard so that we donot allways send to the same shard
     shard_index = rand() % redisShardsCount;
   }
@@ -399,7 +399,6 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
   if(requestsCount >1){
     request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
   }
-
   for (int32_t i = 0; i < request_ptr->num_pending_responses_; i++) {
     shard_index=getShardIndex(command_name,requestsCount,redisShardsCount);
     if(shard_index < 0){
@@ -925,9 +924,6 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
   }
-
-  
-
   // transaction logic
   if (transaction.active_ ){
     // when we are in subscribe command, we cannnot accept all other commands
@@ -1793,9 +1789,8 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
-  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
-  && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) 
-  && (command_name != Common::Redis::SupportedCommands::info())){
+  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)&&
+  (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)&& (command_name != Common::Redis::SupportedCommands::info())){
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);

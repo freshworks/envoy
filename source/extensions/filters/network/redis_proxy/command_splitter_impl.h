@@ -157,7 +157,7 @@ protected:
   SplitCallbacks& callbacks_;
   std::vector<Common::Redis::RespValuePtr> pending_responses_;
   std::vector<PendingRequest> pending_requests_;
-  u_int32_t singleShardPendingRequestIndex_;
+  int32_t singleShardPendingRequestIndex_;
   int32_t num_pending_responses_;
   uint32_t error_count_{0};
   int32_t response_index_{0};

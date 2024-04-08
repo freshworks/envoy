@@ -46,21 +46,40 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
   }
   return handler;
 }
-AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
-  AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
-  if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client" || command_name == "info") {
-      responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
-    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select"){
-      responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
+
+AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
+    // Define a map to store the mappings between command names and response handler types
+    static const std::unordered_map<std::string, AdminRespHandlerType> command_to_handler_map = {
+        {"pubsub", AdminRespHandlerType::aggregate_all_responses},
+        {"keys", AdminRespHandlerType::aggregate_all_responses},
+        {"slowlog", AdminRespHandlerType::aggregate_all_responses},
+        {"client", AdminRespHandlerType::aggregate_all_responses},
+        {"info", AdminRespHandlerType::aggregate_all_responses},
+        {"script", AdminRespHandlerType::allresponses_mustbe_same},
+        {"flushall", AdminRespHandlerType::allresponses_mustbe_same},
+        {"config", AdminRespHandlerType::allresponses_mustbe_same},
+        {"select", AdminRespHandlerType::allresponses_mustbe_same},
+        {"publish", AdminRespHandlerType::singleshardresponse},
+        {"cluster", AdminRespHandlerType::singleshardresponse}
+        // Add more mappings as needed
+    };
+
+    // Look up the command name in the map
+    auto it = command_to_handler_map.find(command_name);
+    if (it != command_to_handler_map.end()) {
+        // Return the corresponding response handler type if found
+        return it->second;
+    } else {
+        // If the command name is not found, check if it belongs to subscription commands
+        if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name)) {
+            return AdminRespHandlerType::aggregate_all_responses;
+        } else {
+            // Otherwise, return the default response handler type
+            return AdminRespHandlerType::response_handler_none;
+        }
     }
-  }else if (command_name == "publish" || command_name == "cluster"){
-    responseHandlerType = AdminRespHandlerType::singleshardresponse;
-  }else if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name)) {
-    responseHandlerType = AdminRespHandlerType::aggregate_all_responses;
-  }
-  return responseHandlerType;
 }
+
 int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t redisShardsCount) {
   int32_t shard_index = -1;
   //This need optimisation , generate random seed only once per thread
@@ -93,10 +112,10 @@ int32_t getRequestCount(const std::string command_name, int32_t redisShardsCount
   return requestsCount;
 }
 
-bool isKeyspaceCommand(const std::string& command) {
+bool isKeyspaceArgument(const std::string& argument) {
   std::string keyspacepattern = "__keyspace@0__";
   std::string keyeventpattern = "__keyevent@0__";
-  if (command.substr(0, keyspacepattern.length()) == keyspacepattern || command.substr(0, keyeventpattern.length()) == keyeventpattern) {
+  if (argument.find(keyspacepattern) == 0 || argument.find(keyeventpattern) == 0) {
     return true;
   }
   return false;
@@ -723,9 +742,6 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
 
 void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
-  // const auto& redisarg = pending_requests_[reqindex].redisarg_;
-  // const auto& rediscommand = pending_requests_[reqindex].rediscommand_;
-  ENVOY_LOG(debug,"response received for reqindex: '{}', shard Index: '{}'", reqindex,shardindex);
 
   // Resize the vector to accommodate the new index if needed
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
@@ -885,23 +901,28 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 
   // Analyze request to get the proper request type
   if (command_name == "subscribe" || command_name == "psubscribe") {
-    bool containsKeyspace = false;
-    bool containsOtherCommands = false;
+    bool containsKeyspaceChannel = false;
+    bool containsNormalChannel = false;
     for (size_t i = 1; i < incoming_request->asArray().size(); i++) {
       std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
-      if (isKeyspaceCommand(key)) {
-        containsKeyspace = true;
+      if (isKeyspaceArgument(key)) {
+        ENVOY_LOG(debug, "keyspace command: '{}'", key);
+        containsKeyspaceChannel = true;
       } else {
-        containsOtherCommands = true;
+        containsNormalChannel = true;
       }
     }
-    if (containsKeyspace && !containsOtherCommands) {
-      allShardsRequest = true;
-    } else if (!containsKeyspace && containsOtherCommands) {
-      singleShardRequest = true;
-    } else if (containsKeyspace && containsOtherCommands) {
-      allShardwithSingleShardRequest = true;
+    
+    if (containsKeyspaceChannel) {
+      if (!containsNormalChannel) {
+          allShardsRequest = true; //example: subscribe "__keyspace@0__:del"
+      } else {
+          allShardwithSingleShardRequest = true; //example: subscribe test "__keyevent@0__:del"
+      }
+    } else if (containsNormalChannel) {
+        singleShardRequest = true; //example: subscribe test
     }
+
   } else if (command_name == "unsubscribe" || command_name == "punsubscribe") {
     allShardsRequest = true;
   }
@@ -925,36 +946,34 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
   }
   // transaction logic
-  if (transaction.active_ ){
-    // when we are in subscribe command, we cannnot accept all other commands
-    if (transaction.isSubscribedMode() && !Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
-        callbacks.onResponse(
-            Common::Redis::Utility::makeError(fmt::format("not supported command in subscribe state")));
-        return nullptr;
-    }else if (transaction.isSubscribedMode() && (command_name == "quit")){
-      transaction.should_close_ = true;
-      // transaction.subscribed_client_shard_index_= -1;
-      localResponse(callbacks, "OK");
-      return nullptr;
+  if (transaction.active_) {
+    if (transaction.isSubscribedMode()) {
+        // Handle unsupported commands in subscribe mode
+        if (!Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
+            callbacks.onResponse(
+                Common::Redis::Utility::makeError(fmt::format("not supported command in subscribe state")));
+            return nullptr;
+        }
+        // Handle quit command
+        if (command_name == "quit") {
+            transaction.should_close_ = true;
+            localResponse(callbacks, "OK");
+            return nullptr;
+        }
+        // Resize clients if necessary
+        if (transaction.clients_.size() != static_cast<size_t>(request_ptr->num_pending_responses_)) {
+            transaction.clients_.resize(redisShardsCount);
+        }
     } else if (transaction.isTransactionMode()) {
-      // subscription commands are not supported in transaction mode, we will not get here , but just in case
+        // Handle transaction mode
         callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not supported when in transaction mode")));
         transaction.should_close_ = true;
         return nullptr;
-    }
-    // This flow is used when we have one private client (subscribe test) but now we are issuing unsub/punsun/subscribe keyspace or keyevent which will require three clients and hence we need to resize.
-    if (transaction.isSubscribedMode()) {
-      if (transaction.clients_.size() != static_cast<size_t>(request_ptr->num_pending_responses_)) {
-        transaction.clients_.resize(redisShardsCount);
-      }
     }
   }else {
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
       transaction.clients_.resize(redisShardsCount);
       transaction.enterSubscribedMode();
-      // if(transaction.subscribed_client_shard_index_ == -1){
-      //   transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
-      // }
       transaction.start();
     }else{
       ENVOY_LOG(debug, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);
@@ -964,31 +983,34 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   }
 
   if (allShardwithSingleShardRequest) {
-    // construct pending request here
+    // Construct pending request
     request_ptr->num_pending_responses_ = redisShardsCount;
-    request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_ );
+    request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_);
     request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
-    int32_t shard_index = getShardIndex(command_name,1,redisShardsCount);
-    int32_t pending_req_index = -1;
-    request_ptr->pending_requests_.emplace_back(*request_ptr, ++pending_req_index, shard_index, command_name, "", getresponseHandlerType(command_name));
 
-    // construct keyspace request and emplace in pending request
-    
+    // Construct keyspace request
     keyspaceRequestArray.type(Common::Redis::RespType::Array);
     addBulkString(keyspaceRequestArray, command_name);
-    for(size_t i = 1; i < incoming_request->asArray().size(); i++){
-      std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
-      if (isKeyspaceCommand(key)) {
-        addBulkString(keyspaceRequestArray, key);
-      }
+    for (size_t i = 1; i < incoming_request->asArray().size(); i++) {
+        std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
+        if (isKeyspaceArgument(key)) {
+            addBulkString(keyspaceRequestArray, key);
+        }
     }
+
+    // Get shard index for the command
+    int32_t shard_index = getShardIndex(command_name, 1, redisShardsCount);
+    int32_t pending_req_index = -1;
+
+    // Emplace keyspace request in pending request
+    request_ptr->pending_requests_.emplace_back(*request_ptr, ++pending_req_index, shard_index, command_name, "", getresponseHandlerType(command_name));
     for (int32_t i = 0; i < redisShardsCount; i++) {
-      if (i != shard_index) {
-        ENVOY_LOG(debug, "im inside : '{}'", pending_req_index);
-        request_ptr->pending_requests_.emplace_back(*request_ptr, ++pending_req_index, i, command_name, "", getresponseHandlerType(command_name));
-      }
+        if (i != shard_index) {
+            request_ptr->pending_requests_.emplace_back(*request_ptr, ++pending_req_index, i, command_name, "", getresponseHandlerType(command_name));
+        }
     }
   }
+
 
 
   if (singleShardRequest) {

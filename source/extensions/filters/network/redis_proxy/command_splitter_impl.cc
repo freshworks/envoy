@@ -645,16 +645,22 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
                   if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get" ) {
+                      std::unordered_set<std::string> unique_elements; // Set to store unique elements 
+                      // In Pubsub channels, we have a corner case where we need to remove duplicates from the response 
+                      // since same channel (keyspace/keyevent) can be subscribed 
+                      // to multiple shards and only unique should be showed.
                       for (auto& resp : pending_responses_) {
-                        if (resp->type() == Common::Redis::RespType::Array ) {
-                          if (resp->asArray().empty()) {
-                            continue; // Skip empty arrays
+                          if (resp->type() == Common::Redis::RespType::Array) {
+                              for (auto& elem : resp->asArray()) {
+                                  std::string str_elem = elem.asString(); // Convert RespValue to string
+                                  // Check if the element is already available
+                                  if (unique_elements.find(str_elem) == unique_elements.end()) {
+                                      // If not seen, add it to the response array and store in unique_elements
+                                      unique_elements.insert(str_elem);
+                                      response->asArray().emplace_back(std::move(elem));
+                                  }
+                              }
                           }
-                          innerResponse = *resp; 
-                          for (auto& elem : innerResponse.asArray()) {
-                            response->asArray().emplace_back(std::move(elem));
-                          }
-                        } 
                       }
                   }else if (rediscommand == "client" && redisarg == "list") {
                     for (auto& resp : pending_responses_) {
@@ -742,7 +748,7 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
 
 void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
   pending_requests_[reqindex].handle_ = nullptr;
-  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
+  ENVOY_LOG(debug,"response received for reqindex: '{}', shard Index: '{}', Value: {}", reqindex,shardindex,value->toString());
 
   // Resize the vector to accommodate the new index if needed
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {

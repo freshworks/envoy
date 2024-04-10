@@ -1835,6 +1835,11 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
           fmt::format("unsupported command '{}' '{}'",command_name, sub_command)));
       return nullptr;
     }
+    if ((sub_command == "setname" && request->asArray().size() != 3) || (sub_command == "getname" && request->asArray().size() != 2)) {
+      callbacks.onResponse(Common::Redis::Utility::makeError(
+         fmt::format("ERR wrong number of arguments for CLIENT '{}' command", sub_command)));
+      return nullptr;
+    }
     Common::Redis::RespValuePtr ClientResp(new Common::Redis::RespValue());
     if (sub_command == "setname") {
       callbacks.setClientname(request->asArray()[2].asString());

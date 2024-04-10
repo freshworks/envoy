@@ -747,8 +747,8 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
 }
 
 void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
-  pending_requests_[reqindex].handle_ = nullptr;
   ENVOY_LOG(debug,"response received for reqindex: '{}', shard Index: '{}', Value: {}", reqindex,shardindex,value->toString());
+  pending_requests_[reqindex].handle_ = nullptr;
 
   // Resize the vector to accommodate the new index if needed
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {

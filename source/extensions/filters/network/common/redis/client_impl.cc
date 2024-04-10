@@ -242,8 +242,11 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 }
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
-
-  if (pending_requests_.empty() && is_pubsub_client_) {
+  ENVOY_LOG(debug, "pending request size {}", pending_requests_.size());
+  ENVOY_LOG(debug, "pubsub client {}", is_pubsub_client_);
+  ENVOY_LOG(debug, "fragmented {}", value.get()->fragmented_);
+  if (pending_requests_.empty() && is_pubsub_client_ && value.get()->fragmented_) { //  
+    ENVOY_LOG(debug, "Pubsub client received message from server here - ");
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
     if (downstream_cb_ != nullptr){
@@ -255,18 +258,21 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   PendingRequest& request = pending_requests_.front();
   const bool canceled = request.canceled_;
 
-  if (config_.enableCommandStats()) {
+  if (config_.enableCommandStats() && !value.get()->fragmented_start_) {
     bool success = !canceled && (value->type() != Common::Redis::RespType::Error);
     redis_command_stats_->updateStats(scope_, request.command_, success);
     request.command_request_timer_->complete();
   }
-  request.aggregate_request_timer_->complete();
+  //request.aggregate_request_timer_->complete();
 
   ClientCallbacks& callbacks = request.callbacks_;
 
   // We need to ensure the request is popped before calling the callback, since the callback might
   // result in closing the connection.
-  pending_requests_.pop_front();
+  if (!value.get()->fragmented_start_) {
+    ENVOY_LOG(debug, "ClientImpl::onRespValue: popping request");
+    pending_requests_.pop_front();
+  }
   if (canceled) {
     host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
   } else if (config_.enableRedirection() && (!is_blocking_client_ || !is_transaction_client_) &&
@@ -286,18 +292,19 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
       }
     }
   } else {
+    ENVOY_LOG(debug, "ClientImpl::onRespValue: calling onResponse {}", value.get()->toString());
     callbacks.onResponse(std::move(value));
   }
 
   // If there are no remaining ops in the pipeline we need to disable the timer.
   // Otherwise we boost the timer since we are receiving responses and there are more to flush
   // out.
-  if (pending_requests_.empty()) {
+  if (pending_requests_.empty() && !value.get()->fragmented_start_) {
     connect_or_op_timer_->disableTimer();
   } else {
     connect_or_op_timer_->enableTimer(config_.opTimeout());
   }
-
+  
   putOutlierEvent(Upstream::Outlier::Result::ExtOriginRequestSuccess);
 }
 

@@ -332,8 +332,8 @@ RespValue::CompositeArray::CompositeArrayConstIterator::empty() {
 void DecoderImpl::decode(Buffer::Instance& data) {
   for (const Buffer::RawSlice& slice : data.getRawSlices()) {
     // Enable below commets only for debugging -> useful for debugging
-    // std::string slice_str(reinterpret_cast<const char*>(slice.mem_), slice.len_);
-    // ENVOY_LOG(warn, "Decoding slice: {}", slice_str);
+    std::string slice_str(reinterpret_cast<const char*>(slice.mem_), slice.len_);
+    ENVOY_LOG(warn, "Decoding slice: {}", slice_str);
     parseSlice(slice);
   }
 
@@ -348,7 +348,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     ENVOY_LOG(trace, "parse slice: {} remaining", remaining);
     switch (state_) {
     case State::ValueRootStart: {
-      ENVOY_LOG(trace, "parse slice: ValueRootStart");
+      ENVOY_LOG(debug, "parse slice: ValueRootStart");
       pending_value_root_ = std::make_unique<RespValue>();
       pending_value_stack_.push_front({pending_value_root_.get(), 0});
       state_ = State::ValueStart;
@@ -356,7 +356,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::ValueStart: {
-      ENVOY_LOG(trace, "parse slice: ValueStart: {}", buffer[0]);
+      ENVOY_LOG(debug, "buffer of ValueStart: {}", buffer[0]);
       pending_integer_.reset();
       switch (buffer[0]) {
       case '*': {
@@ -395,7 +395,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::IntegerStart: {
-      ENVOY_LOG(trace, "parse slice: IntegerStart: {}", buffer[0]);
+      ENVOY_LOG(debug, "parse slice: IntegerStart: {}", buffer[0]);
       if (buffer[0] == '-') {
         pending_integer_.negative_ = true;
         remaining--;
@@ -407,7 +407,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::Integer: {
-      ENVOY_LOG(trace, "parse slice: Integer: {}", buffer[0]);
+      ENVOY_LOG(debug, "parse slice: Integer: {}", buffer[0]);
       char c = buffer[0];
       if (buffer[0] == '\r') {
         state_ = State::IntegerLF;
@@ -429,17 +429,21 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
         throw ProtocolError("expected new line");
       }
 
-      ENVOY_LOG(trace, "parse slice: IntegerLF: {}", pending_integer_.integer_);
+      ENVOY_LOG(debug, "parse slice: IntegerLF: {}", pending_integer_.integer_);
       remaining--;
+      ENVOY_LOG(debug, "parse slice: Remaining: {}", remaining);
       buffer++;
+      ENVOY_LOG(debug, "parse slice: buffer: {}", buffer);
 
       PendingValue& current_value = pending_value_stack_.front();
       if (current_value.value_->type() == RespType::Array) {
         if (pending_integer_.negative_) {
+          ENVOY_LOG(debug, "here 1");
           // Null array. Convert to null.
           current_value.value_->type(RespType::Null);
           state_ = State::ValueComplete;
         } else if (pending_integer_.integer_ == 0) {
+          ENVOY_LOG(debug, "here 2");
           state_ = State::ValueComplete;
         } else {
           std::vector<RespValue> values(pending_integer_.integer_);
@@ -449,8 +453,10 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
         }
       } else if (current_value.value_->type() == RespType::Integer) {
         if (pending_integer_.integer_ == 0 || !pending_integer_.negative_) {
+          ENVOY_LOG(debug, "here 3");
           current_value.value_->asInteger() = pending_integer_.integer_;
         } else {
+          ENVOY_LOG(debug, "here 4");
           // By subtracting 1 (and later correcting) we ensure that we remain within the int64_t
           // range to allow a valid static_cast. This is an issue when we have a value of -2^63,
           // which cannot be represented as 2^63 in the intermediate int64_t.
@@ -464,6 +470,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
           // TODO(mattklein123): reserve and define max length since we don't stream currently.
           state_ = State::BulkStringBody;
         } else {
+          ENVOY_LOG(debug, "here 5");
           // Null bulk string. Switch type to null and move to value complete.
           current_value.value_->type(RespType::Null);
           state_ = State::ValueComplete;
@@ -483,7 +490,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
       buffer += length_to_copy;
 
       if (pending_integer_.integer_ == 0) {
-        ENVOY_LOG(trace, "parse slice: BulkStringBody complete: {}",
+        ENVOY_LOG(debug, "parse slice: BulkStringBody complete: {}",
                   pending_value_stack_.front().value_->asString());
         state_ = State::CR;
       }
@@ -492,7 +499,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::CR: {
-      ENVOY_LOG(trace, "parse slice: CR");
+      ENVOY_LOG(debug, "parse slice: CR");
       if (buffer[0] != '\r') {
         throw ProtocolError("expected carriage return");
       }
@@ -504,7 +511,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::LF: {
-      ENVOY_LOG(trace, "parse slice: LF");
+      ENVOY_LOG(debug, "parse slice: LF");
       if (buffer[0] != '\n') {
         throw ProtocolError("expected new line");
       }
@@ -516,7 +523,7 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::SimpleString: {
-      ENVOY_LOG(trace, "parse slice: SimpleString: {}", buffer[0]);
+      ENVOY_LOG(debug, "parse slice: SimpleString: {}", buffer[0]);
       if (buffer[0] == '\r') {
         state_ = State::LF;
       } else {
@@ -529,13 +536,24 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
     }
 
     case State::ValueComplete: {
-      ENVOY_LOG(trace, "parse slice: ValueComplete");
+      ENVOY_LOG(debug, "parse slice: ValueComplete");
       ASSERT(!pending_value_stack_.empty());
       pending_value_stack_.pop_front();
       if (pending_value_stack_.empty()) {
+        if (remaining != 0) {
+          ENVOY_LOG(debug, "Still we have remaining RESP to be processed");
+          pending_value_root_.get()->fragmented_ = true;
+          pending_value_root_.get()->fragmented_start_ = true;
+        } else {
+          ENVOY_LOG(debug, "Entire RESP is processed");
+          pending_value_root_.get()->fragmented_ = true;
+          pending_value_root_.get()->fragmented_start_ = false;
+        }
+        ENVOY_LOG(debug, "Pending value root {}", pending_value_root_.get()->toString());
         callbacks_.onRespValue(std::move(pending_value_root_));
         state_ = State::ValueRootStart;
       } else {
+        ENVOY_LOG(debug, "I am here now");
         PendingValue& current_value = pending_value_stack_.front();
         ASSERT(current_value.value_->type() == RespType::Array);
         if (current_value.current_array_element_ < current_value.value_->asArray().size() - 1) {

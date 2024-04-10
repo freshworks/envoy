@@ -1818,8 +1818,9 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
-  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)&&
-  (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)&& (command_name != Common::Redis::SupportedCommands::info())){
+  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
+  && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)
+  && (Common::Redis::SupportedCommands::noArgAllowedCommands().count(command_name) == 0)) {
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);

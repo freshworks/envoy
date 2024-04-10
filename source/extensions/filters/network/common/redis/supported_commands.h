@@ -91,6 +91,14 @@ struct SupportedCommands {
   static const absl::flat_hash_set<std::string>& blockingCommands() {
     CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin");
   }
+
+   /**
+   * @return commands that do not require arguments.
+   */
+  static const absl::flat_hash_set<std::string>& noArgAllowedCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "info", "flushall");
+  }
+
     /**
    * @return commands which handle Redis commands without keys.
    */
@@ -157,7 +165,7 @@ struct SupportedCommands {
    */
   static const std::string& exit() { CONSTRUCT_ON_FIRST_USE(std::string, "exit"); }
 
-    /**
+  /**
    * @return info command
    */
   static const std::string& info() { CONSTRUCT_ON_FIRST_USE(std::string, "info"); }

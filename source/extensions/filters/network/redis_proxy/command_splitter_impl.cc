@@ -60,7 +60,8 @@ AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
         {"config", AdminRespHandlerType::allresponses_mustbe_same},
         {"select", AdminRespHandlerType::allresponses_mustbe_same},
         {"publish", AdminRespHandlerType::singleshardresponse},
-        {"cluster", AdminRespHandlerType::singleshardresponse}
+        {"cluster", AdminRespHandlerType::singleshardresponse},
+        {"flushdb", AdminRespHandlerType::allresponses_mustbe_same},
         // Add more mappings as needed
     };
 

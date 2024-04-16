@@ -604,9 +604,9 @@ void InstanceImpl::ThreadLocalPool::onRequestCompleted() {
 
   // The response we got might not be in order, so flush out what we can. (A new response may
   // unlock several out of order responses).
-  while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
-    pending_requests_.pop_front();
-  }
+  // while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
+  //   pending_requests_.pop_front();
+  // }
 }
 
 void InstanceImpl::ThreadLocalActiveClient::onEvent(Network::ConnectionEvent event) {
@@ -654,7 +654,10 @@ InstanceImpl::PendingRequest::~PendingRequest() {
 void InstanceImpl::PendingRequest::onResponse(Common::Redis::RespValuePtr&& response) {
   request_handler_ = nullptr;
   pool_callbacks_.onResponse(std::move(response));
+  // ENVOY_LOG(debug, "Fragment start {}", response.get()->fragmented_start_);
+  // if (!response.get()->fragmented_start_) {
   parent_.onRequestCompleted();
+  //}
 }
 
 void InstanceImpl::PendingRequest::onFailure() {

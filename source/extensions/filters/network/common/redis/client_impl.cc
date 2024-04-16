@@ -242,8 +242,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 }
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
-
-  if (pending_requests_.empty() && is_pubsub_client_) {
+  if (pending_requests_.empty() && is_pubsub_client_ && !value.get()->fragmented_) {
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
     if (downstream_cb_ != nullptr){
@@ -251,23 +250,29 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
     }
     return;
   }
-  ASSERT(!pending_requests_.empty());
+  if (!value.get()->fragmented_start_) {
+    ASSERT(!pending_requests_.empty());
+  }
   PendingRequest& request = pending_requests_.front();
   const bool canceled = request.canceled_;
-
-  if (config_.enableCommandStats()) {
+  
+  if (config_.enableCommandStats() && !value.get()->fragmented_start_) {
     bool success = !canceled && (value->type() != Common::Redis::RespType::Error);
     redis_command_stats_->updateStats(scope_, request.command_, success);
     request.command_request_timer_->complete();
   }
-  request.aggregate_request_timer_->complete();
+  if (!value.get()->fragmented_start_) {
+    request.aggregate_request_timer_->complete();
+  }
 
   ClientCallbacks& callbacks = request.callbacks_;
 
   // We need to ensure the request is popped before calling the callback, since the callback might
   // result in closing the connection.
-  pending_requests_.pop_front();
-  if (canceled) {
+  if (!value.get()->fragmented_start_) {
+    pending_requests_.pop_front(); 
+  }
+  if (canceled && !value.get()->fragmented_start_) {
     host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
   } else if (config_.enableRedirection() && (!is_blocking_client_ || !is_transaction_client_) &&
              (value->type() == Common::Redis::RespType::Error)) {

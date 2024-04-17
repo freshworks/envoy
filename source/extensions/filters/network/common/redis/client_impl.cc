@@ -242,7 +242,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 }
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
-  if (pending_requests_.empty() && is_pubsub_client_ && !value.get()->fragmented_) {
+  if (pending_requests_.empty() && is_pubsub_client_) {
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
     if (downstream_cb_ != nullptr){

@@ -748,20 +748,16 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
 }
 
 void PubSubRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
+  ENVOY_LOG(debug,"response recived for reqindex: '{}', shard index:'{}'", reqindex,shardindex);
   pending_requests_[reqindex].handle_ = nullptr;  
   if (reqindex >= static_cast<int32_t>(pending_responses_.size())) {
         // Resize the vector to accommodate the new reqindex
         pending_responses_.resize(reqindex + 1);
   }
 
-  if (value->type() == Common::Redis::RespType::Error){
-    error_count_++;
-    response_index_=reqindex;
-  }
-   
   pending_responses_[reqindex] = std::move(value);
 
-  if (shardindex == 0) {
+  if (reqindex == 0) {
     callbacks_.transaction().downstream_cb_->sendResponseDownstream(std::move(pending_responses_[reqindex]));
   }
   
@@ -990,8 +986,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     }
 
     // Get shard index for the command
-    //int32_t shard_index = getShardIndex(command_name, 1, redisShardsCount);
-    int32_t shard_index = 0; // Send entire request (normal + keyspace) in this shardindex
+    int32_t shard_index = getShardIndex(command_name, 1, redisShardsCount);
     int32_t pending_req_index = -1;
 
     // Emplace keyspace request in pending request
@@ -1010,8 +1005,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     request_ptr->num_pending_responses_ = 1;
     request_ptr->pending_requests_.reserve(request_ptr->num_pending_responses_ );
     request_ptr->pending_responses_.reserve(request_ptr->num_pending_responses_);
-    //int32_t shard_index = getShardIndex(command_name,1,redisShardsCount);
-    int32_t shard_index = 0;
+    int32_t shard_index = getShardIndex(command_name,1,redisShardsCount);
     request_ptr->pending_requests_.emplace_back(*request_ptr, 0, shard_index, command_name, "", getresponseHandlerType(command_name));
   }
 

@@ -275,7 +275,9 @@ struct Transaction {
     key_.clear();
     if (connection_established_) {
       for (auto& client : clients_) {
-        client->close();
+        if (client != nullptr) {
+          client->close();
+        }
       }
       connection_established_ = false;
     }

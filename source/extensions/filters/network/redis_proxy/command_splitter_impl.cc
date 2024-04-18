@@ -46,18 +46,38 @@ Common::Redis::Client::PoolRequest* makeSingleServerRequest(
   }
   return handler;
 }
-AdminRespHandlerType getresponseHandlerType(const std::string command_name) {
-  AdminRespHandlerType responseHandlerType = AdminRespHandlerType::response_handler_none;
-  if (Common::Redis::SupportedCommands::allShardCommands().contains(command_name)) {
-    if (command_name == "pubsub" || command_name == "keys" || command_name == "slowlog" || command_name == "client" || command_name == "info") {
-      responseHandlerType = AdminRespHandlerType::aggregate_all_responses;  
-    } else if (command_name == "script" || command_name == "flushall" || command_name == "config" || command_name == "select"){
-      responseHandlerType = AdminRespHandlerType::allresponses_mustbe_same;
+AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
+    // Define a map to store the mappings between command names and response handler types
+    static const std::unordered_map<std::string, AdminRespHandlerType> command_to_handler_map = {
+        {"pubsub", AdminRespHandlerType::aggregate_all_responses},
+        {"keys", AdminRespHandlerType::aggregate_all_responses},
+        {"slowlog", AdminRespHandlerType::aggregate_all_responses},
+        {"client", AdminRespHandlerType::aggregate_all_responses},
+        {"info", AdminRespHandlerType::aggregate_all_responses},
+        {"script", AdminRespHandlerType::allresponses_mustbe_same},
+        {"flushall", AdminRespHandlerType::allresponses_mustbe_same},
+        {"config", AdminRespHandlerType::allresponses_mustbe_same},
+        {"select", AdminRespHandlerType::allresponses_mustbe_same},
+        {"publish", AdminRespHandlerType::singleshardresponse},
+        {"cluster", AdminRespHandlerType::singleshardresponse},
+        {"flushdb", AdminRespHandlerType::allresponses_mustbe_same},
+        // Add more mappings as needed
+    };
+
+    // Look up the command name in the map
+    auto it = command_to_handler_map.find(command_name);
+    if (it != command_to_handler_map.end()) {
+        // Return the corresponding response handler type if found
+        return it->second;
+    } else {
+        // If the command name is not found, check if it belongs to subscription commands
+        if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name)) {
+            return AdminRespHandlerType::aggregate_all_responses;
+        } else {
+            // Otherwise, return the default response handler type
+            return AdminRespHandlerType::response_handler_none;
+        }
     }
-  }else if (command_name == "publish" || command_name == "cluster"){
-    responseHandlerType = AdminRespHandlerType::singleshardresponse;
-  }
-  return responseHandlerType;
 }
 int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t redisShardsCount) {
   int32_t shard_index = -1;
@@ -590,17 +610,23 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
                   if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get" ) {
-                      for (auto& resp : pending_responses_) {
-                        if (resp->type() == Common::Redis::RespType::Array ) {
-                          if (resp->asArray().empty()) {
-                            continue; // Skip empty arrays
-                          }
-                          innerResponse = *resp; 
-                          for (auto& elem : innerResponse.asArray()) {
-                            response->asArray().emplace_back(std::move(elem));
-                          }
-                        } 
-                      }
+                    std::unordered_set<std::string> unique_elements; // Set to store unique elements 
+                    // In Pubsub channels, we have a corner case where we need to remove duplicates from the response 
+                    // since same channel (keyspace/keyevent) can be subscribed 
+                    // to multiple shards and only unique should be showed.
+                    for (auto& resp : pending_responses_) {
+                        if (resp->type() == Common::Redis::RespType::Array) {
+                            for (auto& elem : resp->asArray()) {
+                                std::string str_elem = elem.asString(); // Convert RespValue to string
+                                // Check if the element is already available
+                                if (unique_elements.find(str_elem) == unique_elements.end()) {
+                                    // If not seen, add it to the response array and store in unique_elements
+                                    unique_elements.insert(str_elem);
+                                    response->asArray().emplace_back(std::move(elem));
+                                }
+                            }
+                        }
+                    }
                   }else if (rediscommand == "client" && redisarg == "list") {
                     for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::BulkString) {
@@ -1598,7 +1624,9 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
-  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)&& (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) && (command_name != Common::Redis::SupportedCommands::info())){
+  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
+  && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)
+  && (Common::Redis::SupportedCommands::noArgAllowedCommands().count(command_name) == 0)) {
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);
@@ -1612,6 +1640,11 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
       ENVOY_LOG(debug, "unsupported command '{}' '{}'",command_name, sub_command);
       callbacks.onResponse(Common::Redis::Utility::makeError(
           fmt::format("unsupported command '{}' '{}'",command_name, sub_command)));
+      return nullptr;
+    }
+    if ((sub_command == "setname" && request->asArray().size() != 3) || (sub_command == "getname" && request->asArray().size() != 2)) {
+      callbacks.onResponse(Common::Redis::Utility::makeError(
+         fmt::format("ERR wrong number of arguments for CLIENT '{}' command", sub_command)));
       return nullptr;
     }
     Common::Redis::RespValuePtr ClientResp(new Common::Redis::RespValue());

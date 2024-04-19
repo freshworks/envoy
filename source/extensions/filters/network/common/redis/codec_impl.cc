@@ -534,10 +534,10 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
       pending_value_stack_.pop_front();
       if (pending_value_stack_.empty()) {
         if (remaining != 0) {
-          pending_value_root_.get()->fragmented_ = true;
+          ENVOY_LOG(debug, "extra data in buffer after parsing value");
           pending_value_root_.get()->fragmented_start_ = true;
         } else {
-          pending_value_root_.get()->fragmented_ = true;
+          ENVOY_LOG(debug, "value completely parsed");
           pending_value_root_.get()->fragmented_start_ = false;
         }
         callbacks_.onRespValue(std::move(pending_value_root_));

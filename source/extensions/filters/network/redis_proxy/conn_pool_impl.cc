@@ -610,6 +610,8 @@ void InstanceImpl::ThreadLocalPool::onRequestCompleted() {
     while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
       pending_requests_.pop_front();
     }
+  } else {
+    ENVOY_LOG(debug, "Pending Requests Request handler is nullptr!");
   }
 }
 

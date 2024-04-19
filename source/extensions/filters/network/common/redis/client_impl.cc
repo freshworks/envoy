@@ -250,9 +250,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
     }
     return;
   }
-  if (!value.get()->fragmented_start_) {
-    ASSERT(!pending_requests_.empty());
-  }
+  ASSERT(!pending_requests_.empty());
   PendingRequest& request = pending_requests_.front();
   const bool canceled = request.canceled_;
   
@@ -267,7 +265,8 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
 
   // We need to ensure the request is popped before calling the callback, since the callback might
   // result in closing the connection.
-  if (!value.get()->fragmented_start_) {
+  if (!value->fragmented_start_) {
+    ENVOY_LOG(debug, "Frag Start is false now, popping the request");
     pending_requests_.pop_front(); 
   }
   if (canceled) {

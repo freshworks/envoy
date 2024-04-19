@@ -50,7 +50,6 @@ public:
    * Convert a RESP value to a string for debugging purposes.
    */
   std::string toString() const;
-  bool fragmented_ = false;
   bool fragmented_start_ = false;
 
   /**

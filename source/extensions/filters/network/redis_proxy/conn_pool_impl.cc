@@ -600,11 +600,13 @@ Common::Redis::Client::PoolRequest* InstanceImpl::ThreadLocalPool::makeRequestTo
 }
 
 void InstanceImpl::ThreadLocalPool::onRequestCompleted() {
+  ENVOY_LOG(debug, "REQUEST COMPLETED");
   ASSERT(!pending_requests_.empty());
 
   // The response we got might not be in order, so flush out what we can. (A new response may
   // unlock several out of order responses).
   if ( pending_requests_.front().request_handler_ != nullptr ){
+    ENVOY_LOG(debug, "Popping Pending requests from front!");
     while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
       pending_requests_.pop_front();
     }
@@ -656,13 +658,17 @@ InstanceImpl::PendingRequest::~PendingRequest() {
 void InstanceImpl::PendingRequest::onResponse(Common::Redis::RespValuePtr&& response) {
   request_handler_ = nullptr;
   pool_callbacks_.onResponse(std::move(response));
-  if (response != nullptr) {
-    if (!response->fragmented_start_) {
-      parent_.onRequestCompleted();
-    }
-  } else {
-    parent_.onRequestCompleted();
-  }
+  parent_.onRequestCompleted();
+  // if (response != nullptr) {
+  //   ENVOY_LOG(debug, "CONN POOL ONRESP INSIDE");
+  //   if (!response->fragmented_start_) {
+  //     ENVOY_LOG(debug, "CONN POOL ONRESP INSIDE 1");
+  //     parent_.onRequestCompleted();
+  //   }
+  // } else {
+  //   ENVOY_LOG(debug, "CONN POOL ONRESP ELSE");
+  //   parent_.onRequestCompleted();
+  // }
 }
 
 void InstanceImpl::PendingRequest::onFailure() {

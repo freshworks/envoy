@@ -256,14 +256,12 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   PendingRequest& request = pending_requests_.front();
   const bool canceled = request.canceled_;
   
-  if (config_.enableCommandStats() && !value.get()->fragmented_start_) {
+  if (config_.enableCommandStats()) {
     bool success = !canceled && (value->type() != Common::Redis::RespType::Error);
     redis_command_stats_->updateStats(scope_, request.command_, success);
     request.command_request_timer_->complete();
   }
-  if (!value.get()->fragmented_start_) {
-    request.aggregate_request_timer_->complete();
-  }
+  request.aggregate_request_timer_->complete();
 
   ClientCallbacks& callbacks = request.callbacks_;
 
@@ -272,7 +270,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   if (!value.get()->fragmented_start_) {
     pending_requests_.pop_front(); 
   }
-  if (canceled && !value.get()->fragmented_start_) {
+  if (canceled) {
     host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
   } else if (config_.enableRedirection() && (!is_blocking_client_ || !is_transaction_client_) &&
              (value->type() == Common::Redis::RespType::Error)) {

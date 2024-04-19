@@ -659,16 +659,6 @@ void InstanceImpl::PendingRequest::onResponse(Common::Redis::RespValuePtr&& resp
   request_handler_ = nullptr;
   pool_callbacks_.onResponse(std::move(response));
   parent_.onRequestCompleted();
-  // if (response != nullptr) {
-  //   ENVOY_LOG(debug, "CONN POOL ONRESP INSIDE");
-  //   if (!response->fragmented_start_) {
-  //     ENVOY_LOG(debug, "CONN POOL ONRESP INSIDE 1");
-  //     parent_.onRequestCompleted();
-  //   }
-  // } else {
-  //   ENVOY_LOG(debug, "CONN POOL ONRESP ELSE");
-  //   parent_.onRequestCompleted();
-  // }
 }
 
 void InstanceImpl::PendingRequest::onFailure() {

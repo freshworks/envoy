@@ -265,7 +265,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
 
   // We need to ensure the request is popped before calling the callback, since the callback might
   // result in closing the connection.
-  if (!value->fragmented_start_) {
+  if (value->fragmented_length_ == 0) {
     ENVOY_LOG(debug, "Frag Start is false now, popping the request");
     pending_requests_.pop_front(); 
   }

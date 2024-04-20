@@ -50,7 +50,7 @@ public:
    * Convert a RESP value to a string for debugging purposes.
    */
   std::string toString() const;
-  bool fragmented_start_ = false;
+  uint64_t fragmented_length_ = 0;
 
   /**
    * Holds the data for CompositeArray RespType

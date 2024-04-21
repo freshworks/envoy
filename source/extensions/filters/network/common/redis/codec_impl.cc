@@ -534,8 +534,14 @@ void DecoderImpl::parseSlice(const Buffer::RawSlice& slice) {
       pending_value_stack_.pop_front();
       if (pending_value_stack_.empty()) {
         if (remaining != 0) {
-          ENVOY_LOG(debug, "extra data in buffer after parsing value");
-          pending_value_root_.get()->fragmented_length_ = remaining;
+          if (pending_value_root_.get()->type() == RespType::Array) {
+            if (pending_value_root_.get()->asArray().size() == 3) {
+              if (pending_value_root_.get()->asArray()[0].asString() == "subscribe" || pending_value_root_.get()->asArray()[0].asString() == "psubscribe") {
+                ENVOY_LOG(debug, "extra data in buffer after parsing value");
+                pending_value_root_.get()->fragmented_length_ = remaining;
+              }
+            }
+          }
         } else {
           ENVOY_LOG(debug, "value completely parsed");
           pending_value_root_.get()->fragmented_length_ = remaining;

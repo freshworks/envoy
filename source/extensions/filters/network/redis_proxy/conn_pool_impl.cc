@@ -602,11 +602,11 @@ Common::Redis::Client::PoolRequest* InstanceImpl::ThreadLocalPool::makeRequestTo
 void InstanceImpl::ThreadLocalPool::onRequestCompleted() {
   ASSERT(!pending_requests_.empty());
 
-  // The response we got might not be in order, so flush out what we can. (A new response may
-  // unlock several out of order responses).
-  // while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
-  //   pending_requests_.pop_front();
-  // }
+  //The response we got might not be in order, so flush out what we can. (A new response may
+  //unlock several out of order responses).
+  while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
+    pending_requests_.pop_front();
+  }
 }
 
 void InstanceImpl::ThreadLocalActiveClient::onEvent(Network::ConnectionEvent event) {
@@ -654,15 +654,14 @@ InstanceImpl::PendingRequest::~PendingRequest() {
 void InstanceImpl::PendingRequest::onResponse(Common::Redis::RespValuePtr&& response) {
   request_handler_ = nullptr;
   pool_callbacks_.onResponse(std::move(response));
-  parent_.onRequestCompleted(); 
-  // if (response != nullptr) {
-  //   if (response->fragmented_length_ == 0) {
-  //     ENVOY_LOG(debug, "Time to set parent request complete");
-  //     parent_.onRequestCompleted(); 
-  //   }
-  // } else {
-  //   ENVOY_LOG(debug, "Response is already sent and cleared");
-  // }
+  if (response != nullptr) {
+    if (response->fragmented_length_ == 0) {
+      ENVOY_LOG(debug, "Time to set parent request complete");
+      parent_.onRequestCompleted(); 
+    }
+  } else {
+    ENVOY_LOG(debug, "Response is already sent and cleared");
+  }
 }
 
 void InstanceImpl::PendingRequest::onFailure() {

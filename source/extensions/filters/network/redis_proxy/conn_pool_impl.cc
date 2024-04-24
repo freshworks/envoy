@@ -601,10 +601,8 @@ void InstanceImpl::ThreadLocalPool::onRequestCompleted() {
 
   // The response we got might not be in order, so flush out what we can. (A new response may
   // unlock several out of order responses).
-  if (pending_requests_.front().request_handler_ != nullptr) {
-    while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
-      pending_requests_.pop_front();
-    }
+  while (!pending_requests_.empty() && !pending_requests_.front().request_handler_) {
+    pending_requests_.pop_front();
   }
 }
 

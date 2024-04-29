@@ -610,7 +610,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
                   if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get" ) {
-                    std::unordered_set<std::string> unique_elements; // Set to store unique elements 
+                    std::unordered_set<std::string> distinctReponse; // Set to store unique elements 
                     // In Pubsub channels, we have a corner case where we need to remove duplicates from the response 
                     // since same channel (keyspace/keyevent) can be subscribed 
                     // to multiple shards and only unique should be showed.
@@ -619,9 +619,9 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                             for (auto& elem : resp->asArray()) {
                                 std::string str_elem = elem.asString(); // Convert RespValue to string
                                 // Check if the element is already available
-                                if (unique_elements.find(str_elem) == unique_elements.end()) {
+                                if (distinctReponse.find(str_elem) == distinctReponse.end()) {
                                     // If not seen, add it to the response array and store in unique_elements
-                                    unique_elements.insert(str_elem);
+                                    distinctReponse.insert(str_elem);
                                     response->asArray().emplace_back(std::move(elem));
                                 }
                             }
@@ -1626,7 +1626,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
   if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
   && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)
-  && (Common::Redis::SupportedCommands::noArgAllowedCommands().count(command_name) == 0)) {
+  && (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0)) {
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);

@@ -272,6 +272,7 @@ struct Transaction {
     active_ = false;
     is_transaction_mode_ = false;
     is_subscribed_mode_ = false;
+    is_blocking_command_ = false;
     key_.clear();
     if (connection_established_) {
       for (auto& client : clients_) {

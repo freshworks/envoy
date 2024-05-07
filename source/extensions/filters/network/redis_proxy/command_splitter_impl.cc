@@ -83,10 +83,11 @@ int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t r
   int32_t shard_index = -1;
   //This need optimisation , generate random seed only once per thread
   srand(time(nullptr));
+
+  bool isBlockingCommand = Common::Redis::SupportedCommands::blockingCommands().contains(command);
+  bool isAllShardCommand = Common::Redis::SupportedCommands::allShardCommands().contains(command);
   
-  if (Common::Redis::SupportedCommands::blockingCommands().contains(command) && requestsCount == 1) {
-    return shard_index;
-  }else if (!Common::Redis::SupportedCommands::allShardCommands().contains(command) && requestsCount == 1 ){
+  if (!isBlockingCommand && !isAllShardCommand && requestsCount == 1 ){
     // Send request to a random shard so that we donot allways send to the same shard
     shard_index = rand() % redisShardsCount;
   }
@@ -762,9 +763,10 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
                                     const StreamInfo::StreamInfo& stream_info){
   // For blocking requests which operate on a single key, we can hash the key to a single 
   //must send shard index as negative to indicate that it is a blocking request that acts on key
-  int32_t shard_index=getShardIndex(incoming_request->asArray()[0].asString(),1,1);
-  Common::Redis::Client::Transaction& transaction = callbacks.transaction();
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
+  int32_t shard_index=getShardIndex(command_name,1,1);
+  Common::Redis::Client::Transaction& transaction = callbacks.transaction();
+
   std::unique_ptr<BlockingClientRequest> request_ptr{
       new BlockingClientRequest(callbacks, command_stats, time_source, delay_command_latency)};
   std::string key = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());

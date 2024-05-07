@@ -113,21 +113,25 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
   }
   if (event == Network::ConnectionEvent::RemoteClose ||
       event == Network::ConnectionEvent::LocalClose) {
-    ENVOY_LOG(debug, "connection to redis proxy filter closed");
+    ENVOY_LOG(debug, "connection to redis proxy filter closed: {}", event == Network::ConnectionEvent::RemoteClose ? " remotely" : "locally");
     while (!pending_requests_.empty()) {
       if (pending_requests_.front().request_handle_ != nullptr) {
         pending_requests_.front().request_handle_->cancel();
       }
       pending_requests_.pop_front();
     }
-    ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
-  // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
-  // decrement the reference to proxy filter
-  auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
-  if (downstream_cb != nullptr){
-    downstream_cb->clearParent();
-  }
-  transaction_.setDownstreamCallback(nullptr);
+    if (event == Network::ConnectionEvent::RemoteClose){
+       ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
+      // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
+      // decrement the reference to proxy filter
+      auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
+      if (downstream_cb != nullptr){
+        downstream_cb->clearParent();
+      }
+      transaction_.setDownstreamCallback(nullptr);
+
+    }
+   
     transaction_.close();
   }
 }
@@ -251,7 +255,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
 
   // Check if there is an active transaction that needs to be closed.
   if ((transaction_.should_close_ && pending_requests_.empty()) || 
-      (transaction_.is_blocking_command_ && pending_requests_.empty()) ||
+      (transaction_.isBlockingCommand() && pending_requests_.empty()) ||
       (transaction_.isSubscribedMode() && transaction_.should_close_)) {
  
     transaction_.close();

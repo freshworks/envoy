@@ -320,10 +320,19 @@ public:
                                 SplitCallbacks& callbacks, CommandStats& command_stats,
                                 TimeSource& time_source, bool delay_command_latency,
                                 const StreamInfo::StreamInfo& stream_info);
+
+};
+
+class PubSubMessageHandler : public Common::Redis::Client::PubsubCallbacks,public Logger::Loggable<Logger::Id::redis> {
+
 private:
-  PubSubRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
-                bool delay_command_latency)
-      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+  std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks_;
+
+public:
+  PubSubMessageHandler(std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks) : downstream_callbacks_(downstream_callbacks) {}
+
+  void handleChannelMessage(Common::Redis::RespValuePtr&& value) override;
+  void onFailure() override;
 
 };
 

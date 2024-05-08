@@ -135,6 +135,14 @@ makeBlockingRequest(const RouteSharedPtr& route, int32_t shard_index, const std:
   return handler;
 }
 
+bool 
+makePubSubRequest(const RouteSharedPtr& route, int32_t shard_index, const std::string& key,Common::Redis::RespValueConstSharedPtr incoming_request,Common::Redis::Client::Transaction& transaction) {
+  Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* req_instance =
+      dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(route->upstream(key).get());
+  auto isSuccess = req_instance->makePubSubRequest(shard_index,key,ConnPool::RespVariant(incoming_request), transaction);
+  return isSuccess;
+}
+
 /**
  * Make request and maybe mirror the request based on the mirror policies of the route.
  * @param route supplies the route matched with the request.
@@ -820,8 +828,10 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 
   Common::Redis::Client::Transaction& transaction = callbacks.transaction();
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
-   std::unique_ptr<PubSubRequest> request_ptr{
-      new PubSubRequest(callbacks, command_stats, time_source, delay_command_latency)};
+  //std::unique_ptr<PubSubRequest> request_ptr{
+  //    new PubSubRequest(callbacks, command_stats, time_source, delay_command_latency)};
+  (void)time_source;    // Mark time_source as unused
+  (void)delay_command_latency; // Mark delay_command_latency as unused
   std::string key = std::string();
   int32_t redisShardsCount=0;
   int32_t shard_index=0;
@@ -850,20 +860,23 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     if (transaction.isSubscribedMode() && !Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
         callbacks.onResponse(
             Common::Redis::Utility::makeError(fmt::format("not supported command in subscribe state")));
-        return nullptr;
+       
     }else if (transaction.isSubscribedMode() && (command_name == "quit")){
       transaction.should_close_ = true;
       transaction.subscribed_client_shard_index_= -1;
       localResponse(callbacks, "OK");
-      return nullptr;
     } else if (transaction.isTransactionMode()) {
       // subscription commands are not supported in transaction mode, we will not get here , but just in case
         callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not supported when in transaction mode")));
         transaction.should_close_ = true;
-        return nullptr;
     }
+    transaction.setPubSubCallback(nullptr);
+     return nullptr;
   }else {
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
+      auto PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
+      auto pubsubCallbacksHandler = std::static_pointer_cast<Common::Redis::Client::PubsubCallbacks>(PubSubMsghandler);
+      transaction.setPubSubCallback(pubsubCallbacksHandler);
       transaction.clients_.resize(1);
       transaction.enterSubscribedMode();
       if(transaction.subscribed_client_shard_index_ == -1){
@@ -879,10 +892,12 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
  
   shard_index = transaction.subscribed_client_shard_index_;
   Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
-  request_ptr->handle_ = makeBlockingRequest(
-        route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
+  //request_ptr->handle_ = makeBlockingRequest(
+  //      route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
+  auto isSuccess = makePubSubRequest(
+        route,shard_index,key,base_request, callbacks.transaction());
 
-  if (!request_ptr->handle_) {
+  if (!isSuccess) {
     command_stats.error_.inc();
     transaction.should_close_ = true;
     transaction.subscribed_client_shard_index_= -1;
@@ -892,10 +907,45 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   //Should we set to true irrespective of connpool handler returned
   transaction.connection_established_=true;
   transaction.should_close_ = false;
-  return request_ptr;
+  Common::Redis::RespValuePtr nullresponse(new Common::Redis::RespValue());
+  nullresponse->type(Common::Redis::RespType::Null);
+  callbacks.onResponse(std::move(nullresponse));
+  return nullptr;
 
 }
 
+void PubSubMessageHandler::handleChannelMessage(Common::Redis::RespValuePtr&& value) {
+  if (value->type() == Common::Redis::RespType::Array) {
+    if (value->asArray().size() == 3) {
+      if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
+          value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
+          value->asArray()[2].type() == Common::Redis::RespType::BulkString) {
+        std::string message_type = value->asArray()[0].asString();
+        std::string channel = value->asArray()[1].asString();
+        std::string message = value->asArray()[2].asString();
+        if (message_type == "message") {
+          ENVOY_LOG(debug, "message received on channel '{}': '{}'", channel, message);
+          downstream_callbacks_->sendResponseDownstream(std::move(value));
+        }else {
+          ENVOY_LOG(debug, "pubsub message type: '{}'", message_type);
+          downstream_callbacks_->sendResponseDownstream(std::move(value));
+        }
+      } else {
+        ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+      }
+    } else {
+      ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+    }
+  } else {
+    ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+  }
+
+}
+
+void PubSubMessageHandler::onFailure() {
+  ENVOY_LOG(debug, "failure in pubsub message handler");
+  downstream_callbacks_->onFailure();
+}
 
 void MGETRequest::onChildResponse(Common::Redis::RespValuePtr&& value, uint32_t index) {
   pending_requests_[index].handle_ = nullptr;

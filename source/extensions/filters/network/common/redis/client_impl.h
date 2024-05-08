@@ -77,12 +77,12 @@ public:
                           EncoderPtr&& encoder, DecoderFactory& decoder_factory,
                           const Config& config,
                           const RedisCommandStatsSharedPtr& redis_command_stats,
-                          Stats::Scope& scope, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client, const std::shared_ptr<DirectCallbacks>& drcb);
+                          Stats::Scope& scope, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client, const std::shared_ptr<PubsubCallbacks>& pubsubcb);
 
   ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dispatcher, EncoderPtr&& encoder,
              DecoderFactory& decoder_factory, const Config& config,
              const RedisCommandStatsSharedPtr& redis_command_stats, Stats::Scope& scope,
-             bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<DirectCallbacks>& drcb);
+             bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<PubsubCallbacks>& pubsubcb);
   ~ClientImpl() override;
 
   // Client
@@ -91,6 +91,7 @@ public:
   }
   void close() override;
   PoolRequest* makeRequest(const RespValue& request, ClientCallbacks& callbacks) override;
+  bool makePubSubRequest(const RespValue& request) override;
   bool active() override {
     if (is_pubsub_client_){
       return true;
@@ -159,7 +160,7 @@ private:
   bool is_transaction_client_;
   bool is_pubsub_client_=false;
   bool is_blocking_client_=false;
-  std::shared_ptr<Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_cb_=nullptr;
+  std::shared_ptr<Extensions::NetworkFilters::Common::Redis::Client::PubsubCallbacks> pubsub_cb_=nullptr;
 };
 
 class ClientFactoryImpl : public ClientFactory {
@@ -168,7 +169,7 @@ public:
   ClientPtr create(Upstream::HostConstSharedPtr host, Event::Dispatcher& dispatcher,
                    const Config& config, const RedisCommandStatsSharedPtr& redis_command_stats,
                    Stats::Scope& scope, const std::string& auth_username,
-                   const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<DirectCallbacks>& drcb) override;
+                   const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<PubsubCallbacks>& pubsubcb) override;
 
   static ClientFactoryImpl instance_;
 

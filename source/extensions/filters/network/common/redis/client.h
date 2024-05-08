@@ -66,6 +66,14 @@ public:
 
 };
 
+class PubsubCallbacks  {
+public:
+  virtual ~PubsubCallbacks() = default;
+  virtual void handleChannelMessage(Common::Redis::RespValuePtr&& value) PURE;
+  virtual void onFailure() PURE;
+
+};
+
 
 /**
  * DoNothingPoolCallbacks is used for internally generated commands whose response is
@@ -110,6 +118,15 @@ public:
    *         for some reason.
    */
   virtual PoolRequest* makeRequest(const RespValue& request, ClientCallbacks& callbacks) PURE;
+
+   /**
+   * Make a pipelined request to the remote redis server.
+   * @param request supplies the RESP request to make.
+   * @param callbacks supplies the request callbacks.
+   * @return PoolRequest* a handle to the active request or nullptr if the request could not be made
+   *         for some reason.
+   */
+  virtual bool makePubSubRequest(const RespValue& request) PURE;
 
   /**
    * Initialize the connection. Issue the auth command and readonly command as needed.
@@ -222,7 +239,7 @@ public:
                            const Config& config,
                            const RedisCommandStatsSharedPtr& redis_command_stats,
                            Stats::Scope& scope, const std::string& auth_username,
-                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<DirectCallbacks>& drcb) PURE;
+                           const std::string& auth_password, bool is_transaction_client, bool is_pubsub_client,bool is_blocking_client,const std::shared_ptr<PubsubCallbacks>& pubsubcb) PURE;
 };
 
 // A MULTI command sent when starting a transaction.
@@ -291,6 +308,15 @@ struct Transaction {
   std::shared_ptr<DirectCallbacks> getDownstreamCallback() {
     return downstream_cb_;
   }
+
+  void setPubSubCallback(std::shared_ptr<PubsubCallbacks> callback) {
+    pubsub_cb_ = callback;
+  }
+
+  std::shared_ptr<PubsubCallbacks> getPubSubCallback() {
+    return pubsub_cb_;
+  }
+
   bool active_{false};
   bool connection_established_{false};
   bool should_close_{false};
@@ -305,6 +331,7 @@ struct Transaction {
   std::vector<ClientPtr> clients_;
   Network::ConnectionCallbacks* connection_cb_;
   std::shared_ptr<DirectCallbacks> downstream_cb_=nullptr;
+  std::shared_ptr<PubsubCallbacks> pubsub_cb_=nullptr;
 
   // This index represents the current client on which traffic is being sent to.
   // When sending to the main redis server it will be 0, and when sending to one of

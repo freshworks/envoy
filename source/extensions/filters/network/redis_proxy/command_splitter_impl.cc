@@ -821,6 +821,23 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
   return request_ptr;
 }
 
+bool isKeyspaceArgument(const std::string& argument) {
+  std::string keyspacepattern = "__keyspace@0__";
+  std::string keyeventpattern = "__keyevent@0__";
+  if (argument.find(keyspacepattern) == 0 || argument.find(keyeventpattern) == 0) {
+    return true;
+  }
+  return false;
+}
+
+// Generic function to build an array with bulkstring
+void addBulkString(Common::Redis::RespValue& requestArray, const std::string& value) {
+    Common::Redis::RespValue element;
+    element.type(Common::Redis::RespType::BulkString);
+    element.asString() = value;
+    requestArray.asArray().emplace_back(std::move(element));
+}
+
 SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                     SplitCallbacks& callbacks, CommandStats& command_stats,
                                     TimeSource& time_source, bool delay_command_latency,
@@ -834,9 +851,45 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   (void)delay_command_latency; // Mark delay_command_latency as unused
   std::string key = std::string();
   int32_t redisShardsCount=0;
-  int32_t shard_index=0;
+  //int32_t shard_index=0;
+  //bool iserror = false;
+
+  // by default setting single shard request true
+  bool singleShardRequest = false;
+  bool allShardsRequest = false;
+  bool allShardwithSingleShardRequest = false;
+  Common::Redis::RespValueSharedPtr base_request;
+  Common::Redis::RespValueSharedPtr keyspaceRequest;
+  Common::Redis::RespValue keyspaceRequestArray;
   
-  
+  // Analyze request to get the proper request type
+  if (command_name == "subscribe" || command_name == "psubscribe") {
+    bool containsKeyspaceChannel = false;
+    bool containsNormalChannel = false;
+    for (size_t i = 1; i < incoming_request->asArray().size(); i++) {
+      std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
+      if (isKeyspaceArgument(key)) {
+        ENVOY_LOG(debug, "keyspace command: '{}'", key);
+        containsKeyspaceChannel = true;
+      } else {
+        containsNormalChannel = true;
+      }
+    }
+    
+    if (containsKeyspaceChannel) {
+      if (!containsNormalChannel) {
+          allShardsRequest = true; //example: subscribe "__keyspace@0__:del"
+      } else {
+          allShardwithSingleShardRequest = true; //example: subscribe test "__keyevent@0__:del"
+      }
+    } else if (containsNormalChannel) {
+        singleShardRequest = true; //example: subscribe test
+    }
+
+  } else if (command_name == "unsubscribe" || command_name == "punsubscribe") {
+    allShardsRequest = true;
+  }
+
   const auto& route = router.upstreamPool(key, stream_info);
   if (route) {
     Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* instance =
@@ -865,23 +918,23 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       transaction.should_close_ = true;
       transaction.subscribed_client_shard_index_= -1;
       localResponse(callbacks, "OK");
+      transaction.setPubSubCallback(nullptr);
+      return nullptr;
     } else if (transaction.isTransactionMode()) {
       // subscription commands are not supported in transaction mode, we will not get here , but just in case
         callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not supported when in transaction mode")));
         transaction.should_close_ = true;
     }
-    transaction.setPubSubCallback(nullptr);
-     return nullptr;
   }else {
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
       auto PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
       auto pubsubCallbacksHandler = std::static_pointer_cast<Common::Redis::Client::PubsubCallbacks>(PubSubMsghandler);
       transaction.setPubSubCallback(pubsubCallbacksHandler);
-      transaction.clients_.resize(1);
+      transaction.clients_.resize(redisShardsCount);
       transaction.enterSubscribedMode();
-      if(transaction.subscribed_client_shard_index_ == -1){
-        transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
-      }
+      // if(transaction.subscribed_client_shard_index_ == -1){
+      //   transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
+      // }
       transaction.start();
     }else{
       ENVOY_LOG(debug, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);
@@ -889,57 +942,128 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       return nullptr;
     }
   }
- 
-  shard_index = transaction.subscribed_client_shard_index_;
-  Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
-  //request_ptr->handle_ = makeBlockingRequest(
-  //      route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
-  auto isSuccess = makePubSubRequest(
-        route,shard_index,key,base_request, callbacks.transaction());
 
-  if (!isSuccess) {
-    command_stats.error_.inc();
-    transaction.should_close_ = true;
-    transaction.subscribed_client_shard_index_= -1;
-    callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
-    return nullptr;
+  if (singleShardRequest) {
+    // construct pending request hererequest_ptr->num_pending_responses_ = keyspaceResponsesCount + plainResponsesCount;
+    int32_t shard_index = getShardIndex(command_name,1,redisShardsCount);
+    Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
+    //request_ptr->handle_ = makeBlockingRequest(
+    //      route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
+    auto isSuccess = makePubSubRequest(
+          route,shard_index,key,base_request, callbacks.transaction());
+
+    if (!isSuccess) {
+      command_stats.error_.inc();
+      transaction.should_close_ = true;
+      transaction.subscribed_client_shard_index_= -1;
+      callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+      return nullptr;
+    }
   }
-  //Should we set to true irrespective of connpool handler returned
+
+  if (allShardsRequest) {
+    // construct pending request here
+    Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
+    for (int32_t i = 0; i < redisShardsCount; i++) {
+      transaction.current_client_idx_ = i;
+      auto isSuccess = makePubSubRequest(
+          route,i,key,base_request, callbacks.transaction());    
+      if (!isSuccess) {
+        command_stats.error_.inc();
+        transaction.should_close_ = true;
+        transaction.subscribed_client_shard_index_= -1;
+        callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+        return nullptr;
+      }
+    }
+  }
+
+  if (allShardwithSingleShardRequest) {
+    // Construct keyspace request
+    keyspaceRequestArray.type(Common::Redis::RespType::Array);
+    addBulkString(keyspaceRequestArray, command_name);
+    for (size_t i = 1; i < incoming_request->asArray().size(); i++) {
+        std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
+        if (isKeyspaceArgument(key)) {
+            addBulkString(keyspaceRequestArray, key);
+        }
+    }
+
+    base_request = std::move(incoming_request);
+    keyspaceRequest = std::make_unique<Common::Redis::RespValue>(keyspaceRequestArray);
+    for (int32_t i = 0; i < redisShardsCount; i++) {
+      transaction.current_client_idx_ = i;
+      if ( i == 0) {
+        auto isSuccess = makePubSubRequest(
+          route,i,key,base_request, callbacks.transaction());
+        if (!isSuccess) {
+        command_stats.error_.inc();
+        transaction.should_close_ = true;
+        transaction.subscribed_client_shard_index_= -1;
+        callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+        return nullptr;
+        }
+      } else {
+        auto isSuccess = makePubSubRequest(
+          route,i,key,keyspaceRequest, callbacks.transaction());    
+        if (!isSuccess) {
+        command_stats.error_.inc();
+        transaction.should_close_ = true;
+        transaction.subscribed_client_shard_index_= -1;
+        callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+        return nullptr;
+        }
+      }
+    }
+  }
+
+    // //Should we set to true irrespective of connpool handler returned
   transaction.connection_established_=true;
   transaction.should_close_ = false;
   Common::Redis::RespValuePtr nullresponse(new Common::Redis::RespValue());
   nullresponse->type(Common::Redis::RespType::Null);
   callbacks.onResponse(std::move(nullresponse));
-  return nullptr;
 
+  return nullptr;
 }
 
 void PubSubMessageHandler::handleChannelMessage(Common::Redis::RespValuePtr&& value) {
   if (value->type() == Common::Redis::RespType::Array) {
     if (value->asArray().size() == 3) {
-      if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
+      std::string message_type = value->asArray()[0].asString();
+      if (message_type == "message" || message_type == "pmessage") {
+        if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[2].type() == Common::Redis::RespType::BulkString) {
-        std::string message_type = value->asArray()[0].asString();
-        std::string channel = value->asArray()[1].asString();
-        std::string message = value->asArray()[2].asString();
-        if (message_type == "message") {
+            std::string message_type = value->asArray()[0].asString();
+            std::string channel = value->asArray()[1].asString();
+            std::string message = value->asArray()[2].asString();
           ENVOY_LOG(debug, "message received on channel '{}': '{}'", channel, message);
           downstream_callbacks_->sendResponseDownstream(std::move(value));
         }else {
-          ENVOY_LOG(debug, "pubsub message type: '{}'", message_type);
+        ENVOY_LOG(debug, "unexpected message format for message or pmessage: '{}'", value->toString());
+        }
+      } else if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
+        if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
+          value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
+          value->asArray()[2].type() == Common::Redis::RespType::Integer) {
+            std::string message_type = value->asArray()[0].asString();
+            std::string channel = value->asArray()[1].asString();
+            int64_t count = value->asArray()[2].asInteger();
+          ENVOY_LOG(debug, "sub/unsub/psub/pubsub message received on channel '{}': '{}'", channel, count);
           downstream_callbacks_->sendResponseDownstream(std::move(value));
+        }else {
+        ENVOY_LOG(debug, "unexpected sub/unsub/psub/pubsub message format: '{}'", value->toString());
         }
       } else {
-        ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
-      }
+        ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
+      } 
     } else {
-      ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+      ENVOY_LOG(debug, "unexpected message format : '{}'", value->toString());
     }
   } else {
-    ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+    ENVOY_LOG(debug, "unexpected message format 4: '{}'", value->toString());
   }
-
 }
 
 void PubSubMessageHandler::onFailure() {
@@ -1073,14 +1197,6 @@ Common::Redis::Client::PoolRequest*
 
 bool requiresValue(const std::string& arg) {
     return (arg == "count" || arg == "match" || arg == "type");
-}
-
-// Generic function to build an array with bulkstring
-void addBulkString(Common::Redis::RespValue& requestArray, const std::string& value) {
-    Common::Redis::RespValue element;
-    element.type(Common::Redis::RespType::BulkString);
-    element.asString() = value;
-    requestArray.asArray().emplace_back(std::move(element));
 }
 
 void ScanRequest::onChildError(Common::Redis::RespValuePtr&& value) {

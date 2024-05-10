@@ -229,7 +229,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   request.pending_response_ = std::move(value);
   request.request_handle_ = nullptr;
 
-  if (request.pending_response_.get()->type() == Common::Redis::RespType::Null){
+  if (request.pending_response_.get()->type() == Common::Redis::RespType::Null && transaction_.isSubscribedMode()){
     ENVOY_LOG(debug,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
     pending_requests_.pop_front();
 

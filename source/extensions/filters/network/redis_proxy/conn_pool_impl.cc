@@ -465,13 +465,13 @@ InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std:
   }
 
 
-    Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
-    if (!hosts) {
-      ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");
-      onRequestCompleted();
-      return is_success;
-    }
-    host = (*hosts)[shard_index];
+  Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
+  if (!hosts) {
+    ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");
+    onRequestCompleted();
+    return is_success;
+  }
+  host = (*hosts)[shard_index];
 
 
   if (!host) {
@@ -483,13 +483,17 @@ InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std:
   // existing connection if available ( Connection Multiplexing forpubsub commands needs to be addded later)
   uint32_t client_idx = 0;
   client_idx = transaction.current_client_idx_;
-  if (!transaction.connection_established_ ) {
+  ENVOY_LOG(debug,"Current client index is '{}' '{}' '{}'",client_idx, transaction.clients_.size(), host->address()->asString());
+  if (!transaction.connection_established_ || transaction.clients_[client_idx] == nullptr) {
+      ENVOY_LOG(debug,"Current connection is not established, creating new connection");
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
                                  auth_username_, auth_password_, false,true,false,transaction.getPubSubCallback());
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
+  } else {
+    ENVOY_LOG(debug,"Current connection is established, using existing connection");
   }
   is_success=transaction.clients_[client_idx]->makePubSubRequest(getRequest(std::move(request)));
   return is_success;

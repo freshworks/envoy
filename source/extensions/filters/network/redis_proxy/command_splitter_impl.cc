@@ -845,16 +845,11 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 
   Common::Redis::Client::Transaction& transaction = callbacks.transaction();
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
-  //std::unique_ptr<PubSubRequest> request_ptr{
-  //    new PubSubRequest(callbacks, command_stats, time_source, delay_command_latency)};
   (void)time_source;    // Mark time_source as unused
   (void)delay_command_latency; // Mark delay_command_latency as unused
   std::string key = std::string();
   int32_t redisShardsCount=0;
-  //int32_t shard_index=0;
-  //bool iserror = false;
 
-  // by default setting single shard request true
   bool singleShardRequest = false;
   bool allShardsRequest = false;
   bool allShardwithSingleShardRequest = false;
@@ -908,24 +903,24 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
   }
 
-  if (transaction.active_ ){
-    // when we are in subscribe command, we cannnot accept all other commands
-    if (transaction.isSubscribedMode() && !Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
-        callbacks.onResponse(
-            Common::Redis::Utility::makeError(fmt::format("not supported command in subscribe state")));
-       
-    }else if (transaction.isSubscribedMode() && (command_name == "quit")){
-      transaction.should_close_ = true;
-      transaction.subscribed_client_shard_index_= -1;
-      localResponse(callbacks, "OK");
-      transaction.setPubSubCallback(nullptr);
-      return nullptr;
+  if (transaction.active_) {
+    if (transaction.isSubscribedMode()) {
+        if (!Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
+            callbacks.onResponse(
+                Common::Redis::Utility::makeError("Not supported command in subscribe state"));
+        } else if (command_name == "quit") {
+            transaction.should_close_ = true;
+            transaction.subscribed_client_shard_index_ = -1;
+            localResponse(callbacks, "OK");
+            transaction.setPubSubCallback(nullptr);
+            return nullptr;
+        }
     } else if (transaction.isTransactionMode()) {
-      // subscription commands are not supported in transaction mode, we will not get here , but just in case
-        callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not supported when in transaction mode")));
+        callbacks.onResponse(
+            Common::Redis::Utility::makeError("Not supported when in transaction mode"));
         transaction.should_close_ = true;
     }
-  }else {
+}else {
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
       auto PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
       auto pubsubCallbacksHandler = std::static_pointer_cast<Common::Redis::Client::PubsubCallbacks>(PubSubMsghandler);

@@ -1000,37 +1000,38 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 
 void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePtr&& value, int32_t clientIndex, int32_t shardIndex) {
   ENVOY_LOG(debug, "message received on channel '{}' '{}' '{}'", value->toString(), shardIndex, clientIndex);
-  if (value->type() == Common::Redis::RespType::Array) {
-    if (value->asArray().size() == 3) {
-      std::string message_type = value->asArray()[0].asString();
-      if (message_type == "message" || message_type == "pmessage") {
-        if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
-          value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
-          value->asArray()[2].type() == Common::Redis::RespType::BulkString) {
-            downstream_callbacks_->sendResponseDownstream(std::move(value));
-        }else {
-        ENVOY_LOG(debug, "unexpected message format for message or pmessage: '{}'", value->toString());
-        }
-      }else if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
-        if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
-          value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
-          value->asArray()[2].type() == Common::Redis::RespType::Integer) {
-            if (clientIndex == shardIndex) {
-              downstream_callbacks_->sendResponseDownstream(std::move(value));
-            }else {
-              ENVOY_LOG(debug, "Duplciate message, ignoring...");
-            }
-        }else {
-        ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
-        }
-      }else {
-        ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
-      } 
+
+  if (value->type() != Common::Redis::RespType::Array || 
+      value->asArray().size() != 3 || 
+      value->asArray()[0].type() != Common::Redis::RespType::BulkString) {
+    ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+    return;
+  }
+
+  std::string message_type = value->asArray()[0].asString();
+  if (message_type == "message" || message_type == "pmessage") {
+    if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
+        value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
+        value->asArray()[2].type() == Common::Redis::RespType::BulkString) {
+          downstream_callbacks_->sendResponseDownstream(std::move(value));
     }else {
-      ENVOY_LOG(debug, "unexpected message format : '{}'", value->toString());
+      ENVOY_LOG(debug, "unexpected message format for message or pmessage: '{}'", value->toString());
+      return;
+    }
+  }
+  
+  if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
+    if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
+        value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
+        value->asArray()[2].type() == Common::Redis::RespType::Integer) {
+        if (clientIndex == shardIndex) {
+          downstream_callbacks_->sendResponseDownstream(std::move(value));
+        }
+    }else {
+      ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
     }
   }else {
-    ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+    ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
   }
 }
 

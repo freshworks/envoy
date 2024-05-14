@@ -285,7 +285,6 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
   int32_t clientIndex = getCurrentClientIndex();
-  ENVOY_LOG(debug, "ClientImpl::onRespValue() clientIndex: {}", clientIndex);
   if (is_pubsub_client_) {
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.

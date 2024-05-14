@@ -481,18 +481,14 @@ InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std:
 
   // For now we create dedicated connection for pubsub commands to be optimised later to use the 
   // existing connection if available ( Connection Multiplexing forpubsub commands needs to be addded later)
-  uint32_t client_idx = 0;
-  client_idx = transaction.current_client_idx_;
+  uint32_t client_idx = transaction.current_client_idx_;
   if (!transaction.connection_established_ || transaction.clients_[client_idx] == nullptr) {
-      ENVOY_LOG(debug,"Current connection is not established, creating new connection");
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
                                  auth_username_, auth_password_, false,true,false,transaction.getPubSubCallback());
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
-  } else {
-    ENVOY_LOG(debug,"Current connection is established, using existing connection");
   }
   transaction.clients_[client_idx]->setCurrentClientIndex(client_idx);
   is_success=transaction.clients_[client_idx]->makePubSubRequest(getRequest(std::move(request)));

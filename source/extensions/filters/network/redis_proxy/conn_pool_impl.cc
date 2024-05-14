@@ -495,6 +495,7 @@ InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std:
   } else {
     ENVOY_LOG(debug,"Current connection is established, using existing connection");
   }
+  transaction.clients_[client_idx]->setCurrentClientIndex(client_idx);
   is_success=transaction.clients_[client_idx]->makePubSubRequest(getRequest(std::move(request)));
   return is_success;
 }

@@ -284,12 +284,13 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 }
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
-
+  int32_t clientIndex = getCurrentClientIndex();
+  ENVOY_LOG(debug, "ClientImpl::onRespValue() clientIndex: {}", clientIndex);
   if (is_pubsub_client_) {
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
     if (pubsub_cb_ != nullptr){
-        pubsub_cb_->handleChannelMessage(std::move(value));
+        pubsub_cb_->handleChannelMessage(std::move(value), clientIndex);
         if (connect_or_op_timer_->enabled()){
           connect_or_op_timer_->disableTimer();
         }

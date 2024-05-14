@@ -327,11 +327,21 @@ class PubSubMessageHandler : public Common::Redis::Client::PubsubCallbacks,publi
 
 private:
   std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks_;
+  int32_t shard_index_;
 
 public:
   PubSubMessageHandler(std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks) : downstream_callbacks_(downstream_callbacks) {}
 
-  void handleChannelMessage(Common::Redis::RespValuePtr&& value) override;
+  void handleChannelMessageCustom(Common::Redis::RespValuePtr&& value, int32_t clientIndex, int32_t shardIndex);
+
+  void setShardIndex(int32_t shard_index) {
+    shard_index_ = shard_index;
+  };
+
+  void handleChannelMessage(Common::Redis::RespValuePtr&& value, int32_t clientIndex) override {
+      handleChannelMessageCustom(std::move(value), clientIndex, shard_index_);
+  };
+
   void onFailure() override;
 
 };

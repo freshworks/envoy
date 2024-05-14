@@ -89,6 +89,8 @@ public:
   void addConnectionCallbacks(Network::ConnectionCallbacks& callbacks) override {
     connection_->addConnectionCallbacks(callbacks);
   }
+  void setCurrentClientIndex(int32_t index) override { current_shard_index_ = index; }
+  int32_t getCurrentClientIndex() override { return current_shard_index_; }
   void close() override;
   PoolRequest* makeRequest(const RespValue& request, ClientCallbacks& callbacks) override;
   bool makePubSubRequest(const RespValue& request) override;
@@ -161,6 +163,7 @@ private:
   bool is_pubsub_client_=false;
   bool is_blocking_client_=false;
   std::shared_ptr<Extensions::NetworkFilters::Common::Redis::Client::PubsubCallbacks> pubsub_cb_=nullptr;
+  int32_t current_shard_index_{-1};
 };
 
 class ClientFactoryImpl : public ClientFactory {

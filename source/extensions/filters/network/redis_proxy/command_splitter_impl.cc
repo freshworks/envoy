@@ -902,7 +902,8 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
   }
-
+  std::shared_ptr<PubSubMessageHandler> PubSubMsghandler; 
+  PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
   if (transaction.active_) {
     if (transaction.isSubscribedMode()) {
         if (!Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
@@ -922,7 +923,6 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     }
 }else {
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
-      auto PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
       auto pubsubCallbacksHandler = std::static_pointer_cast<Common::Redis::Client::PubsubCallbacks>(PubSubMsghandler);
       transaction.setPubSubCallback(pubsubCallbacksHandler);
       transaction.clients_.resize(redisShardsCount);
@@ -954,12 +954,14 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   if (singleShardRequest) {
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     int32_t shard_index = getShardIndex(command_name, 1, redisShardsCount);
+    PubSubMsghandler->setShardIndex(shard_index);
     if (!makeRequest(shard_index, base_request))
         return nullptr;
   }
 
   if (allShardsRequest) {
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
+    PubSubMsghandler->setShardIndex(0);
     for (int32_t i = 0; i < redisShardsCount; i++) {
         if (!makeRequest(i, base_request))
             return nullptr;
@@ -977,6 +979,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     }
     base_request = std::move(incoming_request);
     keyspaceRequest = std::make_unique<Common::Redis::RespValue>(keyspaceRequestArray);
+    PubSubMsghandler->setShardIndex(0);
     for (int32_t i = 0; i < redisShardsCount; i++) {
       if (i== 0){
         if (!makeRequest(i, base_request))
@@ -998,8 +1001,8 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   return nullptr;
 }
 
-void PubSubMessageHandler::handleChannelMessage(Common::Redis::RespValuePtr&& value) {
-  ENVOY_LOG(debug, "message received on channel '{}'", value->toString());
+void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePtr&& value, int32_t clientIndex, int32_t shardIndex) {
+  ENVOY_LOG(debug, "message received on channel '{}' '{}' '{}'", value->toString(), shardIndex, clientIndex);
   if (value->type() == Common::Redis::RespType::Array) {
     if (value->asArray().size() == 3) {
       std::string message_type = value->asArray()[0].asString();
@@ -1010,22 +1013,24 @@ void PubSubMessageHandler::handleChannelMessage(Common::Redis::RespValuePtr&& va
             std::string message_type = value->asArray()[0].asString();
             std::string channel = value->asArray()[1].asString();
             std::string message = value->asArray()[2].asString();
-          ENVOY_LOG(debug, "message received on channel '{}': '{}'", channel, message);
           downstream_callbacks_->sendResponseDownstream(std::move(value));
         }else {
-        ENVOY_LOG(debug, "unexpected message format for message or pmessage: '{}'", value->toString());
+        ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
         }
       } else if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
         if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[2].type() == Common::Redis::RespType::Integer) {
-            std::string message_type = value->asArray()[0].asString();
-            std::string channel = value->asArray()[1].asString();
-            int64_t count = value->asArray()[2].asInteger();
-          ENVOY_LOG(debug, "sub/unsub/psub/pubsub message received on channel '{}': '{}'", channel, count);
-          downstream_callbacks_->sendResponseDownstream(std::move(value));
+            if (clientIndex == shardIndex) {
+              std::string message_type = value->asArray()[0].asString();
+              std::string channel = value->asArray()[1].asString();
+              int64_t count = value->asArray()[2].asInteger();
+              downstream_callbacks_->sendResponseDownstream(std::move(value));
+            } else {
+              ENVOY_LOG(debug, "Duplciate message, ignoring...");
+            }
         }else {
-        ENVOY_LOG(debug, "unexpected sub/unsub/psub/pubsub message format: '{}'", value->toString());
+        ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
         }
       } else {
         ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
@@ -1034,7 +1039,7 @@ void PubSubMessageHandler::handleChannelMessage(Common::Redis::RespValuePtr&& va
       ENVOY_LOG(debug, "unexpected message format : '{}'", value->toString());
     }
   } else {
-    ENVOY_LOG(debug, "unexpected message format 4: '{}'", value->toString());
+    ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
   }
 }
 

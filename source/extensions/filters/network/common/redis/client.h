@@ -69,7 +69,7 @@ public:
 class PubsubCallbacks  {
 public:
   virtual ~PubsubCallbacks() = default;
-  virtual void handleChannelMessage(Common::Redis::RespValuePtr&& value) PURE;
+  virtual void handleChannelMessage(Common::Redis::RespValuePtr&& value, int32_t clientIndex) PURE;
   virtual void onFailure() PURE;
 
 };
@@ -98,6 +98,8 @@ public:
    * Adds network connection callbacks to the underlying network connection.
    */
   virtual void addConnectionCallbacks(Network::ConnectionCallbacks& callbacks) PURE;
+  virtual void setCurrentClientIndex(int32_t shardIndex) PURE;
+  virtual int32_t getCurrentClientIndex() PURE;
 
   /**
    * Called to determine if the client has pending requests.

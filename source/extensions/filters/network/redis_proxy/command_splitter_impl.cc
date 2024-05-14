@@ -1010,35 +1010,29 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
         if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[2].type() == Common::Redis::RespType::BulkString) {
-            std::string message_type = value->asArray()[0].asString();
-            std::string channel = value->asArray()[1].asString();
-            std::string message = value->asArray()[2].asString();
-          downstream_callbacks_->sendResponseDownstream(std::move(value));
+            downstream_callbacks_->sendResponseDownstream(std::move(value));
         }else {
-        ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+        ENVOY_LOG(debug, "unexpected message format for message or pmessage: '{}'", value->toString());
         }
-      } else if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
+      }else if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
         if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
           value->asArray()[2].type() == Common::Redis::RespType::Integer) {
             if (clientIndex == shardIndex) {
-              std::string message_type = value->asArray()[0].asString();
-              std::string channel = value->asArray()[1].asString();
-              int64_t count = value->asArray()[2].asInteger();
               downstream_callbacks_->sendResponseDownstream(std::move(value));
-            } else {
+            }else {
               ENVOY_LOG(debug, "Duplciate message, ignoring...");
             }
         }else {
         ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
         }
-      } else {
+      }else {
         ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
       } 
-    } else {
+    }else {
       ENVOY_LOG(debug, "unexpected message format : '{}'", value->toString());
     }
-  } else {
+  }else {
     ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
   }
 }

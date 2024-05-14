@@ -927,9 +927,6 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       transaction.setPubSubCallback(pubsubCallbacksHandler);
       transaction.clients_.resize(redisShardsCount);
       transaction.enterSubscribedMode();
-      // if(transaction.subscribed_client_shard_index_ == -1){
-      //   transaction.subscribed_client_shard_index_ = getShardIndex(command_name,1,redisShardsCount);
-      // }
       transaction.start();
     }else{
       ENVOY_LOG(debug, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);

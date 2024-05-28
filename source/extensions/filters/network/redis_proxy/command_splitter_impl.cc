@@ -404,7 +404,7 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
   else{
     ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
-    //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
+    return nullptr;
   }
   requestsCount = getRequestCount(command_name,redisShardsCount);
   request_ptr->num_pending_responses_ = requestsCount;
@@ -862,24 +862,21 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     bool containsKeyspaceChannel = false;
     bool containsNormalChannel = false;
     for (size_t i = 1; i < incoming_request->asArray().size(); i++) {
-      std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
-      if (isKeyspaceArgument(key)) {
-        ENVOY_LOG(debug, "keyspace command: '{}'", key);
+      std::string channel = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
+      if (isKeyspaceArgument(channel)) {
+        ENVOY_LOG(debug, "keyspace command: '{}'", channel);
         containsKeyspaceChannel = true;
       } else {
         containsNormalChannel = true;
       }
     }
     
-    if (containsKeyspaceChannel) {
-      if (!containsNormalChannel) {
-          allShardsRequest = true; //example: subscribe "__keyspace@0__:del"
-      } else {
-        allShardwithSingleShardRequest = true; //example: subscribe test "__keyevent@0__:del"
-      }
-    } else if (containsNormalChannel) {
-        singleShardRequest = true; //example: subscribe test
-    }
+  allShardsRequest = containsKeyspaceChannel && !containsNormalChannel;
+  allShardwithSingleShardRequest = containsKeyspaceChannel && containsNormalChannel;
+  singleShardRequest = !containsKeyspaceChannel && containsNormalChannel;
+
+  ENVOY_LOG(debug,"PubSubRequest Request type ++ allShardsRequest: '{}' -- allShardwithSingleShardRequest: '{}' -- singleShardRequest: '{}'",allShardsRequest,allShardwithSingleShardRequest,singleShardRequest);
+
 
   } else if (command_name == "unsubscribe" || command_name == "punsubscribe") {
     allShardsRequest = true;
@@ -900,11 +897,10 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   else{
     ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
-    //request_ptr->onChildResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost),0);
+    return nullptr;
   }
 
   std::shared_ptr<PubSubMessageHandler> PubSubMsghandler; 
-  PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
   if (transaction.active_) {
     if (transaction.isSubscribedMode()) {
         if (!Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
@@ -921,11 +917,14 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
         callbacks.onResponse(
             Common::Redis::Utility::makeError("Not supported when in transaction mode"));
         transaction.should_close_ = true;
+        transaction.setPubSubCallback(nullptr);
+        return nullptr;
     }
 }else {
+  PubSubMsghandler = std::make_shared<PubSubMessageHandler>(transaction.getDownstreamCallback());
     if (Common::Redis::SupportedCommands::subcrStateEnterCommands().contains(command_name)){
       auto pubsubCallbacksHandler = std::static_pointer_cast<Common::Redis::Client::PubsubCallbacks>(PubSubMsghandler);
-      transaction.setPubSubCallback(pubsubCallbacksHandler);
+      transaction.setPubSubCallback(std::move(pubsubCallbacksHandler));
       transaction.clients_.resize(redisShardsCount);
       transaction.enterSubscribedMode();
       transaction.start();
@@ -953,21 +952,29 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     if (transaction.subscribed_client_shard_index_ == -1) {
       transaction.subscribed_client_shard_index_ = getShardIndex(command_name, 1, redisShardsCount);
+      PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
     }
-    PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
-    if (!makeRequest(transaction.subscribed_client_shard_index_, base_request))
+    if (!makeRequest(transaction.subscribed_client_shard_index_, base_request)){
+         ENVOY_LOG(debug,"makerequest failed for singleshard request");
+        transaction.setPubSubCallback(nullptr);
         return nullptr;
+    }
   }
 
   if (allShardsRequest) {
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     if (transaction.subscribed_client_shard_index_ == -1) {
       transaction.subscribed_client_shard_index_ = getShardIndex(command_name, 1, redisShardsCount);
+      PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
     }
-    PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
+    
     for (int32_t i = 0; i < redisShardsCount; i++) {
-        if (!makeRequest(i, base_request))
-            return nullptr;
+        if (!makeRequest(i, base_request)){
+          ENVOY_LOG(debug,"makerequest failed for allShardsRequest for shardIndex'{}'",i);
+          transaction.setPubSubCallback(nullptr);
+          return nullptr;
+        }
+            
     }
   }
 
@@ -975,24 +982,32 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     keyspaceRequestArray.type(Common::Redis::RespType::Array);
     addBulkString(keyspaceRequestArray, command_name);
     for (size_t i = 1; i < incoming_request->asArray().size(); i++) {
-      std::string key = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
-      if (isKeyspaceArgument(key)) {
-          addBulkString(keyspaceRequestArray, key);
+      std::string channel = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
+      if (isKeyspaceArgument(channel)) {
+          addBulkString(keyspaceRequestArray, channel);
       }
     }
     base_request = std::move(incoming_request);
     keyspaceRequest = std::make_unique<Common::Redis::RespValue>(keyspaceRequestArray);
     if (transaction.subscribed_client_shard_index_ == -1) {
       transaction.subscribed_client_shard_index_ = getShardIndex(command_name, 1, redisShardsCount);
+      PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
     }
-    PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
+    
     for (int32_t i = 0; i < redisShardsCount; i++) {
       if (i == transaction.subscribed_client_shard_index_){
-        if (!makeRequest(i, base_request))
-            return nullptr;
+        if (!makeRequest(i, base_request)){
+          ENVOY_LOG(debug,"makerequest failed for allShardwithSingleShardRequest for base request at shardIndex'{}'",i);
+          transaction.setPubSubCallback(nullptr);
+          return nullptr;
+        }
+            
       }else{
-        if (!makeRequest(i, keyspaceRequest))
-            return nullptr;
+        if (!makeRequest(i, keyspaceRequest)){
+          ENVOY_LOG(debug,"makerequest failed for allShardwithSingleShardRequest for keyspaceRequest at shardIndex'{}'",i);
+          transaction.setPubSubCallback(nullptr);
+          return nullptr;
+        }
       }
     }
   }
@@ -1008,10 +1023,9 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 }
 
 void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePtr&& value, int32_t clientIndex, int32_t shardIndex) {
-  ENVOY_LOG(debug, "message received on channel '{}'", value->toString());
+  ENVOY_LOG(debug, "message received on channel '{}' on shardIndex : '{}'", value->toString(),shardIndex);
 
-  if (value->type() != Common::Redis::RespType::Array || 
-      value->asArray().size() != 3 || 
+  if (value->type() != Common::Redis::RespType::Array ||
       value->asArray()[0].type() != Common::Redis::RespType::BulkString) {
     ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
     return;
@@ -1019,29 +1033,17 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
 
   std::string message_type = value->asArray()[0].asString();
   if (message_type == "message" || message_type == "pmessage") {
-    if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
-        value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
-        value->asArray()[2].type() == Common::Redis::RespType::BulkString) {
-          downstream_callbacks_->sendResponseDownstream(std::move(value));
-          return;
-    }else {
-      ENVOY_LOG(debug, "unexpected message format for message or pmessage: '{}'", value->toString());
+      ENVOY_LOG(debug,"sending response downstream");
+      downstream_callbacks_->sendResponseDownstream(std::move(value));
       return;
-    }
   }
   
   if (message_type == "subscribe" || message_type == "unsubscribe" || message_type == "psubscribe" || message_type == "punsubscribe") {
-    if (value->asArray()[0].type() == Common::Redis::RespType::BulkString &&
-        value->asArray()[1].type() == Common::Redis::RespType::BulkString &&
-        value->asArray()[2].type() == Common::Redis::RespType::Integer) {
-        if (clientIndex == shardIndex) {
-          downstream_callbacks_->sendResponseDownstream(std::move(value));
-          return;
-        } else {
-          ENVOY_LOG(debug, "Duplicate Message, Ignoring!");
-        }
-    }else {
-      ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+    if (clientIndex == shardIndex) {
+      downstream_callbacks_->sendResponseDownstream(std::move(value));
+      return;
+    } else {
+        ENVOY_LOG(debug, "Duplicate Message from shard index '{}', Ignoring!",shardIndex);
     }
   }else {
     ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
@@ -1286,10 +1288,12 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     request_ptr->num_of_Shards_ = instance->getRedisShardsCount();
     if (request_ptr->num_of_Shards_ == 0 ) {
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+      return nullptr;
     }
   }
   else{
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
+    return nullptr;
   }
 
   // If shard index is some random value, we are setting the shard to 0 to avoid crashing

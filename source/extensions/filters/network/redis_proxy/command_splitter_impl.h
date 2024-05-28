@@ -332,6 +332,10 @@ private:
 public:
   PubSubMessageHandler(std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks) : downstream_callbacks_(downstream_callbacks) {}
 
+  ~PubSubMessageHandler(){
+    ENVOY_LOG(debug,"calling PubSubMessageHandler destructor");
+  }
+
   void handleChannelMessageCustom(Common::Redis::RespValuePtr&& value, int32_t clientIndex, int32_t shardIndex);
 
   void setShardIndex(int32_t shard_index) {

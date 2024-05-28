@@ -129,6 +129,11 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
         downstream_cb->clearParent();
       }
       transaction_.setDownstreamCallback(nullptr);
+      if(transaction_.isSubscribedMode()){
+        ENVOY_LOG(debug,"ProxyFilter::onEvent Clearing pubsubcb");
+        transaction_.setPubSubCallback(nullptr);
+
+      }
 
     }
    
@@ -217,6 +222,7 @@ void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
 void ProxyFilter::onPubsubConnClose(){
   ASSERT(pending_requests_.empty());
 //Close the downstream connection on upstream connection close 
+  transaction_.setPubSubCallback(nullptr);
   callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
   //This callback is called only on remote close , so no need to close the client connnection again
   transaction_.connection_established_=false;

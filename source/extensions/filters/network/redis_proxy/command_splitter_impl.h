@@ -320,10 +320,33 @@ public:
                                 SplitCallbacks& callbacks, CommandStats& command_stats,
                                 TimeSource& time_source, bool delay_command_latency,
                                 const StreamInfo::StreamInfo& stream_info);
+
+};
+
+class PubSubMessageHandler : public Common::Redis::Client::PubsubCallbacks,public Logger::Loggable<Logger::Id::redis> {
+
 private:
-  PubSubRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
-                bool delay_command_latency)
-      : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+  std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks_;
+  int32_t shard_index_;
+
+public:
+  PubSubMessageHandler(std::shared_ptr<Envoy::Extensions::NetworkFilters::Common::Redis::Client::DirectCallbacks> downstream_callbacks) : downstream_callbacks_(downstream_callbacks) {}
+
+  ~PubSubMessageHandler(){
+    ENVOY_LOG(debug,"calling PubSubMessageHandler destructor");
+  }
+
+  void handleChannelMessageCustom(Common::Redis::RespValuePtr&& value, int32_t clientIndex, int32_t shardIndex);
+
+  void setShardIndex(int32_t shard_index) {
+    shard_index_ = shard_index;
+  };
+
+  void handleChannelMessage(Common::Redis::RespValuePtr&& value, int32_t clientIndex) override {
+      handleChannelMessageCustom(std::move(value), clientIndex, shard_index_);
+  };
+
+  void onFailure() override;
 
 };
 

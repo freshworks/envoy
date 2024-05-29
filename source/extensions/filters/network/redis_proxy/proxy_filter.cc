@@ -129,6 +129,11 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
         downstream_cb->clearParent();
       }
       transaction_.setDownstreamCallback(nullptr);
+      if(transaction_.isSubscribedMode()){
+        ENVOY_LOG(debug,"ProxyFilter::onEvent Clearing pubsubcb");
+        transaction_.setPubSubCallback(nullptr);
+
+      }
 
     }
    
@@ -217,6 +222,7 @@ void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
 void ProxyFilter::onPubsubConnClose(){
   ASSERT(pending_requests_.empty());
 //Close the downstream connection on upstream connection close 
+  transaction_.setPubSubCallback(nullptr);
   callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
   //This callback is called only on remote close , so no need to close the client connnection again
   transaction_.connection_established_=false;
@@ -229,6 +235,11 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   request.pending_response_ = std::move(value);
   request.request_handle_ = nullptr;
 
+  if (request.pending_response_.get()->type() == Common::Redis::RespType::Null && transaction_.isSubscribedMode()){
+    ENVOY_LOG(debug,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
+    pending_requests_.pop_front();
+
+  }
   // The response we got might not be in order, so flush out what we can. (A new response may
   // unlock several out of order responses).
   while (!pending_requests_.empty() && pending_requests_.front().pending_response_) {

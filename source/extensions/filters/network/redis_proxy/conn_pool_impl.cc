@@ -122,6 +122,12 @@ InstanceImpl::makeBlockingClientRequest(int32_t shard_index, const std::string& 
                                                        transaction);
 }
 
+// This method is always called from a InstanceSharedPtr we don't have to worry about tls_->getTyped
+// failing due to InstanceImpl going away.
+bool
+InstanceImpl::makePubSubRequest(int32_t shard_index, const std::string& key, RespVariant&& request, Common::Redis::Client::Transaction& transaction) {
+  return tls_->getTyped<ThreadLocalPool>().makePubSubRequest(shard_index,key,std::move(request), transaction);
+}
 
 int32_t InstanceImpl::getRedisShardsCount() {
   
@@ -412,14 +418,14 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     if (!transaction.connection_established_ && transaction.isSubscribedMode()) {
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                                 auth_username_, auth_password_, false,true,false,transaction.getDownstreamCallback());
+                                 auth_username_, auth_password_, false,true,false,transaction.getPubSubCallback());
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
     }else if (!transaction.connection_established_ && transaction.isBlockingCommand()) {
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                                 auth_username_, auth_password_, false,false,true,transaction.getDownstreamCallback());
+                                 auth_username_, auth_password_, false,false,true,nullptr);
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
@@ -439,6 +445,54 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     onRequestCompleted();
     return nullptr;
   }
+}
+
+
+bool
+InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std::string& key,RespVariant&& request,Common::Redis::Client::Transaction& transaction) {
+  Upstream::HostConstSharedPtr host = nullptr;
+  bool is_success = false;
+
+  if (cluster_ == nullptr) {
+    ASSERT(client_map_.empty());
+    ASSERT(host_set_member_update_cb_handle_ == nullptr);
+    return is_success;
+  }
+
+  if ( shard_index < 0 || !transaction.active_ || !transaction.isSubscribedMode()){
+    ENVOY_LOG(debug, "Error in calling makePubSubRequest, shard index is negative or transaction is not active or not in subscribed mode");
+    return is_success;
+  }
+
+
+  Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
+  if (!hosts) {
+    ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");
+    onRequestCompleted();
+    return is_success;
+  }
+  host = (*hosts)[shard_index];
+
+
+  if (!host) {
+      ENVOY_LOG(debug, "host not found: '{}'", key);
+      return is_success;
+  }
+
+  // For now we create dedicated connection for pubsub commands to be optimised later to use the 
+  // existing connection if available ( Connection Multiplexing forpubsub commands needs to be addded later)
+  uint32_t client_idx = transaction.current_client_idx_;
+  if (!transaction.connection_established_ || transaction.clients_[client_idx] == nullptr) {
+      transaction.clients_[client_idx] =
+          client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
+                                 auth_username_, auth_password_, false,true,false,transaction.getPubSubCallback());
+      if (transaction.connection_cb_) {
+        transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
+      }
+  }
+  transaction.clients_[client_idx]->setCurrentClientIndex(client_idx);
+  is_success=transaction.clients_[client_idx]->makePubSubRequest(getRequest(std::move(request)));
+  return is_success;
 }
 
 
@@ -476,7 +530,7 @@ InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant
     if ((!transaction.connection_established_ && transaction.is_subscribed_mode_) || (!transaction.connection_established_ && transaction.is_blocking_command_)) {
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                                 auth_username_, auth_password_, false,true,true,transaction.getDownstreamCallback());
+                                 auth_username_, auth_password_, false,true,true,nullptr);
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }

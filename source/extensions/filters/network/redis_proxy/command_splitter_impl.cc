@@ -211,6 +211,7 @@ void SingleServerRequest::onFailure() { onFailure(Response::get().UpstreamFailur
 void SingleServerRequest::onFailure(std::string error_msg) {
   handle_ = nullptr;
   updateStats(false);
+  callbacks_.transaction().should_close_ = true;
   callbacks_.onResponse(Common::Redis::Utility::makeError(error_msg));
 }
 

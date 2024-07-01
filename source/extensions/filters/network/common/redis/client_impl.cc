@@ -247,16 +247,21 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     if ( is_pubsub_client_) {
       host_->cluster().trafficStats()->upstream_cx_destroy_with_active_rq_.inc();
       ENVOY_LOG(debug,"Pubsub Client Connection close event received:'{}', clearing pubsub_cb_",eventTypeStr);
-      //clear pubsub_cb_ be it either local or remote close 
+      //clear pubsub_cb_ be it either local or remote close       
+      if ((pubsub_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
+        ENVOY_LOG(debug,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
+        pubsub_cb_->onFailure();
+      }
       pubsub_cb_.reset();
-      
-        if ((pubsub_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
-          ENVOY_LOG(debug,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
-          pubsub_cb_->onFailure();
-        }
     }
 
-    while (!pending_requests_.empty()) {
+    if (is_transaction_client_) {
+      ENVOY_LOG(debug, "transaction client {}", is_transaction_client_);
+      //TODO - Handle transaction client upstream client failures here..
+    }
+
+    //handle non blocking and non transaction requests
+    while (!pending_requests_.empty()) { 
       PendingRequest& request = pending_requests_.front();
       if (!request.canceled_) {
         request.callbacks_.onFailure();

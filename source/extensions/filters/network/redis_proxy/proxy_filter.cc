@@ -268,7 +268,9 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   if ((transaction_.should_close_ && pending_requests_.empty()) || 
       (transaction_.isBlockingCommand() && pending_requests_.empty()) ||
       (transaction_.isSubscribedMode() && transaction_.should_close_)) {
- 
+    if (transaction_.should_close_ == true && transaction_.is_blocking_command_) {
+      callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
+    }
     transaction_.close();
     //Not sure if for transaction mode also we need to close the connection in downstream
     if (transaction_.isSubscribedMode()){

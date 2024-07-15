@@ -68,6 +68,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
         {"xtrim", AdminRespHandlerType::singleshardresponse},
         {"xrange", AdminRespHandlerType::singleshardresponse},
         {"xrevrange", AdminRespHandlerType::singleshardresponse},
+        {"rename", AdminRespHandlerType::singleshardresponse},
         {"unwatch", AdminRespHandlerType::allresponses_mustbe_same},
         // Add more mappings as needed
     };

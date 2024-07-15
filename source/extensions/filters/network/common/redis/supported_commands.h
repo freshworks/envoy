@@ -33,7 +33,7 @@ struct SupportedCommands {
         "zrangebylex", "zrangebyscore", "zrank", "zrem", "zremrangebylex", "zremrangebyrank",
         "zremrangebyscore", "zrevrange", "zrevrangebylex", "zrevrangebyscore", "zrevrank", "zscan",
         "zscore", "rpoplpush", "smove", "sunion", "sdiff", "sinter", "sinterstore", "zunionstore", 
-        "zinterstore", "pfmerge", "georadius", "georadiusbymember");
+        "zinterstore", "pfmerge", "georadius", "georadiusbymember", "xadd", "xlen", "xdel", "xtrim", "xrange", "xrevrange");
   }
 
   /**
@@ -89,21 +89,21 @@ struct SupportedCommands {
    * @return commands that are called blocking commands but not pubsub commands.
    */
   static const absl::flat_hash_set<std::string>& blockingCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin", "xread");
   }
 
   /**
    * @return commands that do not require arguments.
    */
   static const absl::flat_hash_set<std::string>& noArgCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "info", "flushall", "flushdb");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "info", "flushall", "flushdb", "unwatch");
   }
   
     /**
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& adminNokeyCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "publish","pubsub", "keys", "slowlog", "config","client","info","cluster","select");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "publish","pubsub", "keys", "slowlog", "config","client","info","cluster","select", "unwatch");
   }
 
   /**
@@ -117,7 +117,7 @@ struct SupportedCommands {
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& allShardCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "pubsub", "keys", "slowlog", "config","client","info","select");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "pubsub", "keys", "slowlog", "config", "client", "info", "select", "unwatch");
     }
   
   /**
@@ -184,7 +184,7 @@ struct SupportedCommands {
                            "srem", "zadd", "zincrby", "touch", "zpopmin", "zpopmax", "zrem",
                            "zremrangebylex", "zremrangebyrank", "zremrangebyscore", "unlink", "rpoplpush", 
                            "smove", "sinterstore", "zunionstore", "zinterstore", "pfmerge",
-                           "georadius", "georadiusbymember");
+                           "georadius", "georadiusbymember", "xadd", "xtrim", "xdel");
   }
 
   static bool isReadCommand(const std::string& command) {

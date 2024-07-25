@@ -33,7 +33,11 @@ struct SupportedCommands {
         "zrangebylex", "zrangebyscore", "zrank", "zrem", "zremrangebylex", "zremrangebyrank",
         "zremrangebyscore", "zrevrange", "zrevrangebylex", "zrevrangebyscore", "zrevrank", "zscan",
         "zscore", "rpoplpush", "smove", "sunion", "sdiff", "sinter", "sinterstore", "zunionstore", 
-        "zinterstore", "pfmerge", "georadius", "georadiusbymember", "xadd", "xlen", "xdel", "xtrim", "xrange", "xrevrange", "rename");
+        "zinterstore", "pfmerge", "georadius", "georadiusbymember", "xadd", "xlen", "xdel", "xtrim", 
+        "xrange", "xrevrange", "rename", "getex", "sort", "zmscore", "sdiffstore", "msetnx", "substr",
+        "zrangestore", "zunion", "echo", "zdiff", "xautoclaim", "xinfo", "sunionstore", "smismember",
+        "hrandfield", "geosearchstore", "zdiffstore", "geosearch", "randomkey", "zinter", "zrandmember",
+        "bitop", "xclaim", "lpos", "renamenx", "xgroup");
   }
 
   /**
@@ -89,7 +93,7 @@ struct SupportedCommands {
    * @return commands that are called blocking commands but not pubsub commands.
    */
   static const absl::flat_hash_set<std::string>& blockingCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin", "xread");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin", "xread", "xreadgroup", "blmove");
   }
 
   /**
@@ -183,8 +187,10 @@ struct SupportedCommands {
                            "rpushx", "sadd", "set", "setbit", "setex", "setnx", "setrange", "spop",
                            "srem", "zadd", "zincrby", "touch", "zpopmin", "zpopmax", "zrem",
                            "zremrangebylex", "zremrangebyrank", "zremrangebyscore", "unlink", "rpoplpush", 
-                           "smove", "sinterstore", "zunionstore", "zinterstore", "pfmerge",
-                           "georadius", "georadiusbymember", "xadd", "xtrim", "xdel", "rename");
+                           "smove", "sinterstore", "zunionstore", "zinterstore", "pfmerge", "xgroup",
+                           "georadius", "georadiusbymember", "xadd", "xtrim", "xdel", "rename", "getex",
+                           "sort", "sdiffstore", "msetnx", "zrangestore", "zunion", "zdiff", "xautoclaim",
+                           "sunionstore", "geosearchstore", "zdiffstore", "bitop", "xclaim", "renamenx");
   }
 
   static bool isReadCommand(const std::string& command) {

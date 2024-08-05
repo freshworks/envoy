@@ -61,6 +61,15 @@ AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
         {"publish", AdminRespHandlerType::singleshardresponse},
         {"cluster", AdminRespHandlerType::singleshardresponse},
         {"flushdb", AdminRespHandlerType::allresponses_mustbe_same},
+        {"xadd", AdminRespHandlerType::singleshardresponse},
+        {"xread", AdminRespHandlerType::singleshardresponse},
+        {"xlen", AdminRespHandlerType::singleshardresponse},
+        {"xdel", AdminRespHandlerType::singleshardresponse},
+        {"xtrim", AdminRespHandlerType::singleshardresponse},
+        {"xrange", AdminRespHandlerType::singleshardresponse},
+        {"xrevrange", AdminRespHandlerType::singleshardresponse},
+        {"rename", AdminRespHandlerType::singleshardresponse},
+        {"unwatch", AdminRespHandlerType::allresponses_mustbe_same},
         // Add more mappings as needed
     };
 

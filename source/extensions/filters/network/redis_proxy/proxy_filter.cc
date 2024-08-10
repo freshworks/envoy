@@ -80,6 +80,7 @@ ProxyFilter::ProxyFilter(Common::Redis::DecoderFactory& factory,
 }
 
 ProxyFilter::~ProxyFilter() {
+   ENVOY_LOG(debug,"ProxyFilter Destructor");
   ASSERT(pending_requests_.empty());
   config_->stats_.downstream_cx_active_.dec();
 }
@@ -252,6 +253,14 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   }
   if (pending_requests_.empty() && connection_quit_) {
     ENVOY_LOG(debug,"closing downstream connection as no pending requests and connection quit");
+    ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
+      // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
+      // decrement the reference to proxy filter
+      auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
+      if (downstream_cb != nullptr){
+        downstream_cb->clearParent();
+      }
+      transaction_.setDownstreamCallback(nullptr);
     callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
     connection_quit_ = false;
     return;

@@ -80,6 +80,7 @@ ProxyFilter::ProxyFilter(Common::Redis::DecoderFactory& factory,
 }
 
 ProxyFilter::~ProxyFilter() {
+  ENVOY_LOG(info, "deleting proxy filter");
   ASSERT(pending_requests_.empty());
   config_->stats_.downstream_cx_active_.dec();
 }
@@ -113,7 +114,7 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
   }
   if (event == Network::ConnectionEvent::RemoteClose ||
       event == Network::ConnectionEvent::LocalClose) {
-    ENVOY_LOG(debug, "connection to redis proxy filter closed: {}", event == Network::ConnectionEvent::RemoteClose ? " remotely" : "locally");
+    ENVOY_LOG(info, "connection to redis proxy filter closed: {}", event == Network::ConnectionEvent::RemoteClose ? " remotely" : "locally");
     while (!pending_requests_.empty()) {
       if (pending_requests_.front().request_handle_ != nullptr) {
         pending_requests_.front().request_handle_->cancel();
@@ -121,7 +122,7 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
       pending_requests_.pop_front();
     }
     if (event == Network::ConnectionEvent::RemoteClose){
-       ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
+       ENVOY_LOG(info,"dereferencing pubsub callback and transaction on exit from proxy filter");
       // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
       // decrement the reference to proxy filter
       auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
@@ -142,6 +143,7 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
 }
 
 void ProxyFilter::onQuit(PendingRequest& request) {
+  ENVOY_LOG(info, "closing downstream connection as quit command received");
   Common::Redis::RespValuePtr response{new Common::Redis::RespValue()};
   response->type(Common::Redis::RespType::SimpleString);
   response->asString() = "OK";
@@ -236,7 +238,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   request.request_handle_ = nullptr;
 
   if (request.pending_response_.get()->type() == Common::Redis::RespType::Null && transaction_.isSubscribedMode()){
-    ENVOY_LOG(debug,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
+    ENVOY_LOG(info,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
     pending_requests_.pop_front();
 
   }
@@ -251,7 +253,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
     callbacks_->connection().write(encoder_buffer_, false);
   }
   if (pending_requests_.empty() && connection_quit_) {
-    ENVOY_LOG(debug,"closing downstream connection as no pending requests and connection quit");
+    ENVOY_LOG(info,"closing downstream connection as no pending requests and connection quit");
     callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
     connection_quit_ = false;
     return;
@@ -268,6 +270,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   if ((transaction_.should_close_ && pending_requests_.empty()) || 
       (transaction_.isBlockingCommand() && pending_requests_.empty()) ||
       (transaction_.isSubscribedMode() && transaction_.should_close_)) {
+        ENVOY_LOG(info,"closing downstream connection as no pending requests and transaction should close");
     // if (transaction_.should_close_ == true && transaction_.is_blocking_command_) {
     //   callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
     // }
@@ -305,6 +308,7 @@ ProxyFilter::PendingRequest::PendingRequest(ProxyFilter& parent) : parent_(paren
 }
 
 ProxyFilter::PendingRequest::~PendingRequest() {
+  ENVOY_LOG(info, "deleting pending request");
   parent_.config_->stats_.downstream_rq_active_.dec();
 }
 

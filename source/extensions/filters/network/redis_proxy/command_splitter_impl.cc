@@ -1703,24 +1703,27 @@ InstanceImpl::InstanceImpl(RouterPtr&& router, Stats::Scope& scope, const std::s
 
 SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
                                           SplitCallbacks& callbacks, Event::Dispatcher& dispatcher,
-                                          const StreamInfo::StreamInfo& stream_info) {
+                                          const StreamInfo::StreamInfo& stream_info) {  
+  ENVOY_LOG(info, "Inside commandsplitter makerequest");                                                                                    
   if ((request->type() != Common::Redis::RespType::Array) || request->asArray().empty()) {
-    ENVOY_LOG(debug,"invalid request - not an array or empty");
+    ENVOY_LOG(info,"invalid request - not an array or empty");
     onInvalidRequest(callbacks);
     return nullptr;
   }
 
   for (const Common::Redis::RespValue& value : request->asArray()) {
     if (value.type() != Common::Redis::RespType::BulkString) {
-      ENVOY_LOG(debug,"invalid request - not an array of bulk strings");
+      ENVOY_LOG(info,"invalid request - not an array of bulk strings");
       onInvalidRequest(callbacks);
       return nullptr;
     }
   }
 
   std::string command_name = absl::AsciiStrToLower(request->asArray()[0].asString());
+  ENVOY_LOG(info, "command_name: '{}'", request->toString());             
 
   if (command_name == Common::Redis::SupportedCommands::hello()) {
+    ENVOY_LOG(info,"Unknown command - hello");
     // Respond to HELLO locally
     // Adding this before auth, since hello will be issued before auth command
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().UnKnownCommandHello));
@@ -1730,7 +1733,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
   if (command_name == Common::Redis::SupportedCommands::auth()) {
     if (request->asArray().size() < 2) {
-      ENVOY_LOG(debug,"invalid request - not enough arguments for auth command");
+      ENVOY_LOG(info,"invalid request - not enough arguments for auth command");
       onInvalidRequest(callbacks);
       return nullptr;
     }
@@ -1744,6 +1747,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   }
 
   if (!callbacks.connectionAllowed()) {
+    ENVOY_LOG(info,"callbacks connection not allowed - NOAUTH auth required");
     stats_.auth_failure_.inc();
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().AuthRequiredError));
     return nullptr;
@@ -1784,6 +1788,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   }
   // For transaction type commands and blockingcommands , quit needs to be handled from within the command handler
   if ((command_name == Common::Redis::SupportedCommands::quit() || command_name == Common::Redis::SupportedCommands::exit()) && !callbacks.transaction().active_) {
+    ENVOY_LOG(info, "Quit or Exit or callbacks transaction not active");
     callbacks.onQuit();
     return nullptr;
   }
@@ -1792,7 +1797,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)
   && (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0)) {
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
-    ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
+    ENVOY_LOG(info,"invalid request - not enough arguments for command: '{}'", command_name); 
     onInvalidRequest(callbacks);
     return nullptr;
   }
@@ -1801,12 +1806,13 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     std::string sub_command = absl::AsciiStrToLower(request->asArray()[1].asString());
     if (Common::Redis::SupportedCommands::clientSubCommands().count(sub_command) == 0) {
       stats_.unsupported_command_.inc();
-      ENVOY_LOG(debug, "unsupported command '{}' '{}'",command_name, sub_command);
+      ENVOY_LOG(info, "unsupported command '{}' '{}'",command_name, sub_command);
       callbacks.onResponse(Common::Redis::Utility::makeError(
           fmt::format("unsupported command '{}' '{}'",command_name, sub_command)));
       return nullptr;
     }
     if ((sub_command == "setname" && request->asArray().size() != 3) || (sub_command == "getname" && request->asArray().size() != 2)) {
+      ENVOY_LOG(info, "wrong number of arguments for CLIENT '{}' command", sub_command);
       callbacks.onResponse(Common::Redis::Utility::makeError(
          fmt::format("ERR wrong number of arguments for CLIENT '{}' command", sub_command)));
       return nullptr;
@@ -1828,7 +1834,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   auto handler = handler_lookup_table_.find(command_name.c_str());
   if (handler == nullptr && !callbacks.transaction().isSubscribedMode()) {
     stats_.unsupported_command_.inc();
-    ENVOY_LOG(debug, "unsupported command '{}'", request->asArray()[0].asString());
+    ENVOY_LOG(info, "unsupported command '{}'", request->asArray()[0].asString());
     callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("unsupported command '{}'", request->asArray()[0].asString())));
     return nullptr;

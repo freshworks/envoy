@@ -269,6 +269,7 @@ void InstanceImpl::ThreadLocalPool::onHostsRemoved(
         }
       } else {
         // There are no pending requests so close the connection.
+        ENVOY_LOG(debug," onHostsRemoved Closing redis client for host:'{}'",host->address()->asString());
         it->second->redis_client_->close();
       }
     }
@@ -415,7 +416,9 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
   uint32_t client_idx = 0;
   if (transaction.active_) {
     client_idx = transaction.current_client_idx_;
+    ENVOY_LOG(debug, " client creation in makeBlockingClientRequest client_idx:{}",client_idx);
     if (!transaction.connection_established_ && transaction.isSubscribedMode()) {
+      ENVOY_LOG(debug, "PubSub command client creation in makeBlockingClientRequest");
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
                                  auth_username_, auth_password_, false,true,false,transaction.getPubSubCallback());
@@ -423,12 +426,17 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
     }else if (!transaction.connection_established_ && transaction.isBlockingCommand()) {
+      ENVOY_LOG(debug, "Blocking command client creation in makeBlockingClientRequest for host:'{}'",host->address()->asString());
       transaction.clients_[client_idx] =
           client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
                                  auth_username_, auth_password_, false,false,true,nullptr);
       if (transaction.connection_cb_) {
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
+    }else{
+      ENVOY_LOG(debug, "Error in calling makeBlockingClientRequest, Neither in subscribed mode nor blocking mode");
+      onRequestCompleted();
+      return nullptr;
     }
 
     pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(

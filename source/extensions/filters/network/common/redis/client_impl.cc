@@ -85,6 +85,8 @@ ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dis
       flush_timer_(dispatcher.createTimer([this]() { flushBufferAndResetTimer(); })),
       time_source_(dispatcher.timeSource()), redis_command_stats_(redis_command_stats),
       scope_(scope), is_transaction_client_(is_transaction_client),  is_pubsub_client_(is_pubsub_client), is_blocking_client_(is_blocking_client) {
+  
+  ENVOY_LOG(debug,"ClientImpl Constructor creating client of type: is_transaction_client: {}, is_pubsub_client: {}, is_blocking_client: {}", is_transaction_client_, is_pubsub_client_, is_blocking_client_);
   Upstream::ClusterTrafficStats& traffic_stats = *host->cluster().trafficStats();
   traffic_stats.upstream_cx_total_.inc();
   host->stats().cx_total_.inc();
@@ -107,6 +109,7 @@ ClientImpl::~ClientImpl() {
 
 void ClientImpl::close() {
   pubsub_cb_.reset();
+  ENVOY_LOG(debug, "Upstream Client Connection close requested");
   if (connection_) {
     connection_->close(Network::ConnectionCloseType::NoFlush); 
   }
@@ -198,6 +201,8 @@ bool ClientImpl::makePubSubRequest(const RespValue& request) {
 
 
 void ClientImpl::onConnectOrOpTimeout() {
+
+  ENVOY_LOG(debug, "Upstream Client Connection or Operation timeout occurred, is blocking client: {}", is_blocking_client_);
   putOutlierEvent(Upstream::Outlier::Result::LocalOriginTimeout);
   if (connected_) {
     host_->cluster().trafficStats()->upstream_rq_timeout_.inc();
@@ -220,6 +225,7 @@ void ClientImpl::onData(Buffer::Instance& data) {
     putOutlierEvent(Upstream::Outlier::Result::ExtOriginRequestFailed);
     host_->cluster().trafficStats()->upstream_cx_protocol_error_.inc();
     host_->stats().rq_error_.inc();
+    ENVOY_LOG(debug, "Upstream Client Protocol error occurred");
     connection_->close(Network::ConnectionCloseType::NoFlush);
   }
 }
@@ -263,7 +269,9 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     //handle non blocking and non transaction requests
     while (!pending_requests_.empty()) { 
       PendingRequest& request = pending_requests_.front();
+      ENVOY_LOG(debug,"Upstream Client Connection close ");
       if (!request.canceled_) {
+        ENVOY_LOG(debug,"Upstream Client Connection close calling onFailure");
         request.callbacks_.onFailure();
       } else {
         host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();

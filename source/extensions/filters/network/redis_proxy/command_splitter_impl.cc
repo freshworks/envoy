@@ -787,6 +787,7 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
 
   std::unique_ptr<BlockingClientRequest> request_ptr{
       new BlockingClientRequest(callbacks, command_stats, time_source, delay_command_latency)};
+  //Implement the logic to extract key from required argument based on commmand.
   std::string key = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());
 
  if (transaction.active_ ){

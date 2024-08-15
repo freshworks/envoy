@@ -33,11 +33,10 @@ struct SupportedCommands {
         "zrangebylex", "zrangebyscore", "zrank", "zrem", "zremrangebylex", "zremrangebyrank",
         "zremrangebyscore", "zrevrange", "zrevrangebylex", "zrevrangebyscore", "zrevrank", "zscan",
         "zscore", "rpoplpush", "smove", "sunion", "sdiff", "sinter", "sinterstore", "zunionstore", 
-        "zinterstore", "pfmerge", "georadius", "georadiusbymember", "xadd", "xlen", "xdel", "xtrim", 
-        "xrange", "xrevrange", "rename", "getex", "sort", "zmscore", "sdiffstore", "msetnx", "substr",
-        "zrangestore", "zunion", "echo", "zdiff", "xautoclaim", "xinfo", "sunionstore", "smismember",
+        "zinterstore", "pfmerge", "georadius", "georadiusbymember", "rename", "getex", "sort", "zmscore", "sdiffstore", "msetnx", "substr",
+        "zrangestore", "zunion", "echo", "zdiff", "sunionstore", "smismember",
         "hrandfield", "geosearchstore", "zdiffstore", "geosearch", "randomkey", "zinter", "zrandmember",
-        "bitop", "xclaim", "lpos", "renamenx", "xgroup","xreadnonblock");
+        "bitop", "lpos", "renamenx","xread_simple_command");
   }
 
   /**
@@ -93,7 +92,7 @@ struct SupportedCommands {
    * @return commands that are called blocking commands but not pubsub commands.
    */
   static const absl::flat_hash_set<std::string>& blockingCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin", "xreadblock", "xreadgroup", "blmove");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin", "xread_blocking_command", "blmove");
   }
 
   /**
@@ -124,6 +123,20 @@ struct SupportedCommands {
     CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "pubsub", "keys", "slowlog", "config", "client", "info", "select", "unwatch");
     }
   
+  /**
+  * @return commands which handle Redis Streams.
+  */
+  static const absl::flat_hash_set<std::string>& streamCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "xack", "xadd", "xautoclaim", "xclaim", "xdel", "xgroup", "xinfo", "xlen", "xpending", "xrange", "xread","xreadgroup","xrevrange","xtrim");
+  }
+
+  /**
+  * @return List of stream commands which can be configured in blocking mode.
+  */
+  static const absl::flat_hash_set<std::string>& streamBlockingCommands() {
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "xread","xreadgroup");
+  }
+
   /**
    * @return scan command
    */
@@ -174,10 +187,6 @@ struct SupportedCommands {
    */
   static const std::string& info() { CONSTRUCT_ON_FIRST_USE(std::string, "info"); }
 
-    /**
-   * @return special stream commands
-   */
-  static const std::string& spl_strm_commands() { CONSTRUCT_ON_FIRST_USE(std::string, "xread"); }
   /**
    * @return commands which alters the state of redis
    */

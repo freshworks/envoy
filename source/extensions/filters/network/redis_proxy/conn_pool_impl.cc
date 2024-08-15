@@ -529,36 +529,19 @@ InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant
   Upstream::HostConstSharedPtr host = (*hosts)[shard_index];
   pending_requests_.emplace_back(*this, std::move(request), callbacks, host);
   PendingRequest& pending_request = pending_requests_.back();
-  
-  uint32_t client_idx = 0;
-  // If there is an active transaction, establish a new connection if necessary.
-  if (transaction.active_) {
-    ENVOY_LOG(error,"Ideally transanction client should not be used for admin commands ERROR!!!");
-    client_idx = transaction.current_client_idx_;
-    if ((!transaction.connection_established_ && transaction.is_subscribed_mode_) || (!transaction.connection_established_ && transaction.is_blocking_command_)) {
-      transaction.clients_[client_idx] =
-          client_factory_.create(host, dispatcher_, *config_, redis_command_stats_, *(stats_scope_),
-                                 auth_username_, auth_password_, false,true,true,nullptr);
-      if (transaction.connection_cb_) {
-        transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
-      }
-    }
 
-    pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
-        getRequest(pending_request.incoming_request_), pending_request);
-  }else {
-    ThreadLocalActiveClientPtr& client = this->threadLocalActiveClient(host);
-    if (!client) {
-      ENVOY_LOG(debug, "redis connection is rate limited, erasing empty client");
-      pending_request.request_handler_ = nullptr;
-      onRequestCompleted();
-      client_map_.erase(host);
-      return nullptr;
-    }
-    pending_request.request_handler_ = client->redis_client_->makeRequest(
-        getRequest(pending_request.incoming_request_), pending_request);
 
+  ThreadLocalActiveClientPtr& client = this->threadLocalActiveClient(host);
+  if (!client) {
+    ENVOY_LOG(debug, "redis connection is rate limited, erasing empty client");
+    pending_request.request_handler_ = nullptr;
+    onRequestCompleted();
+    client_map_.erase(host);
+    return nullptr;
   }
+  pending_request.request_handler_ = client->redis_client_->makeRequest(
+      getRequest(pending_request.incoming_request_), pending_request);
+
 
   if (pending_request.request_handler_) {
     return &pending_request;

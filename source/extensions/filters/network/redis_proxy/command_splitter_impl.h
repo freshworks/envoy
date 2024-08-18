@@ -360,6 +360,8 @@ private:
   BlockingClientRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
                 bool delay_command_latency)
       : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+  
+ static int32_t getShardingKeyIndex(const std::string command_name,const Common::Redis::RespValue& request);
 
 };
 
@@ -377,6 +379,8 @@ private:
   SimpleRequest(SplitCallbacks& callbacks, CommandStats& command_stats, TimeSource& time_source,
                 bool delay_command_latency)
       : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+  
+  static int32_t getShardingKeyIndex(const std::string command_name,const Common::Redis::RespValue& request);
 };
 
 /**
@@ -596,6 +600,8 @@ private:
   void addHandler(Stats::Scope& scope, const std::string& stat_prefix, const std::string& name,
                   bool latency_in_micros, CommandHandler& handler);
   void onInvalidRequest(SplitCallbacks& callbacks);
+
+  HandlerDataPtr getHandlerForStreamsCommand(const std::string& command_name, const Common::Redis::RespValuePtr& request);
 
   RouterPtr router_;
   CommandHandlerFactory<SimpleRequest> simple_command_handler_;

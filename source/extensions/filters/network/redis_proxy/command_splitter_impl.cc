@@ -61,13 +61,6 @@ AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
         {"publish", AdminRespHandlerType::singleshardresponse},
         {"cluster", AdminRespHandlerType::singleshardresponse},
         {"flushdb", AdminRespHandlerType::allresponses_mustbe_same},
-        {"xadd", AdminRespHandlerType::singleshardresponse},
-        {"xread", AdminRespHandlerType::singleshardresponse},
-        {"xlen", AdminRespHandlerType::singleshardresponse},
-        {"xdel", AdminRespHandlerType::singleshardresponse},
-        {"xtrim", AdminRespHandlerType::singleshardresponse},
-        {"xrange", AdminRespHandlerType::singleshardresponse},
-        {"xrevrange", AdminRespHandlerType::singleshardresponse},
         {"rename", AdminRespHandlerType::singleshardresponse},
         {"unwatch", AdminRespHandlerType::allresponses_mustbe_same},
         // Add more mappings as needed
@@ -95,6 +88,7 @@ int32_t getShardIndex(const std::string command, int32_t requestsCount,int32_t r
 
   bool isBlockingCommand = Common::Redis::SupportedCommands::blockingCommands().contains(command);
   bool isAllShardCommand = Common::Redis::SupportedCommands::allShardCommands().contains(command);
+
   
   if (!isBlockingCommand && !isAllShardCommand && requestsCount == 1 ){
     // Send request to a random shard so that we donot allways send to the same shard
@@ -220,7 +214,9 @@ void SingleServerRequest::onFailure() { onFailure(Response::get().UpstreamFailur
 void SingleServerRequest::onFailure(std::string error_msg) {
   handle_ = nullptr;
   updateStats(false);
+  ENVOY_LOG(debug,"mode of clients is Transaction : '{}', PubSub: '{}', Blocking: '{}'",callbacks_.transaction().isTransactionMode(),callbacks_.transaction().isSubscribedMode(),callbacks_.transaction().isBlockingCommand());
   callbacks_.transaction().should_close_ = true;
+  ENVOY_LOG(debug, "onFailure error: {},closing transaction also", error_msg);
   callbacks_.onResponse(Common::Redis::Utility::makeError(error_msg));
 }
 
@@ -266,13 +262,22 @@ SplitRequestPtr SimpleRequest::create(Router& router,
                                       SplitCallbacks& callbacks, CommandStats& command_stats,
                                       TimeSource& time_source, bool delay_command_latency,
                                       const StreamInfo::StreamInfo& stream_info) {
+  std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
+  int32_t shardKeyIndex = getShardingKeyIndex(command_name,*incoming_request);
+  if (shardKeyIndex < 0) {
+      ENVOY_LOG(debug, "unexpected command : '{}'", incoming_request->toString());
+      callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
+       return nullptr;
+  }
+  std::string key =incoming_request->asArray()[shardKeyIndex].asString();;
   std::unique_ptr<SimpleRequest> request_ptr{
       new SimpleRequest(callbacks, command_stats, time_source, delay_command_latency)};
-  const auto route = router.upstreamPool(incoming_request->asArray()[1].asString(), stream_info);
+
+  const auto route = router.upstreamPool(incoming_request->asArray()[shardKeyIndex].asString(), stream_info);
   if (route) {
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     request_ptr->handle_ = makeSingleServerRequest(
-        route, base_request->asArray()[0].asString(), base_request->asArray()[1].asString(),
+        route, base_request->asArray()[0].asString(), key,
         base_request, *request_ptr, callbacks.transaction());
   } else {
     ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
@@ -286,6 +291,31 @@ SplitRequestPtr SimpleRequest::create(Router& router,
 
   return request_ptr;
 }
+
+int32_t SimpleRequest::getShardingKeyIndex(const std::string command_name, const Common::Redis::RespValue& request) {
+    if (command_name == "xread" || command_name == "xreadgroup") {
+        int32_t count = request.asArray().size();
+        for (int32_t index = 0; index < count; ++index) {
+            if (absl::AsciiStrToLower(request.asArray()[index].asString()) == "streams") {
+                if (index + 1 < count) {
+                    return index + 1;  // Return the index of the key after "streams"
+                } else {
+                    return -1;  // "streams" is the last element
+                }
+            }
+        }
+        return -1;  // "streams" not found
+    } else if (command_name == "xgroup" || command_name == "xinfo") {
+        if (request.asArray().size() > 2) {
+            return 2;  // Return index 2 if there are more than 2 elements
+        } else {
+            return -1;  // Not enough elements
+        }
+    } else {
+        return 1;  // Default case for other commands
+    }
+}
+
 
 SplitRequestPtr EvalRequest::create(Router& router, Common::Redis::RespValuePtr&& incoming_request,
                                     SplitCallbacks& callbacks, CommandStats& command_stats,
@@ -347,6 +377,7 @@ AdministrationRequest::~AdministrationRequest() {
     ASSERT(!request.handle_);
   }
 #endif
+ENVOY_LOG(debug, "AdministrationRequest::~AdministrationRequest()");
 }
 
 void AdministrationRequest::cancel() {
@@ -561,7 +592,8 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
       if (!pending_responses_.empty()) {
         Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
         callbacks_.onResponse(std::move(response));
-        pending_responses_.clear();
+        //pending_responses_.clear();
+        return;
       }
     } else {
       bool positiveresponse = true;
@@ -588,7 +620,8 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
             response->asString() += infoProcessor.getInfoCmdResponseString();
             callbacks_.onResponse(std::move(response));
           }
-          pending_responses_.clear();
+          //pending_responses_.clear();
+          return;
         }
         if ( rediscommand == "pubsub" || rediscommand == "keys" || rediscommand == "slowlog"|| rediscommand == "client") {
               if ((redisarg == "numpat" || redisarg == "len") && (rediscommand == "pubsub" || rediscommand == "slowlog")) {
@@ -620,8 +653,9 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   if (positiveresponse) {
                     response->asInteger() = sum;
                     callbacks_.onResponse(std::move(response));
-                    pending_responses_.clear();
+                    //pending_responses_.clear();
                   }
+                  return;
               } else {
                   Common::Redis::RespValuePtr response = std::make_unique<Common::Redis::RespValue>();
                   Common::Redis::RespValue innerResponse;
@@ -704,15 +738,18 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                         ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->toString());
                         callbacks_.onResponse(Common::Redis::Utility::makeError(
                             fmt::format("all responses not same")));
+                        /*
                         if (!pending_responses_.empty()) {    
-                          pending_responses_.clear();
+                          //pending_responses_.clear();
                         }
+                        */
                       }
                   }
                   if (positiveresponse) {
                     callbacks_.onResponse(std::move(response));
-                    pending_responses_.clear();
+                    //pending_responses_.clear();
                   }
+                  return;
               }
         }
       }
@@ -727,7 +764,7 @@ void mgmtNoKeyRequest::onSingleShardresponse(Common::Redis::RespValuePtr&& value
   ENVOY_LOG(debug, "response: {}", value->toString());
   updateStats(true);
   callbacks_.onResponse(std::move(value));
-  pending_responses_.clear();
+  //pending_responses_.clear();
 }
 
 void mgmtNoKeyRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& value, int32_t reqindex, int32_t shardindex) {
@@ -754,22 +791,24 @@ void mgmtNoKeyRequest::onAllChildResponseSame(Common::Redis::RespValuePtr&& valu
         ENVOY_LOG(debug, "Error Response received: '{}'", pending_responses_[response_index_]->toString());
         Common::Redis::RespValuePtr response = std::move(pending_responses_[response_index_]);
         callbacks_.onResponse(std::move(response));
-        pending_responses_.clear();
+        //pending_responses_.clear();
       }
     } else if(! areAllResponsesSame(pending_responses_)) {
       updateStats(false);
       ENVOY_LOG(debug, "all response not same: '{}'", pending_responses_[0]->toString());
       callbacks_.onResponse(Common::Redis::Utility::makeError(
           fmt::format("all responses not same")));
+      /*
       if (!pending_responses_.empty())    
-        pending_responses_.clear();
+      //  pending_responses_.clear();
+      */
     }else {
       updateStats(true);
       if (!pending_responses_.empty()) {
       Common::Redis::RespValuePtr response = std::move(pending_responses_[0]);
       ENVOY_LOG(debug, "response: {}", response->toString()); 
       callbacks_.onResponse(std::move(response));
-      pending_responses_.clear();
+      //pending_responses_.clear();
       }
     }
   }
@@ -782,14 +821,20 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
   // For blocking requests which operate on a single key, we can hash the key to a single 
   //must send shard index as negative to indicate that it is a blocking request that acts on key
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
-  int32_t shard_index=getShardIndex(command_name,1,1);
+  uint32_t key_index =getShardingKeyIndex(command_name,*incoming_request);
+  if (key_index < 0) {
+    ENVOY_LOG(debug, "unexpected command : '{}'", incoming_request->toString());
+    callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
+    return nullptr;
+  }
+  std::string key = incoming_request->asArray()[key_index].asString();
+  int32_t shard_index=-1;
   Common::Redis::Client::Transaction& transaction = callbacks.transaction();
 
   std::unique_ptr<BlockingClientRequest> request_ptr{
       new BlockingClientRequest(callbacks, command_stats, time_source, delay_command_latency)};
-  std::string key = absl::AsciiStrToLower(incoming_request->asArray()[1].asString());
 
- if (transaction.active_ ){
+ if (transaction.active_){
     // when we are in blocking command, we cannnot accept any other commands
     if (transaction.isBlockingCommand()) {
         callbacks.onResponse(
@@ -802,18 +847,13 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
         return nullptr;
     }
   }else {
-    if (Common::Redis::SupportedCommands::blockingCommands().contains(command_name)){
       transaction.clients_.resize(1);
       transaction.setBlockingCommand();
       transaction.start();
-    }else{
-      ENVOY_LOG(debug, "unexpected command : '{}'", command_name);
-      callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected error")));
-      return nullptr;
-    }
   }
   const auto route = router.upstreamPool(incoming_request->asArray()[1].asString(), stream_info);
   if (route) {
+    ENVOY_LOG(debug, "key: for sharding '{}'", key);
       Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     request_ptr->handle_ = makeBlockingRequest(
         route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
@@ -830,6 +870,26 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
   transaction.should_close_ = false;
   return request_ptr;
 }
+
+int32_t BlockingClientRequest::getShardingKeyIndex(const std::string command_name, const Common::Redis::RespValue& request) {
+  if (Common::Redis::SupportedCommands::streamBlockingCommands().contains(command_name)) {
+    int32_t count = request.asArray().size();
+    
+    for (int32_t index = 0; index < count; ++index) {
+      if (absl::AsciiStrToLower(request.asArray()[index].asString()) == "streams") {
+        // Check if the next index is within bounds
+        if (index + 1 < count) {
+          return index + 1;
+        } else {
+          return -1;  // "streams" is the last element, so return -1
+        }
+      }
+    }
+    return -1;  // "streams" not found
+  }
+  return 1;  // Default for non-stream blocking commands
+}
+
 
 bool isKeyspaceArgument(const std::string& argument) {
   std::string keyspacepattern = "__keyspace@0__";
@@ -1062,7 +1122,9 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
 
 void PubSubMessageHandler::onFailure() {
   ENVOY_LOG(debug, "failure in pubsub message handler");
-  downstream_callbacks_->onFailure();
+  if (downstream_callbacks_) {
+    downstream_callbacks_->onFailure();
+  }
 }
 
 void MGETRequest::onChildResponse(Common::Redis::RespValuePtr&& value, uint32_t index) {
@@ -1704,6 +1766,7 @@ InstanceImpl::InstanceImpl(RouterPtr&& router, Stats::Scope& scope, const std::s
 SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
                                           SplitCallbacks& callbacks, Event::Dispatcher& dispatcher,
                                           const StreamInfo::StreamInfo& stream_info) {
+  // Validate request type and contents.
   if ((request->type() != Common::Redis::RespType::Array) || request->asArray().empty()) {
     ENVOY_LOG(debug,"invalid request - not an array or empty");
     onInvalidRequest(callbacks);
@@ -1718,16 +1781,16 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     }
   }
 
+  // Extract command name
   std::string command_name = absl::AsciiStrToLower(request->asArray()[0].asString());
 
+  // Respond to HELLO locally adding this before auth, since hello will be issued before auth command
   if (command_name == Common::Redis::SupportedCommands::hello()) {
-    // Respond to HELLO locally
-    // Adding this before auth, since hello will be issued before auth command
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().UnKnownCommandHello));
     return nullptr;
-
   }
 
+  // Handle AUTH command
   if (command_name == Common::Redis::SupportedCommands::auth()) {
     if (request->asArray().size() < 2) {
       ENVOY_LOG(debug,"invalid request - not enough arguments for auth command");
@@ -1743,12 +1806,14 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
+  // Ensure connection is allowed or auth is required.
   if (!callbacks.connectionAllowed()) {
     stats_.auth_failure_.inc();
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().AuthRequiredError));
     return nullptr;
   }
 
+  // Handle PING command locally
   if (command_name == Common::Redis::SupportedCommands::ping()) {
     // Respond to PING locally.
     Common::Redis::RespValuePtr pong(new Common::Redis::RespValue());
@@ -1758,6 +1823,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
+  // Handle TIME command locally
   if (command_name == Common::Redis::SupportedCommands::time()) {
     // Respond to TIME locally.
     Common::Redis::RespValuePtr time_resp(new Common::Redis::RespValue());
@@ -1782,7 +1848,8 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     callbacks.onResponse(std::move(time_resp));
     return nullptr;
   }
-  // For transaction type commands and blockingcommands , quit needs to be handled from within the command handler
+
+  // Hadle QUIT and EXIT commands locally if its not part of transaction or subscribed state
   if ((command_name == Common::Redis::SupportedCommands::quit() || command_name == Common::Redis::SupportedCommands::exit()) && !callbacks.transaction().active_) {
     callbacks.onQuit();
     return nullptr;
@@ -1797,6 +1864,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
+  // Handle CLIENT command locally
   if (command_name == "client") {
     std::string sub_command = absl::AsciiStrToLower(request->asArray()[1].asString());
     if (Common::Redis::SupportedCommands::clientSubCommands().count(sub_command) == 0) {
@@ -1826,12 +1894,21 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
   // Get the handler for the downstream request
   auto handler = handler_lookup_table_.find(command_name.c_str());
-  if (handler == nullptr && !callbacks.transaction().isSubscribedMode()) {
-    stats_.unsupported_command_.inc();
-    ENVOY_LOG(debug, "unsupported command '{}'", request->asArray()[0].asString());
-    callbacks.onResponse(Common::Redis::Utility::makeError(
+  if (handler == nullptr ){
+    if (callbacks.transaction().active_ && callbacks.transaction().isSubscribedMode() && !Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
+        callbacks.onResponse(Common::Redis::Utility::makeError("command not supported in subscribed state"));
+        return nullptr;
+    }else if(Common::Redis::SupportedCommands::streamCommands().contains(command_name)){
+      //Stream commands are not listed directly under any handler , we need to check if it is a blocking or simple command and choose appropriate handler
+      handler=getHandlerForStreamsCommand(command_name,request);
+
+    }else{
+      stats_.unsupported_command_.inc();
+      ENVOY_LOG(debug, "unsupported command '{}'", request->asArray()[0].asString());
+      callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("unsupported command '{}'", request->asArray()[0].asString())));
-    return nullptr;
+      return nullptr;
+    }
   }
 
   // If we are within a transaction, forward all requests to the transaction handler (i.e. handler
@@ -1909,6 +1986,21 @@ void InstanceImpl::addHandler(Stats::Scope& scope, const std::string& stat_prefi
                                                            : Stats::Histogram::Unit::Milliseconds)},
           handler}));
 }
+
+InstanceImpl::HandlerDataPtr InstanceImpl::getHandlerForStreamsCommand(const std::string& command_name, const Common::Redis::RespValuePtr& request) {
+  // Check if the command is a stream blocking command.
+  if (Common::Redis::SupportedCommands::streamBlockingCommands().contains(command_name)) {
+    // Check for "block" keyword in the appropriate positions of the request array.
+    if ((request->asArray().size() > 1 && absl::AsciiStrToLower(request->asArray()[1].asString()) == "block") ||
+        (request->asArray().size() > 3 && absl::AsciiStrToLower(request->asArray()[3].asString()) == "block")) {
+      return handler_lookup_table_.find("xread_blocking_command");
+    }
+  }
+
+  // Default to "xread_simple_command" if it's not a blocking command.
+  return handler_lookup_table_.find("xread_simple_command");
+}
+
 
 } // namespace CommandSplitter
 } // namespace RedisProxy

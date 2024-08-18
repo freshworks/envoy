@@ -34,7 +34,7 @@ struct RedisHealthCheckerStats {
 /**
  * Redis health checker implementation. Sends PING and expects PONG.
  */
-class RedisHealthChecker : public Upstream::HealthCheckerImplBase {
+class RedisHealthChecker : public Upstream::HealthCheckerImplBase, public Logger::Loggable<Logger::Id::redis>{
 public:
   RedisHealthChecker(
       const Upstream::Cluster& cluster, const envoy::config::core::v3::HealthCheck& config,
@@ -67,7 +67,7 @@ private:
       : public ActiveHealthCheckSession,
         public Extensions::NetworkFilters::Common::Redis::Client::Config,
         public Extensions::NetworkFilters::Common::Redis::Client::ClientCallbacks,
-        public Network::ConnectionCallbacks {
+        public Network::ConnectionCallbacks, public Logger::Loggable<Logger::Id::redis> {
     RedisActiveHealthCheckSession(RedisHealthChecker& parent, const Upstream::HostSharedPtr& host);
     ~RedisActiveHealthCheckSession() override;
 

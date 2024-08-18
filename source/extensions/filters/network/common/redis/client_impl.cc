@@ -85,6 +85,7 @@ ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dis
       flush_timer_(dispatcher.createTimer([this]() { flushBufferAndResetTimer(); })),
       time_source_(dispatcher.timeSource()), redis_command_stats_(redis_command_stats),
       scope_(scope), is_transaction_client_(is_transaction_client),  is_pubsub_client_(is_pubsub_client), is_blocking_client_(is_blocking_client) {
+  
   Upstream::ClusterTrafficStats& traffic_stats = *host->cluster().trafficStats();
   traffic_stats.upstream_cx_total_.inc();
   host->stats().cx_total_.inc();
@@ -94,6 +95,17 @@ ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dis
   if (is_pubsub_client_){
     pubsub_cb_ = std::move(pubsubcb);
   }
+  if (!is_transaction_client_ && !is_pubsub_client_ && !is_blocking_client_){
+    ENVOY_LOG(debug, "Upstream Client created of type ThreadLocal Active Client");
+}else if (is_transaction_client_){
+    ENVOY_LOG(debug, "Upstream Client created of type Transaction Client");
+  }else if (is_pubsub_client_){
+    ENVOY_LOG(debug, "Upstream Client created of type Pubsub Client");
+  }else if (is_blocking_client_){
+    ENVOY_LOG(debug, "Upstream Client created of type Blocking Client");
+  }else{
+    ENVOY_LOG(error, "Upstream Client created of type Unknown Client");
+  }
 }
 
 ClientImpl::~ClientImpl() {
@@ -102,11 +114,12 @@ ClientImpl::~ClientImpl() {
   host_->cluster().trafficStats()->upstream_cx_active_.dec();
   host_->stats().cx_active_.dec();
   pubsub_cb_.reset();
-
+  ENVOY_LOG(debug, "Upstream Client destroyed");
 }
 
 void ClientImpl::close() {
   pubsub_cb_.reset();
+  ENVOY_LOG(debug, "Upstream Client Connection close requested");
   if (connection_) {
     connection_->close(Network::ConnectionCloseType::NoFlush); 
   }
@@ -198,6 +211,7 @@ bool ClientImpl::makePubSubRequest(const RespValue& request) {
 
 
 void ClientImpl::onConnectOrOpTimeout() {
+
   putOutlierEvent(Upstream::Outlier::Result::LocalOriginTimeout);
   if (connected_) {
     host_->cluster().trafficStats()->upstream_rq_timeout_.inc();
@@ -212,6 +226,17 @@ void ClientImpl::onConnectOrOpTimeout() {
   } else {
     ENVOY_LOG(debug, "Ignoring timeout for connection close for Blocking clients!");
   }
+    if (!is_transaction_client_ && !is_pubsub_client_ && !is_blocking_client_){
+    ENVOY_LOG(debug, "Upstream Client onConnectOrOpTimeout for ThreadLocal Active Client");
+  }else if (is_transaction_client_){
+    ENVOY_LOG(debug, "Upstream Client onConnectOrOpTimeout for Transaction Client");
+  }else if (is_pubsub_client_){
+    ENVOY_LOG(debug, "Upstream Client onConnectOrOpTimeout for Pubsub Client");
+  }else if (is_blocking_client_){
+    ENVOY_LOG(debug, "Upstream Client onConnectOrOpTimeout for Blocking Client");
+  }else{
+    ENVOY_LOG(error, "Upstream Client onConnectOrOpTimeout for Unknown Client");
+  }
 }
 
 void ClientImpl::onData(Buffer::Instance& data) {
@@ -220,6 +245,7 @@ void ClientImpl::onData(Buffer::Instance& data) {
     putOutlierEvent(Upstream::Outlier::Result::ExtOriginRequestFailed);
     host_->cluster().trafficStats()->upstream_cx_protocol_error_.inc();
     host_->stats().rq_error_.inc();
+    ENVOY_LOG(debug, "Upstream Client Protocol error occurred");
     connection_->close(Network::ConnectionCloseType::NoFlush);
   }
 }
@@ -263,7 +289,9 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     //handle non blocking and non transaction requests
     while (!pending_requests_.empty()) { 
       PendingRequest& request = pending_requests_.front();
+      ENVOY_LOG(debug,"Upstream Client Connection close ");
       if (!request.canceled_) {
+        ENVOY_LOG(debug,"Upstream Client Connection close calling onFailure");
         request.callbacks_.onFailure();
       } else {
         host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
@@ -324,7 +352,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   pending_requests_.pop_front();
   if (canceled) {
     host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
-  } else if (config_.enableRedirection() && (!is_blocking_client_ || !is_transaction_client_) &&
+  } else if (config_.enableRedirection() && (!is_blocking_client_ && !is_transaction_client_ && !is_pubsub_client_) &&
              (value->type() == Common::Redis::RespType::Error)) {
     std::vector<absl::string_view> err = StringUtil::splitToken(value->asString(), " ", false);
     if (err.size() == 3 &&

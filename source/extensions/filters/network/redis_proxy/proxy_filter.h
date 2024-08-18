@@ -113,6 +113,7 @@ public:
   std::unique_ptr<Common::Redis::Utility::DownStreamMetrics> getDownStreamInfo();
   void setclientname(std::string clientname) { clientname_ = clientname; }
   std::string getclientname() { return clientname_; }
+  void closeDownstreamConnection();
 
 private:
   friend class RedisProxyFilterTest;

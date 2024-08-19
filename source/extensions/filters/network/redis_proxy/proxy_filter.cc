@@ -136,7 +136,6 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
 
       }
       if (transaction_.isTransactionMode()){
-        //callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
         this->closeDownstreamConnection();
       }
 

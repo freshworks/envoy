@@ -352,24 +352,15 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
   pending_requests_.pop_front();
   if (canceled) {
     host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
-  } else if (config_.enableRedirection() && (!is_blocking_client_ && !is_pubsub_client_) &&
+  } else if (config_.enableRedirection() && (!is_blocking_client_ && !is_transaction_client_ && !is_pubsub_client_) &&
              (value->type() == Common::Redis::RespType::Error)) {
     std::vector<absl::string_view> err = StringUtil::splitToken(value->asString(), " ", false);
     if (err.size() == 3 &&
         (err[0] == RedirectionResponse::get().MOVED || err[0] == RedirectionResponse::get().ASK)) {
       // MOVED and ASK redirection errors have the following substrings: MOVED or ASK (err[0]), hash
       // key slot (err[1]), and IP address and TCP port separated by a colon (err[2])
-      if (!is_transaction_client_) {
         callbacks.onRedirection(std::move(value), std::string(err[2]),
                                 err[0] == RedirectionResponse::get().ASK);
-      } else {
-        ENVOY_LOG(debug, "Transaction client, not calling redirection");
-        value->type(RespType::Error);
-        value->asString() = "CROSSSLOT Keys in request don't hash to the same slot";
-        
-        // Pass the error message instead of the original value
-        callbacks.onResponse(std::move(value));
-      }
     } else {
       if (err[0] == RedirectionResponse::get().CLUSTER_DOWN) {
         callbacks.onFailure();

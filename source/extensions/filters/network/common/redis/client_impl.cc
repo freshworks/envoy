@@ -359,8 +359,8 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
         (err[0] == RedirectionResponse::get().MOVED || err[0] == RedirectionResponse::get().ASK)) {
       // MOVED and ASK redirection errors have the following substrings: MOVED or ASK (err[0]), hash
       // key slot (err[1]), and IP address and TCP port separated by a colon (err[2])
-        callbacks.onRedirection(std::move(value), std::string(err[2]),
-                                err[0] == RedirectionResponse::get().ASK);
+      callbacks.onRedirection(std::move(value), std::string(err[2]),
+                              err[0] == RedirectionResponse::get().ASK);
     } else {
       if (err[0] == RedirectionResponse::get().CLUSTER_DOWN) {
         callbacks.onFailure();

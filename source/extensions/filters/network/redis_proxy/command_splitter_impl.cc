@@ -662,24 +662,32 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
                   response->type(Common::Redis::RespType::Array);
 
                   // Iterate through pending_responses_ and append non-empty responses to the array
-                  if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get" ) {
-                    std::unordered_set<std::string> distinctReponse; // Set to store unique elements 
-                    // In Pubsub channels, we have a corner case where we need to remove duplicates from the response 
-                    // since same channel (keyspace/keyevent) can be subscribed 
-                    // to multiple shards and only unique should be showed.
-                    for (auto& resp : pending_responses_) {
-                        if (resp->type() == Common::Redis::RespType::Array) {
-                            for (auto& elem : resp->asArray()) {
-                                std::string str_elem = elem.asString(); // Convert RespValue to string
-                                // Check if the element is already available
-                                if (distinctReponse.find(str_elem) == distinctReponse.end()) {
-                                    // If not seen, add it to the response array and store in unique_elements
-                                    distinctReponse.insert(str_elem);
-                                    response->asArray().emplace_back(std::move(elem));
-                                }
-                            }
+                  if ( redisarg == "channels" || rediscommand == "keys" || redisarg == "get" ) { 
+                    if ( redisarg == "get" || rediscommand == "keys") {
+                      for (auto& resp : pending_responses_) {
+                        for (auto& elem : resp->asArray()) {
+                          response->asArray().emplace_back(std::move(elem));
                         }
-                    }
+                      }
+                    } else {
+                      std::unordered_set<std::string> distinctReponse; // Set to store unique elements 
+                      // In Pubsub channels, we have a corner case where we need to remove duplicates from the response 
+                      // since same channel (keyspace/keyevent) can be subscribed 
+                      // to multiple shards and only unique should be showed.
+                      for (auto& resp : pending_responses_) {
+                          if (resp->type() == Common::Redis::RespType::Array) {
+                              for (auto& elem : resp->asArray()) {
+                                  std::string str_elem = elem.asString(); // Convert RespValue to string
+                                  // Check if the element is already available
+                                  if (distinctReponse.find(str_elem) == distinctReponse.end()) {
+                                      // If not seen, add it to the response array and store in unique_elements
+                                      distinctReponse.insert(str_elem);
+                                      response->asArray().emplace_back(std::move(elem));
+                                  }
+                              }
+                          }
+                      }
+                    }                     
                   }else if (rediscommand == "client" && redisarg == "list") {
                     for (auto& resp : pending_responses_) {
                         if (resp->type() == Common::Redis::RespType::BulkString) {

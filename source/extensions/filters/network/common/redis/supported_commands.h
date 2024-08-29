@@ -99,7 +99,7 @@ struct SupportedCommands {
    * @return commands that do not require arguments.
    */
   static const absl::flat_hash_set<std::string>& noArgCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "info", "flushall", "flushdb", "unwatch");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "info", "flushall", "flushdb", "unwatch", "randomkey");
   }
   
     /**

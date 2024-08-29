@@ -269,11 +269,21 @@ SplitRequestPtr SimpleRequest::create(Router& router,
       callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
        return nullptr;
   }
-  std::string key =incoming_request->asArray()[shardKeyIndex].asString();;
+  std::string key;
+  if (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0) {
+    key =incoming_request->asArray()[shardKeyIndex].asString();;
+  }else{
+    key = std::string();
+  }
   std::unique_ptr<SimpleRequest> request_ptr{
       new SimpleRequest(callbacks, command_stats, time_source, delay_command_latency)};
-
-  const auto route = router.upstreamPool(incoming_request->asArray()[shardKeyIndex].asString(), stream_info);
+  
+  RouteSharedPtr route;
+  if (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0) {
+    route = router.upstreamPool(incoming_request->asArray()[shardKeyIndex].asString(), stream_info);
+  }else{
+    route = router.upstreamPool(key, stream_info);
+  }
   if (route) {
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     request_ptr->handle_ = makeSingleServerRequest(

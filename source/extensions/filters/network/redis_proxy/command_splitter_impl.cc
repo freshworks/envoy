@@ -1693,7 +1693,7 @@ SplitRequestPtr TransactionRequest::create(Router& router,
 
   RouteSharedPtr route;
   if (transaction.key_.empty()) {
-      transaction.key_ = incoming_request->asArray()[1].asString();
+    transaction.key_ = incoming_request->asArray()[1].asString();
     route = router.upstreamPool(transaction.key_, stream_info);
     Common::Redis::RespValueSharedPtr multi_request =
         std::make_shared<Common::Redis::Client::MultiRequest>();

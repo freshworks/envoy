@@ -63,6 +63,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
         {"flushdb", AdminRespHandlerType::allresponses_mustbe_same},
         {"rename", AdminRespHandlerType::singleshardresponse},
         {"unwatch", AdminRespHandlerType::allresponses_mustbe_same},
+        {"randomkey", AdminRespHandlerType::singleshardresponse},
         // Add more mappings as needed
     };
 
@@ -269,21 +270,11 @@ SplitRequestPtr SimpleRequest::create(Router& router,
       callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
        return nullptr;
   }
-  std::string key;
-  if (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0) {
-    key =incoming_request->asArray()[shardKeyIndex].asString();;
-  }else{
-    key = std::string();
-  }
+  std::string key =incoming_request->asArray()[shardKeyIndex].asString();;
   std::unique_ptr<SimpleRequest> request_ptr{
       new SimpleRequest(callbacks, command_stats, time_source, delay_command_latency)};
-  
-  RouteSharedPtr route;
-  if (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0) {
-    route = router.upstreamPool(incoming_request->asArray()[shardKeyIndex].asString(), stream_info);
-  }else{
-    route = router.upstreamPool(key, stream_info);
-  }
+
+  const auto route = router.upstreamPool(incoming_request->asArray()[shardKeyIndex].asString(), stream_info);
   if (route) {
     Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     request_ptr->handle_ = makeSingleServerRequest(
@@ -1702,7 +1693,7 @@ SplitRequestPtr TransactionRequest::create(Router& router,
 
   RouteSharedPtr route;
   if (transaction.key_.empty()) {
-    transaction.key_ = incoming_request->asArray()[1].asString();
+      transaction.key_ = incoming_request->asArray()[1].asString();
     route = router.upstreamPool(transaction.key_, stream_info);
     Common::Redis::RespValueSharedPtr multi_request =
         std::make_shared<Common::Redis::Client::MultiRequest>();

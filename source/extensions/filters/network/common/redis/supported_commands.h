@@ -35,7 +35,7 @@ struct SupportedCommands {
         "zscore", "rpoplpush", "smove", "sunion", "sdiff", "sinter", "sinterstore", "zunionstore", 
         "zinterstore", "pfmerge", "georadius", "georadiusbymember", "rename", "getex", "sort", "zmscore", "sdiffstore", "msetnx", "substr",
         "zrangestore", "zunion", "echo", "zdiff", "sunionstore", "smismember",
-        "hrandfield", "geosearchstore", "zdiffstore", "geosearch", "randomkey", "zinter", "zrandmember",
+        "hrandfield", "geosearchstore", "zdiffstore", "geosearch", "zinter", "zrandmember",
         "bitop", "lpos", "renamenx","xread_simple_command");
   }
 
@@ -106,7 +106,7 @@ struct SupportedCommands {
    * @return commands which handle Redis commands without keys.
    */
   static const absl::flat_hash_set<std::string>& adminNokeyCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "publish","pubsub", "keys", "slowlog", "config","client","info","cluster","select", "unwatch");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "script", "flushall", "flushdb", "publish","pubsub", "keys", "slowlog", "config","client","info","cluster","select", "unwatch", "randomkey");
   }
 
   /**

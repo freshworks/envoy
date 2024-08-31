@@ -389,12 +389,12 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
   if (shard_index < 0){
     Clusters::Redis::RedisLoadBalancerContextImpl lb_context(
       key, config_->enableHashtagging(), is_redis_cluster_, getRequest(request),
-      (transaction.active_ && transaction.is_transaction_mode_)? Common::Redis::Client::ReadPolicy::Primary : config_->readPolicy());
+      (transaction.active_ && (transaction.is_transaction_mode_ || transaction.is_blocking_command_))? Common::Redis::Client::ReadPolicy::Primary : config_->readPolicy());
 
     host = cluster_->loadBalancer().chooseHost(&lb_context);
-    
   }else {
 
+    ENVOY_LOG(debug, "Must Not Choose self Shard index for blocking command: '{}'", shard_index);
     Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
     if (!hosts) {
       ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");

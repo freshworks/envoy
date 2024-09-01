@@ -80,7 +80,7 @@ ProxyFilter::ProxyFilter(Common::Redis::DecoderFactory& factory,
 }
 
 ProxyFilter::~ProxyFilter() {
-   ENVOY_LOG(debug,"ProxyFilter Destructor");
+   ENVOY_LOG(info,"ProxyFilter Destructor");
   ASSERT(pending_requests_.empty());
   config_->stats_.downstream_cx_active_.dec();
 }
@@ -114,7 +114,7 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
   }
   if (event == Network::ConnectionEvent::RemoteClose ||
       event == Network::ConnectionEvent::LocalClose) {
-    ENVOY_LOG(debug, "connection to redis proxy filter closed: {}", event == Network::ConnectionEvent::RemoteClose ? " remotely" : "locally");
+    ENVOY_LOG(info, "connection to redis proxy filter closed: {}", event == Network::ConnectionEvent::RemoteClose ? " remotely" : "locally");
     while (!pending_requests_.empty()) {
       if (pending_requests_.front().request_handle_ != nullptr) {
         pending_requests_.front().request_handle_->cancel();
@@ -122,7 +122,7 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
       pending_requests_.pop_front();
     }
     if (event == Network::ConnectionEvent::RemoteClose){
-       ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
+       ENVOY_LOG(info,"dereferencing pubsub callback and transaction on exit from proxy filter");
       // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
       // decrement the reference to proxy filter
       auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
@@ -131,13 +131,13 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
       }
       transaction_.setDownstreamCallback(nullptr);
       if(transaction_.isSubscribedMode()){
-        ENVOY_LOG(debug,"ProxyFilter::onEvent Clearing pubsubcb");
+        ENVOY_LOG(info,"ProxyFilter::onEvent Clearing pubsubcb");
         transaction_.setPubSubCallback(nullptr);
 
       }
 
     }
-    ENVOY_LOG(debug,"closing downstream connection with transaction_.close()");
+    ENVOY_LOG(info,"closing downstream connection with transaction_.close()");
     transaction_.close();
   }
 }
@@ -222,7 +222,7 @@ void ProxyFilter::onAsyncResponse(Common::Redis::RespValuePtr&& value){
 }
 void ProxyFilter::closeDownstreamConnection() {
 
-   ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
+   ENVOY_LOG(info,"dereferencing pubsub callback and transaction on exit from proxy filter");
       // As downstreamcallbaks is created in proxy filter irerespecive of its a pubsub command or not this needs to be cleared on exit from proxy filter
       // decrement the reference to proxy filter
       auto downstream_cb = dynamic_cast<DownStreamCallbacks*>(transaction_.getDownstreamCallback().get());
@@ -251,9 +251,14 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
   request.request_handle_ = nullptr;
 
   if (request.pending_response_.get()->type() == Common::Redis::RespType::Null && transaction_.isSubscribedMode()){
-    ENVOY_LOG(debug,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
+    ENVOY_LOG(info,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
     pending_requests_.pop_front();
 
+  }
+  if (request.pending_response_) {
+    if (request.pending_response_->type() != Common::Redis::RespType::Null &&request.pending_response_->type() == Common::Redis::RespType::Error) {
+      ENVOY_LOG(info, "error response: '{}'", request.pending_response_->toString());
+    }
   }
   // The response we got might not be in order, so flush out what we can. (A new response may
   // unlock several out of order responses).
@@ -266,7 +271,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
     callbacks_->connection().write(encoder_buffer_, false);
   }
   if (pending_requests_.empty() && connection_quit_) {
-    ENVOY_LOG(debug,"closing downstream connection as no pending requests and connection quit");
+    ENVOY_LOG(info,"closing downstream connection as no pending requests and connection quit");
     //callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
     this->closeDownstreamConnection();
     connection_quit_ = false;
@@ -278,7 +283,7 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
       config_->runtime_.snapshot().featureEnabled(config_->redis_drain_close_runtime_key_, 100)) {
     config_->stats_.downstream_cx_drain_close_.inc();
     //callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
-    ENVOY_LOG(debug,"closing downstream connection as no pending requests and drain close");
+    ENVOY_LOG(info,"closing downstream connection as no pending requests and drain close");
     this->closeDownstreamConnection();
   }
 
@@ -288,16 +293,16 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
       (transaction_.isSubscribedMode() && transaction_.should_close_)) {
     if (transaction_.should_close_ == true && transaction_.isBlockingCommand()) {
       //callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
-      ENVOY_LOG(debug,"closing downstream connection as blocking command and transaction close");
+      ENVOY_LOG(info,"closing downstream connection as blocking command and transaction close");
       this->closeDownstreamConnection();
     }
-    ENVOY_LOG(debug,"closing transaction as no pending requests and transaction close");
+    ENVOY_LOG(info,"closing transaction as no pending requests and transaction close");
     transaction_.close();
     //Not sure if for transaction mode also we need to close the connection in downstream
     if (transaction_.isSubscribedMode()){
       transaction_.subscribed_client_shard_index_ = -1;
       //callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
-      ENVOY_LOG(debug,"closing downstream connection as pubsub mode and transaction close");
+      ENVOY_LOG(info,"closing downstream connection as pubsub mode and transaction close");
       this->closeDownstreamConnection();
     }
     connection_quit_ = false;

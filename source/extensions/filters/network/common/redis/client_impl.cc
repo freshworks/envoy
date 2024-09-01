@@ -245,7 +245,7 @@ void ClientImpl::onData(Buffer::Instance& data) {
     putOutlierEvent(Upstream::Outlier::Result::ExtOriginRequestFailed);
     host_->cluster().trafficStats()->upstream_cx_protocol_error_.inc();
     host_->stats().rq_error_.inc();
-    ENVOY_LOG(debug, "Upstream Client Protocol error occurred");
+    ENVOY_LOG(error, "Upstream Client Protocol error occurred");
     connection_->close(Network::ConnectionCloseType::NoFlush);
   }
 }
@@ -261,7 +261,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
       event == Network::ConnectionEvent::LocalClose) {
 
     std::string eventTypeStr = (event == Network::ConnectionEvent::RemoteClose ? "RemoteClose" : "LocalClose");
-    ENVOY_LOG(debug,"Upstream Client Connection close event received:'{}'",eventTypeStr);
+    ENVOY_LOG(info,"Upstream Client Connection close event received:'{}'",eventTypeStr);
     Upstream::reportUpstreamCxDestroy(host_, event);
     if (!pending_requests_.empty()) {
       Upstream::reportUpstreamCxDestroyActiveRequest(host_, event);
@@ -272,10 +272,10 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     // If client is Pubsub handle the upstream close event such that downstream must also be closed.
     if ( is_pubsub_client_) {
       host_->cluster().trafficStats()->upstream_cx_destroy_with_active_rq_.inc();
-      ENVOY_LOG(debug,"Pubsub Client Connection close event received:'{}', clearing pubsub_cb_",eventTypeStr);
+      ENVOY_LOG(info,"Pubsub Client Connection close event received:'{}', clearing pubsub_cb_",eventTypeStr);
       //clear pubsub_cb_ be it either local or remote close       
       if ((pubsub_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
-        ENVOY_LOG(debug,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
+        ENVOY_LOG(info,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
         pubsub_cb_->onFailure();
       }
       pubsub_cb_.reset();
@@ -291,7 +291,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
       PendingRequest& request = pending_requests_.front();
       ENVOY_LOG(debug,"Upstream Client Connection close ");
       if (!request.canceled_) {
-        ENVOY_LOG(debug,"Upstream Client Connection close calling onFailure");
+        ENVOY_LOG(info,"Upstream Client Connection close calling onFailure");
         request.callbacks_.onFailure();
       } else {
         host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
@@ -306,7 +306,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
     if (!is_pubsub_client_){
       ASSERT(!pending_requests_.empty());
     }else{
-      ENVOY_LOG(debug,"Pubsub Client Connection established");
+      ENVOY_LOG(info,"Pubsub Client Connection established");
     }
     if (!is_blocking_client_) {
       connect_or_op_timer_->enableTimer(config_.opTimeout());
@@ -330,7 +330,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
           connect_or_op_timer_->disableTimer();
         }
     }else {
-      ENVOY_LOG(debug,"Pubsub Client Received message from server but no callback registered");
+      ENVOY_LOG(error,"Pubsub Client Received message from server but no callback registered");
     }
     return;
   }

@@ -133,8 +133,7 @@ makeBlockingRequest(const RouteSharedPtr& route, int32_t shard_index, const std:
   Common::Redis::Client::Transaction& transaction) {
   Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl* req_instance =
       dynamic_cast<Extensions::NetworkFilters::RedisProxy::ConnPool::InstanceImpl*>(route->upstream(key).get());
-  auto handler = req_instance->makeBlockingClientRequest(shard_index,key,ConnPool::RespVariant(incoming_request),
-                                                       callbacks, transaction);
+  auto handler = req_instance->makeBlockingClientRequest(shard_index,key,ConnPool::RespVariant(incoming_request),callbacks, transaction);
   return handler;
 }
 
@@ -214,9 +213,9 @@ void SingleServerRequest::onFailure() { onFailure(Response::get().UpstreamFailur
 void SingleServerRequest::onFailure(std::string error_msg) {
   handle_ = nullptr;
   updateStats(false);
-  ENVOY_LOG(debug,"mode of clients is Transaction : '{}', PubSub: '{}', Blocking: '{}'",callbacks_.transaction().isTransactionMode(),callbacks_.transaction().isSubscribedMode(),callbacks_.transaction().isBlockingCommand());
+  ENVOY_LOG(error,"mode of clients is Transaction : '{}', PubSub: '{}', Blocking: '{}'",callbacks_.transaction().isTransactionMode(),callbacks_.transaction().isSubscribedMode(),callbacks_.transaction().isBlockingCommand());
   callbacks_.transaction().should_close_ = true;
-  ENVOY_LOG(debug, "onFailure error: {},closing transaction also", error_msg);
+  ENVOY_LOG(error, "onFailure error: {},closing transaction also", error_msg);
   callbacks_.onResponse(Common::Redis::Utility::makeError(error_msg));
 }
 
@@ -265,11 +264,13 @@ SplitRequestPtr SimpleRequest::create(Router& router,
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
   int32_t shardKeyIndex = getShardingKeyIndex(command_name,*incoming_request);
   if (shardKeyIndex < 0) {
-      ENVOY_LOG(debug, "unexpected command : '{}'", incoming_request->toString());
+      ENVOY_LOG(error, "unexpected command : '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
        return nullptr;
   }
-  std::string key =incoming_request->asArray()[shardKeyIndex].asString();;
+  std::string key =incoming_request->asArray()[shardKeyIndex].asString();
+  ENVOY_LOG(debug, "shardKeyIndex : '{}'", shardKeyIndex);
+  ENVOY_LOG(debug, "key : '{}'", key);
   std::unique_ptr<SimpleRequest> request_ptr{
       new SimpleRequest(callbacks, command_stats, time_source, delay_command_latency)};
 
@@ -280,7 +281,7 @@ SplitRequestPtr SimpleRequest::create(Router& router,
         route, base_request->asArray()[0].asString(), key,
         base_request, *request_ptr, callbacks.transaction());
   } else {
-    ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
+    ENVOY_LOG(error, "route not found: '{}'", incoming_request->toString());
   }
 
   if (!request_ptr->handle_) {
@@ -424,7 +425,7 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
   }
   
   if (!checkIfAdminCommandSupported(command_name,firstarg)){
-    ENVOY_LOG(debug, "this admin command is not supported: '{}'", incoming_request->toString());
+    ENVOY_LOG(error, "this admin command is not supported: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
       return nullptr;
   }
@@ -437,13 +438,13 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
             route->upstream(key).get());
     redisShardsCount = instance->getRedisShardsCount();
     if (redisShardsCount <= 0){
-      ENVOY_LOG(debug, "redisShardsCount not found: '{}'", incoming_request->toString());
+      ENVOY_LOG(error, "redisShardsCount not found: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       return nullptr;
     }
   }
   else{
-    ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
+    ENVOY_LOG(error, "route not found: '{}'", incoming_request->toString());
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     return nullptr;
   }
@@ -472,7 +473,7 @@ SplitRequestPtr mgmtNoKeyRequest::create(Router& router, Common::Redis::RespValu
     pending_request.handle_= makeNoKeyRequest(route, shard_index,base_request, pending_request, callbacks.transaction());
 
     if (!pending_request.handle_) {
-      ENVOY_LOG(debug, "Error in  makeRequestNoKey : '{}', to shard index: '{}'", incoming_request->toString(),shard_index);
+      ENVOY_LOG(error, "Error in  makeRequestNoKey : '{}', to shard index: '{}'", incoming_request->toString(),shard_index);
       pending_request.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       iserror = true;
       break;
@@ -609,7 +610,7 @@ void mgmtNoKeyRequest::onallChildRespAgrregate(Common::Redis::RespValuePtr&& val
               parseInfoResponse(resp->asString(),infoProcessor);
             } else {
               positiveresponse = false;
-              ENVOY_LOG(debug, "Error: Unexpected response Type , expected bulkstring");
+              ENVOY_LOG(error, "Error: Unexpected response Type , expected bulkstring");
               break;
             } 
           }
@@ -831,7 +832,7 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
   std::string command_name = absl::AsciiStrToLower(incoming_request->asArray()[0].asString());
   uint32_t key_index =getShardingKeyIndex(command_name,*incoming_request);
   if (key_index < 0) {
-    ENVOY_LOG(debug, "unexpected command : '{}'", incoming_request->toString());
+    ENVOY_LOG(error, "unexpected command : '{}'", incoming_request->toString());
     callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
     return nullptr;
   }
@@ -859,14 +860,14 @@ SplitRequestPtr BlockingClientRequest::create(Router& router, Common::Redis::Res
       transaction.setBlockingCommand();
       transaction.start();
   }
-  const auto route = router.upstreamPool(incoming_request->asArray()[1].asString(), stream_info);
+  const auto route = router.upstreamPool(incoming_request->asArray()[key_index].asString(), stream_info);
   if (route) {
     ENVOY_LOG(debug, "key: for sharding '{}'", key);
       Common::Redis::RespValueSharedPtr base_request = std::move(incoming_request);
     request_ptr->handle_ = makeBlockingRequest(
         route,shard_index,key,base_request, *request_ptr, callbacks.transaction());
   } else {
-    ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
+    ENVOY_LOG(error, "route not found: '{}'", incoming_request->toString());
   }
   if (!request_ptr->handle_) {
     command_stats.error_.inc();
@@ -967,13 +968,13 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
             route->upstream(key).get());
     redisShardsCount = instance->getRedisShardsCount();
     if (redisShardsCount <= 0){
-      ENVOY_LOG(debug, "redisShardsCount not found: '{}'", incoming_request->toString());
+      ENVOY_LOG(error, "redisShardsCount not found: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
       return nullptr;
     }
   }
   else{
-    ENVOY_LOG(debug, "route not found: '{}'", incoming_request->toString());
+    ENVOY_LOG(error, "route not found: '{}'", incoming_request->toString());
     callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().NoUpstreamHost));
     return nullptr;
   }
@@ -1007,7 +1008,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       transaction.enterSubscribedMode();
       transaction.start();
     }else{
-      ENVOY_LOG(debug, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);
+      ENVOY_LOG(info, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);
       callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not yet in subcribe mode")));
       return nullptr;
     }
@@ -1033,7 +1034,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       PubSubMsghandler->setShardIndex(transaction.subscribed_client_shard_index_);
     }
     if (!makeRequest(transaction.subscribed_client_shard_index_, base_request)){
-         ENVOY_LOG(debug,"makerequest failed for singleshard request");
+         ENVOY_LOG(error,"makerequest failed for singleshard request");
         transaction.setPubSubCallback(nullptr);
         return nullptr;
     }
@@ -1048,7 +1049,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     
     for (int32_t i = 0; i < redisShardsCount; i++) {
         if (!makeRequest(i, base_request)){
-          ENVOY_LOG(debug,"makerequest failed for allShardsRequest for shardIndex'{}'",i);
+          ENVOY_LOG(info,"makerequest failed for allShardsRequest for shardIndex'{}'",i);
           transaction.setPubSubCallback(nullptr);
           return nullptr;
         }
@@ -1075,14 +1076,14 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     for (int32_t i = 0; i < redisShardsCount; i++) {
       if (i == transaction.subscribed_client_shard_index_){
         if (!makeRequest(i, base_request)){
-          ENVOY_LOG(debug,"makerequest failed for allShardwithSingleShardRequest for base request at shardIndex'{}'",i);
+          ENVOY_LOG(info,"makerequest failed for allShardwithSingleShardRequest for base request at shardIndex'{}'",i);
           transaction.setPubSubCallback(nullptr);
           return nullptr;
         }
             
       }else{
         if (!makeRequest(i, keyspaceRequest)){
-          ENVOY_LOG(debug,"makerequest failed for allShardwithSingleShardRequest for keyspaceRequest at shardIndex'{}'",i);
+          ENVOY_LOG(info,"makerequest failed for allShardwithSingleShardRequest for keyspaceRequest at shardIndex'{}'",i);
           transaction.setPubSubCallback(nullptr);
           return nullptr;
         }
@@ -1105,7 +1106,7 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
 
   if (value->type() != Common::Redis::RespType::Array ||
       value->asArray()[0].type() != Common::Redis::RespType::BulkString) {
-    ENVOY_LOG(debug, "unexpected message format: '{}'", value->toString());
+    ENVOY_LOG(error, "unexpected message format: '{}'", value->toString());
     return;
   }
 
@@ -1124,12 +1125,12 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
         ENVOY_LOG(debug, "Duplicate Message from shard index '{}', Ignoring!",shardIndex);
     }
   }else {
-    ENVOY_LOG(debug, "unexpected message type: '{}'", value->toString());
+    ENVOY_LOG(error, "unexpected message type: '{}'", value->toString());
   }
 }
 
 void PubSubMessageHandler::onFailure() {
-  ENVOY_LOG(debug, "failure in pubsub message handler");
+  ENVOY_LOG(error, "failure in pubsub message handler");
   if (downstream_callbacks_) {
     downstream_callbacks_->onFailure();
   }
@@ -1274,7 +1275,7 @@ void ScanRequest::onChildError(Common::Redis::RespValuePtr&& value) {
   }
 
   Common::Redis::RespValuePtr response_t = std::move(value);
-  ENVOY_LOG(debug, "response: {}", response_t->toString());
+  ENVOY_LOG(info, "onChildError response: {}", response_t->toString());
   callbacks_.onResponse(std::move(response_t));
 
 }
@@ -1517,13 +1518,13 @@ void ScanRequest::onChildResponse(Common::Redis::RespValuePtr&& value, int32_t i
                   objArray.asArray().emplace_back(std::move(obj.asArray()[k]));
                 }
               } else {
-                ENVOY_LOG(debug, "received non array response for the objects while scanning");
+                ENVOY_LOG(info, "received non array response for the objects while scanning");
               }
           } else {
-            ENVOY_LOG(debug, "received non array response for the scan command");
+            ENVOY_LOG(info, "received non array response for the scan command");
           }
         } else {
-          ENVOY_LOG(debug, "received null pointer as response from one of the shard");
+          ENVOY_LOG(info, "received null pointer as response from one of the shard");
         }
       }
       pending_responses_.clear();
@@ -1776,19 +1777,19 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
                                           const StreamInfo::StreamInfo& stream_info) {
   // Validate request type and contents.
   if ((request->type() != Common::Redis::RespType::Array) || request->asArray().empty()) {
-    ENVOY_LOG(debug,"invalid request - not an array or empty");
+    ENVOY_LOG(error,"invalid request - not an array or empty");
     onInvalidRequest(callbacks);
     return nullptr;
   }
 
   for (const Common::Redis::RespValue& value : request->asArray()) {
     if (value.type() != Common::Redis::RespType::BulkString) {
-      ENVOY_LOG(debug,"invalid request - not an array of bulk strings");
+      ENVOY_LOG(error,"invalid request - not an array of bulk strings");
       onInvalidRequest(callbacks);
       return nullptr;
     }
   }
-
+  ENVOY_LOG(info, "command to process '{}'", request->toString());
   // Extract command name
   std::string command_name = absl::AsciiStrToLower(request->asArray()[0].asString());
 
@@ -1801,7 +1802,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   // Handle AUTH command
   if (command_name == Common::Redis::SupportedCommands::auth()) {
     if (request->asArray().size() < 2) {
-      ENVOY_LOG(debug,"invalid request - not enough arguments for auth command");
+      ENVOY_LOG(error,"invalid request - not enough arguments for auth command");
       onInvalidRequest(callbacks);
       return nullptr;
     }
@@ -1867,7 +1868,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)
   && (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0)) {
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
-    ENVOY_LOG(debug,"invalid request - not enough arguments for command: '{}'", command_name);
+    ENVOY_LOG(error,"invalid request - not enough arguments for command: '{}'", command_name);
     onInvalidRequest(callbacks);
     return nullptr;
   }
@@ -1877,7 +1878,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     std::string sub_command = absl::AsciiStrToLower(request->asArray()[1].asString());
     if (Common::Redis::SupportedCommands::clientSubCommands().count(sub_command) == 0) {
       stats_.unsupported_command_.inc();
-      ENVOY_LOG(debug, "unsupported command '{}' '{}'",command_name, sub_command);
+      ENVOY_LOG(error, "unsupported command '{}' '{}'",command_name, sub_command);
       callbacks.onResponse(Common::Redis::Utility::makeError(
           fmt::format("unsupported command '{}' '{}'",command_name, sub_command)));
       return nullptr;
@@ -1893,8 +1894,13 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
       ClientResp->type(Common::Redis::RespType::SimpleString);
       ClientResp->asString() = "OK";
     }else if (sub_command == "getname") {
-      ClientResp->type(Common::Redis::RespType::BulkString);
-      ClientResp->asString() = callbacks.getClientname();
+      auto ClientName = callbacks.getClientname();
+      if (ClientName.empty()) {
+        ClientResp->type(Common::Redis::RespType::Null);
+      } else {
+        ClientResp->type(Common::Redis::RespType::BulkString);
+        ClientResp->asString() = callbacks.getClientname();
+      }
     }
     callbacks.onResponse(std::move(ClientResp));
     return nullptr;
@@ -1912,7 +1918,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
     }else{
       stats_.unsupported_command_.inc();
-      ENVOY_LOG(debug, "unsupported command '{}'", request->asArray()[0].asString());
+      ENVOY_LOG(error, "unsupported command '{}'", request->asArray()[0].asString());
       callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("unsupported command '{}'", request->asArray()[0].asString())));
       return nullptr;
@@ -1949,7 +1955,6 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   // downstream metrics reflect any faults added (with special fault metrics) or extra latency from
   // a delay. 2) we use a ternary operator for the callback parameter- we want to use the
   // delay_fault as callback if there is a delay per the earlier comment.
-  ENVOY_LOG(debug, "splitting '{}'", request->toString());
   handler->command_stats_.total_.inc();
 
   SplitRequestPtr request_ptr;

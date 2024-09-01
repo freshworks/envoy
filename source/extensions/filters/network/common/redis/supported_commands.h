@@ -64,7 +64,7 @@ struct SupportedCommands {
    * @return commands which handle Redis transactions allowed non simple commands.
    */
   static const absl::flat_hash_set<std::string>& transactionAllowedNonSimpleCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "del", "exists", "touch", "unlink");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "del", "exists", "touch", "unlink", "xack", "xadd", "xautoclaim", "xclaim", "xdel", "xgroup", "xinfo", "xlen", "xpending", "xrange", "xrevrange","xtrim");
   }
 
    /**

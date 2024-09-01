@@ -392,7 +392,6 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
       (transaction.active_ && (transaction.is_transaction_mode_ || transaction.is_blocking_command_))? Common::Redis::Client::ReadPolicy::Primary : config_->readPolicy());
 
     host = cluster_->loadBalancer().chooseHost(&lb_context);
-    
   }else {
 
     ENVOY_LOG(debug, "Must Not Choose self Shard index for blocking command: '{}'", shard_index);

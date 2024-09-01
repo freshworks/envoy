@@ -63,6 +63,7 @@ AdminRespHandlerType getresponseHandlerType(const std::string& command_name) {
         {"flushdb", AdminRespHandlerType::allresponses_mustbe_same},
         {"rename", AdminRespHandlerType::singleshardresponse},
         {"unwatch", AdminRespHandlerType::allresponses_mustbe_same},
+        {"randomkey", AdminRespHandlerType::singleshardresponse},
         // Add more mappings as needed
     };
 

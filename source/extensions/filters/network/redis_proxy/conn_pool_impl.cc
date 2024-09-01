@@ -333,7 +333,7 @@ InstanceImpl::ThreadLocalPool::makeRequest(const std::string& key, RespVariant&&
 
   Upstream::HostConstSharedPtr host = cluster_->loadBalancer().chooseHost(&lb_context);
   if (!host) {
-    ENVOY_LOG(debug, "host not found: '{}'", key);
+    ENVOY_LOG(error, "host not found: '{}'", key);
     return nullptr;
   }
 
@@ -354,7 +354,7 @@ InstanceImpl::ThreadLocalPool::makeRequest(const std::string& key, RespVariant&&
   if (!transaction.active_ && !transaction.is_transaction_mode_) {
     ThreadLocalActiveClientPtr& client = this->threadLocalActiveClient(host);
     if (!client) {
-      ENVOY_LOG(debug, "redis connection is rate limited, erasing empty client");
+      ENVOY_LOG(info, "redis connection is rate limited, erasing empty client");
       pending_request.request_handler_ = nullptr;
       onRequestCompleted();
       client_map_.erase(host);
@@ -406,7 +406,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
   }
 
   if (!host) {
-      ENVOY_LOG(debug, "host not found: '{}'", key);
+      ENVOY_LOG(error, "host not found: '{}'", key);
       return nullptr;
   }
   pending_requests_.emplace_back(*this, std::move(request), callbacks, host);
@@ -434,7 +434,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
         transaction.clients_[client_idx]->addConnectionCallbacks(*transaction.connection_cb_);
       }
     }else{
-      ENVOY_LOG(debug, "Error in calling makeBlockingClientRequest, Neither in subscribed mode nor blocking mode");
+      ENVOY_LOG(error, "Error in calling makeBlockingClientRequest, Neither in subscribed mode nor blocking mode");
       onRequestCompleted();
       return nullptr;
     }
@@ -442,7 +442,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     pending_request.request_handler_ = transaction.clients_[client_idx]->makeRequest(
         getRequest(pending_request.incoming_request_), pending_request);
   }else{
-    ENVOY_LOG(debug, "Private connection only allowed for blocking/pubsub commands");
+    ENVOY_LOG(error, "Private connection only allowed for blocking/pubsub commands");
     onRequestCompleted();
     return nullptr;
   }
@@ -468,7 +468,7 @@ InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std:
   }
 
   if ( shard_index < 0 || !transaction.active_ || !transaction.isSubscribedMode()){
-    ENVOY_LOG(debug, "Error in calling makePubSubRequest, shard index is negative or transaction is not active or not in subscribed mode");
+    ENVOY_LOG(error, "Error in calling makePubSubRequest, shard index is negative or transaction is not active or not in subscribed mode");
     return is_success;
   }
 
@@ -483,7 +483,7 @@ InstanceImpl::ThreadLocalPool::makePubSubRequest(int32_t shard_index, const std:
 
 
   if (!host) {
-      ENVOY_LOG(debug, "host not found: '{}'", key);
+      ENVOY_LOG(error, "host not found: '{}'", key);
       return is_success;
   }
 
@@ -533,7 +533,7 @@ InstanceImpl::ThreadLocalPool::makeRequestNoKey(int32_t shard_index, RespVariant
 
   ThreadLocalActiveClientPtr& client = this->threadLocalActiveClient(host);
   if (!client) {
-    ENVOY_LOG(debug, "redis connection is rate limited, erasing empty client");
+    ENVOY_LOG(error, "redis connection is rate limited, erasing empty client");
     pending_request.request_handler_ = nullptr;
     onRequestCompleted();
     client_map_.erase(host);
@@ -633,7 +633,7 @@ Common::Redis::Client::PoolRequest* InstanceImpl::ThreadLocalPool::makeRequestTo
 
   ThreadLocalActiveClientPtr& client = threadLocalActiveClient(it->second);
   if (!client) {
-    ENVOY_LOG(debug, "redis connection is rate limited, erasing empty client");
+    ENVOY_LOG(error, "redis connection is rate limited, erasing empty client");
     client_map_.erase(it->second);
     return nullptr;
   }
@@ -723,7 +723,7 @@ void InstanceImpl::PendingRequest::onRedirection(Common::Redis::RespValuePtr&& v
   case Extensions::Common::DynamicForwardProxy::DnsCache::LoadDnsCacheEntryStatus::InCache: {
     ASSERT(cache_load_handle_ == nullptr);
     if (!result.host_info_.has_value() || !result.host_info_.value()->address()) {
-      ENVOY_LOG(debug, "DNS entry for '{}' was in cache but did not contain an address",
+      ENVOY_LOG(error, "DNS entry for '{}' was in cache but did not contain an address",
                 host_address);
       auto host = host_;
       onResponse(std::move(resp_value_));
@@ -739,7 +739,7 @@ void InstanceImpl::PendingRequest::onRedirection(Common::Redis::RespValuePtr&& v
     return;
   case Extensions::Common::DynamicForwardProxy::DnsCache::LoadDnsCacheEntryStatus::Overflow:
     ASSERT(cache_load_handle_ == nullptr);
-    ENVOY_LOG(debug, "DNS lookup for '{}' was not performed due to an overflow in the cache",
+    ENVOY_LOG(error, "DNS lookup for '{}' was not performed due to an overflow in the cache",
               host_address);
     auto host = host_;
     onResponse(std::move(resp_value_));
@@ -757,7 +757,7 @@ void InstanceImpl::PendingRequest::onLoadDnsCacheComplete(
   cache_load_handle_.reset();
 
   if (!host_info || !host_info->address()) {
-    ENVOY_LOG(debug, "DNS lookup failed");
+    ENVOY_LOG(error, "DNS lookup failed");
     auto host = host_;
     onResponse(std::move(resp_value_));
     host->cluster().trafficStats()->upstream_internal_redirect_failed_total_.inc();

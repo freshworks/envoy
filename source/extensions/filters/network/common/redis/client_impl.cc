@@ -245,7 +245,7 @@ void ClientImpl::onData(Buffer::Instance& data) {
     putOutlierEvent(Upstream::Outlier::Result::ExtOriginRequestFailed);
     host_->cluster().trafficStats()->upstream_cx_protocol_error_.inc();
     host_->stats().rq_error_.inc();
-    ENVOY_LOG(debug, "Upstream Client Protocol error occurred");
+    ENVOY_LOG(error, "Upstream Client Protocol error occurred");
     connection_->close(Network::ConnectionCloseType::NoFlush);
   }
 }
@@ -291,7 +291,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
       PendingRequest& request = pending_requests_.front();
       ENVOY_LOG(debug,"Upstream Client Connection close ");
       if (!request.canceled_) {
-        ENVOY_LOG(debug,"Upstream Client Connection close calling onFailure");
+        ENVOY_LOG(info,"Upstream Client Connection close calling onFailure");
         request.callbacks_.onFailure();
       } else {
         host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
@@ -330,7 +330,7 @@ void ClientImpl::onRespValue(RespValuePtr&& value) {
           connect_or_op_timer_->disableTimer();
         }
     }else {
-      ENVOY_LOG(debug,"Pubsub Client Received message from server but no callback registered");
+      ENVOY_LOG(error,"Pubsub Client Received message from server but no callback registered");
     }
     return;
   }

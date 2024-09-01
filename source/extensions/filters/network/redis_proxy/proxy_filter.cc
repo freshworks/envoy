@@ -255,6 +255,11 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
     pending_requests_.pop_front();
 
   }
+  if (request.pending_response_) {
+    if (request.pending_response_->type() != Common::Redis::RespType::Null &&request.pending_response_->type() == Common::Redis::RespType::Error) {
+      ENVOY_LOG(info, "error response: '{}'", request.pending_response_->toString());
+    }
+  }
   // The response we got might not be in order, so flush out what we can. (A new response may
   // unlock several out of order responses).
   while (!pending_requests_.empty() && pending_requests_.front().pending_response_) {

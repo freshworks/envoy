@@ -395,7 +395,7 @@ InstanceImpl::ThreadLocalPool::makeBlockingClientRequest(int32_t shard_index, co
     
   }else {
 
-    ENVOY_LOG(error, "Must Not Choose self Shard index for blocking command: '{}'", shard_index);
+    ENVOY_LOG(debug, "Must Not Choose self Shard index for blocking command: '{}'", shard_index);
     Upstream::HostConstVectorSharedPtr hosts = cluster_->loadBalancer().getAllHosts(nullptr);
     if (!hosts) {
       ENVOY_LOG(error, "Unable to retrive all redis primary shards , possible that we are scaling or upstream error");

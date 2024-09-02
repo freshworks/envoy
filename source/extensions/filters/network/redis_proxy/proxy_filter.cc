@@ -252,9 +252,11 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
 
   if (request.pending_response_.get()->type() == Common::Redis::RespType::Null && transaction_.isSubscribedMode()){
     ENVOY_LOG(debug,"Null response received from upstream Possible pubsub message processing, ignoring sending response downstream");
+    request.pending_response_.reset();
     pending_requests_.pop_front();
-
+    return;
   }
+
   if (request.pending_response_) {
     if (request.pending_response_->type() != Common::Redis::RespType::Null &&request.pending_response_->type() == Common::Redis::RespType::Error) {
       ENVOY_LOG(info, "error response: '{}'", request.pending_response_->toString());

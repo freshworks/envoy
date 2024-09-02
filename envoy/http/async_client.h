@@ -10,7 +10,7 @@
 #include "envoy/http/header_map.h"
 #include "envoy/http/message.h"
 #include "envoy/stream_info/stream_info.h"
-#include "envoy/tracing/http_tracer.h"
+#include "envoy/tracing/tracer.h"
 
 #include "source/common/protobuf/protobuf.h"
 
@@ -45,7 +45,9 @@ public:
    */
   enum class FailureReason {
     // The stream has been reset.
-    Reset
+    Reset,
+    // The stream exceeds the response buffer limit.
+    ExceedResponseBufferLimit
   };
 
   /**
@@ -199,6 +201,11 @@ public:
      * limits
      */
     virtual bool isAboveWriteBufferHighWatermark() const PURE;
+
+    /***
+     * @returns the stream info object associated with the stream.
+     */
+    virtual const StreamInfo::StreamInfo& streamInfo() const PURE;
   };
 
   /***
@@ -272,8 +279,21 @@ public:
     }
 
     // this should be done with setBufferedBodyForRetry=true ?
+    // The retry policy can be set as either a proto or Router::RetryPolicy but
+    // not both. If both formats of the options are set, the more recent call
+    // will overwrite the older one.
     StreamOptions& setRetryPolicy(const envoy::config::route::v3::RetryPolicy& p) {
       retry_policy = p;
+      parsed_retry_policy = nullptr;
+      return *this;
+    }
+
+    // The retry policy can be set as either a proto or Router::RetryPolicy but
+    // not both. If both formats of the options are set, the more recent call
+    // will overwrite the older one.
+    StreamOptions& setRetryPolicy(const Router::RetryPolicy& p) {
+      parsed_retry_policy = &p;
+      retry_policy = absl::nullopt;
       return *this;
     }
     StreamOptions& setFilterConfig(Router::FilterConfig& config) {
@@ -283,6 +303,11 @@ public:
 
     StreamOptions& setIsShadow(bool s) {
       is_shadow = s;
+      return *this;
+    }
+
+    StreamOptions& setDiscardResponseBody(bool discard) {
+      discard_response_body = discard;
       return *this;
     }
 
@@ -319,10 +344,12 @@ public:
     absl::optional<uint32_t> buffer_limit_;
 
     absl::optional<envoy::config::route::v3::RetryPolicy> retry_policy;
+    const Router::RetryPolicy* parsed_retry_policy{nullptr};
 
     OptRef<Router::FilterConfig> filter_config_;
 
     bool is_shadow{false};
+    bool discard_response_body{false};
   };
 
   /**
@@ -362,6 +389,10 @@ public:
       StreamOptions::setRetryPolicy(p);
       return *this;
     }
+    RequestOptions& setRetryPolicy(const Router::RetryPolicy& p) {
+      StreamOptions::setRetryPolicy(p);
+      return *this;
+    }
     RequestOptions& setIsShadow(bool s) {
       StreamOptions::setIsShadow(s);
       return *this;
@@ -384,6 +415,10 @@ public:
     }
     RequestOptions& setBufferLimit(uint32_t limit) {
       buffer_limit_ = limit;
+      return *this;
+    }
+    RequestOptions& setDiscardResponseBody(bool discard) {
+      discard_response_body = discard;
       return *this;
     }
 

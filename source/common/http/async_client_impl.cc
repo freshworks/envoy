@@ -1,50 +1,35 @@
 #include "source/common/http/async_client_impl.h"
 
-#include <chrono>
-#include <map>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "envoy/config/core/v3/base.pb.h"
+#include "envoy/router/router.h"
 
 #include "source/common/grpc/common.h"
+#include "source/common/http/null_route_impl.h"
 #include "source/common/http/utility.h"
+#include "source/common/protobuf/message_validator_impl.h"
 #include "source/common/tracing/http_tracer_impl.h"
+#include "source/common/upstream/retry_factory.h"
 
 namespace Envoy {
 namespace Http {
 
-const std::vector<std::reference_wrapper<const Router::RateLimitPolicyEntry>>
-    AsyncStreamImpl::NullRateLimitPolicy::rate_limit_policy_entry_;
-const AsyncStreamImpl::NullHedgePolicy AsyncStreamImpl::RouteEntryImpl::hedge_policy_;
-const AsyncStreamImpl::NullRateLimitPolicy AsyncStreamImpl::RouteEntryImpl::rate_limit_policy_;
-const Router::InternalRedirectPolicyImpl AsyncStreamImpl::RouteEntryImpl::internal_redirect_policy_;
-const Router::PathMatcherSharedPtr AsyncStreamImpl::RouteEntryImpl::path_matcher_;
-const Router::PathRewriterSharedPtr AsyncStreamImpl::RouteEntryImpl::path_rewriter_;
-const std::vector<Router::ShadowPolicyPtr> AsyncStreamImpl::RouteEntryImpl::shadow_policies_;
-const AsyncStreamImpl::NullVirtualHost AsyncStreamImpl::RouteEntryImpl::virtual_host_;
-const AsyncStreamImpl::NullRateLimitPolicy AsyncStreamImpl::NullVirtualHost::rate_limit_policy_;
-const AsyncStreamImpl::NullConfig AsyncStreamImpl::NullVirtualHost::route_configuration_;
-const std::multimap<std::string, std::string> AsyncStreamImpl::RouteEntryImpl::opaque_config_;
-const AsyncStreamImpl::NullPathMatchCriterion
-    AsyncStreamImpl::RouteEntryImpl::path_match_criterion_;
-const AsyncStreamImpl::RouteEntryImpl::ConnectConfigOptRef
-    AsyncStreamImpl::RouteEntryImpl::connect_config_nullopt_;
-const std::list<LowerCaseString> AsyncStreamImpl::NullConfig::internal_only_headers_;
+const absl::string_view AsyncClientImpl::ResponseBufferLimit = "http.async_response_buffer_limit";
 
 AsyncClientImpl::AsyncClientImpl(Upstream::ClusterInfoConstSharedPtr cluster,
                                  Stats::Store& stats_store, Event::Dispatcher& dispatcher,
-                                 const LocalInfo::LocalInfo& local_info,
-                                 Upstream::ClusterManager& cm, Runtime::Loader& runtime,
-                                 Random::RandomGenerator& random,
+                                 Upstream::ClusterManager& cm,
+                                 Server::Configuration::CommonFactoryContext& factory_context,
                                  Router::ShadowWriterPtr&& shadow_writer,
                                  Http::Context& http_context, Router::Context& router_context)
-    : cluster_(cluster),
-      config_(http_context.asyncClientStatPrefix(), local_info, *stats_store.rootScope(), cm,
-              runtime, random, std::move(shadow_writer), true, false, false, false, false, {},
-              dispatcher.timeSource(), http_context, router_context),
-      dispatcher_(dispatcher), singleton_manager_(cm.clusterManagerFactory().singletonManager()) {}
+    : factory_context_(factory_context), cluster_(cluster),
+      config_(factory_context, http_context.asyncClientStatPrefix(), factory_context.localInfo(),
+              *stats_store.rootScope(), cm, factory_context.runtime(),
+              factory_context.api().randomGenerator(), std::move(shadow_writer), true, false, false,
+              false, false, false, {}, dispatcher.timeSource(), http_context, router_context),
+      dispatcher_(dispatcher), runtime_(factory_context.runtime()) {}
 
 AsyncClientImpl::~AsyncClientImpl() {
   while (!active_streams_.empty()) {
@@ -94,19 +79,41 @@ AsyncClient::Stream* AsyncClientImpl::start(AsyncClient::StreamCallbacks& callba
   return active_streams_.front().get();
 }
 
+std::unique_ptr<const Router::RetryPolicy>
+createRetryPolicy(AsyncClientImpl& parent, const AsyncClient::StreamOptions& options,
+                  Server::Configuration::CommonFactoryContext& context) {
+  if (options.retry_policy.has_value()) {
+    Upstream::RetryExtensionFactoryContextImpl factory_context(
+        parent.factory_context_.singletonManager());
+    return std::make_unique<Router::RetryPolicyImpl>(options.retry_policy.value(),
+                                                     ProtobufMessage::getNullValidationVisitor(),
+                                                     factory_context, context);
+  }
+  if (options.parsed_retry_policy == nullptr) {
+    return std::make_unique<Router::RetryPolicyImpl>();
+  }
+  return nullptr;
+}
+
 AsyncStreamImpl::AsyncStreamImpl(AsyncClientImpl& parent, AsyncClient::StreamCallbacks& callbacks,
                                  const AsyncClient::StreamOptions& options)
-    : parent_(parent), stream_callbacks_(callbacks), stream_id_(parent.config_.random_.random()),
+    : parent_(parent), discard_response_body_(options.discard_response_body),
+      stream_callbacks_(callbacks), stream_id_(parent.config_.random_.random()),
       router_(options.filter_config_ ? *options.filter_config_ : parent.config_,
               parent.config_.async_stats_),
       stream_info_(Protocol::Http11, parent.dispatcher().timeSource(), nullptr),
       tracing_config_(Tracing::EgressConfig::get()),
-      route_(std::make_shared<RouteImpl>(parent_, options.timeout, options.hash_policy,
-                                         options.retry_policy)),
+      retry_policy_(createRetryPolicy(parent, options, parent_.factory_context_)),
+      route_(std::make_shared<NullRouteImpl>(
+          parent_.cluster_->name(),
+          retry_policy_ != nullptr ? *retry_policy_ : *options.parsed_retry_policy,
+          parent_.factory_context_.regexEngine(), options.timeout, options.hash_policy)),
       account_(options.account_), buffer_limit_(options.buffer_limit_),
       send_xff_(options.send_xff) {
   stream_info_.dynamicMetadata().MergeFrom(options.metadata);
   stream_info_.setIsShadow(options.is_shadow);
+  stream_info_.setUpstreamClusterInfo(parent_.cluster_);
+  stream_info_.route_ = route_;
 
   if (options.buffer_body_for_retry) {
     buffered_body_ = std::make_unique<Buffer::OwnedImpl>(account_);
@@ -156,6 +163,8 @@ void AsyncStreamImpl::encodeTrailers(ResponseTrailerMapPtr&& trailers) {
 }
 
 void AsyncStreamImpl::sendHeaders(RequestHeaderMap& headers, bool end_stream) {
+  request_headers_ = &headers;
+
   if (Http::Headers::get().MethodValues.Head == headers.getMethodValue()) {
     is_head_request_ = true;
   }
@@ -165,6 +174,7 @@ void AsyncStreamImpl::sendHeaders(RequestHeaderMap& headers, bool end_stream) {
   if (send_xff_) {
     Utility::appendXff(headers, *parent_.config_.local_info_.address());
   }
+
   router_.decodeHeaders(headers, end_stream);
   closeLocal(end_stream);
 }
@@ -197,6 +207,8 @@ void AsyncStreamImpl::sendData(Buffer::Instance& data, bool end_stream) {
 }
 
 void AsyncStreamImpl::sendTrailers(RequestTrailerMap& trailers) {
+  request_trailers_ = &trailers;
+
   ASSERT(dispatcher().isThreadSafe());
   // See explanation in sendData.
   if (local_closed_) {
@@ -272,7 +284,9 @@ void AsyncStreamImpl::resetStream(Http::StreamResetReason, absl::string_view) {
 AsyncRequestSharedImpl::AsyncRequestSharedImpl(AsyncClientImpl& parent,
                                                AsyncClient::Callbacks& callbacks,
                                                const AsyncClient::RequestOptions& options)
-    : AsyncStreamImpl(parent, *this, options), callbacks_(callbacks) {
+    : AsyncStreamImpl(parent, *this, options), callbacks_(callbacks),
+      response_buffer_limit_(parent.runtime_.snapshot().getInteger(
+          AsyncClientImpl::ResponseBufferLimit, kBufferLimitForResponse)) {
   if (nullptr != options.parent_span_) {
     const std::string child_span_name =
         options.child_span_name_.empty()
@@ -291,7 +305,8 @@ AsyncRequestSharedImpl::AsyncRequestSharedImpl(AsyncClientImpl& parent,
 }
 
 void AsyncRequestImpl::initialize() {
-  child_span_->injectContext(request_->headers(), nullptr);
+  Tracing::HttpTraceContext trace_context(request_->headers());
+  child_span_->injectContext(trace_context, nullptr);
   sendHeaders(request_->headers(), request_->body().length() == 0);
   if (request_->body().length() != 0) {
     // It's possible this will be a no-op due to a local response synchronously generated in
@@ -302,11 +317,13 @@ void AsyncRequestImpl::initialize() {
 }
 
 void AsyncOngoingRequestImpl::initialize() {
-  child_span_->injectContext(*request_headers_, nullptr);
+  Tracing::HttpTraceContext trace_context(*request_headers_);
+  child_span_->injectContext(trace_context, nullptr);
   sendHeaders(*request_headers_, false);
 }
 
 void AsyncRequestSharedImpl::onComplete() {
+  complete_ = true;
   callbacks_.onBeforeFinalizeUpstreamSpan(*child_span_, &response_->headers());
 
   Tracing::HttpTracerUtility::finalizeUpstreamSpan(*child_span_, streamInfo(),
@@ -317,13 +334,25 @@ void AsyncRequestSharedImpl::onComplete() {
 
 void AsyncRequestSharedImpl::onHeaders(ResponseHeaderMapPtr&& headers, bool) {
   const uint64_t response_code = Http::Utility::getResponseStatus(*headers);
-  streamInfo().response_code_ = response_code;
+  streamInfo().setResponseCode(response_code);
   response_ = std::make_unique<ResponseMessageImpl>(std::move(headers));
 }
 
 void AsyncRequestSharedImpl::onData(Buffer::Instance& data, bool) {
-  streamInfo().addBytesReceived(data.length());
-  response_->body().move(data);
+  if (discard_response_body_) {
+    data.drain(data.length());
+    return;
+  }
+
+  if (response_->body().length() + data.length() > response_buffer_limit_) {
+    ENVOY_LOG_EVERY_POW_2(warn, "the buffer size limit for async client response body "
+                                "has been exceeded, draining data");
+    data.drain(data.length());
+    response_buffer_overlimit_ = true;
+    reset();
+  } else {
+    response_->body().move(data);
+  }
 }
 
 void AsyncRequestSharedImpl::onTrailers(ResponseTrailerMapPtr&& trailers) {
@@ -331,6 +360,11 @@ void AsyncRequestSharedImpl::onTrailers(ResponseTrailerMapPtr&& trailers) {
 }
 
 void AsyncRequestSharedImpl::onReset() {
+  if (complete_) {
+    // This request has already been completed; a reset should be ignored.
+    return;
+  }
+
   if (!cancelled_) {
     // Set "error reason" tag related to reset. The tagging for "error true" is done inside the
     // Tracing::HttpTracerUtility::finalizeUpstreamSpan.
@@ -345,8 +379,12 @@ void AsyncRequestSharedImpl::onReset() {
                                                    Tracing::EgressConfig::get());
 
   if (!cancelled_) {
-    // In this case we don't have a valid response so we do need to raise a failure.
-    callbacks_.onFailure(*this, AsyncClient::FailureReason::Reset);
+    if (response_buffer_overlimit_) {
+      callbacks_.onFailure(*this, AsyncClient::FailureReason::ExceedResponseBufferLimit);
+    } else {
+      // In this case we don't have a valid response so we do need to raise a failure.
+      callbacks_.onFailure(*this, AsyncClient::FailureReason::Reset);
+    }
   }
 }
 

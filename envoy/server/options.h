@@ -85,6 +85,12 @@ public:
   virtual bool useDynamicBaseId() const PURE;
 
   /**
+   * @return bool don't get hot restart information from the parent if the communication channel
+   *         to the parent instance fails to connect.
+   */
+  virtual bool skipHotRestartOnNoParent() const PURE;
+
+  /**
    * @return const std::string& the dynamic base id output file.
    */
   virtual const std::string& baseIdPath() const PURE;
@@ -168,6 +174,11 @@ public:
    * @return const std::string& the log format string.
    */
   virtual const std::string& logFormat() const PURE;
+
+  /**
+   * @return whether or not a log format was set by CLI option.
+   */
+  virtual bool logFormatSet() const PURE;
 
   /**
    * @return const bool indicating whether to escape c-style escape sequences in logs.
@@ -266,11 +277,6 @@ public:
    * responsibility of the caller to handle the duplicates.
    */
   virtual const Stats::TagVector& statsTags() const PURE;
-
-  /**
-   * @return the type of listener manager to create.
-   */
-  virtual const std::string& listenerManager() const PURE;
 };
 
 } // namespace Server

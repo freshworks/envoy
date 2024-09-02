@@ -3,8 +3,9 @@ package io.envoyproxy.envoymobile.engine;
 import io.envoyproxy.envoymobile.engine.types.EnvoyEventTracker;
 import io.envoyproxy.envoymobile.engine.types.EnvoyLogger;
 import io.envoyproxy.envoymobile.engine.types.EnvoyOnEngineRunning;
-
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
 
 public class JniLibrary {
 
@@ -73,14 +74,14 @@ public class JniLibrary {
    * Send headers over an open HTTP stream. This method can be invoked once and
    * needs to be called before send_data.
    *
-   * @param engine,    the stream's associated engine.
-   * @param stream,    the stream to send headers over.
-   * @param headers,   the headers to send.
-   * @param endStream, supplies whether this is headers only.
-   * @return int, the resulting status of the operation.
+   * @param engine    the stream's associated engine.
+   * @param stream    the stream to send headers over.
+   * @param headers   the headers to send.
+   * @param endStream supplies whether this is headers only.
+   * @return the resulting status of the operation.
    */
-  protected static native int sendHeaders(long engine, long stream, byte[][] headers,
-                                          boolean endStream);
+  protected static native int sendHeaders(long engine, long stream,
+                                          Map<String, List<String>> headers, boolean endStream);
 
   /**
    * Send data over an open HTTP stream. This method can be invoked multiple
@@ -125,12 +126,13 @@ public class JniLibrary {
    * Send trailers over an open HTTP stream. This method can only be invoked once
    * per stream. Note that this method implicitly ends the stream.
    *
-   * @param engine,   the stream's associated engine.
-   * @param stream,   the stream to send trailers over.
-   * @param trailers, the trailers to send.
+   * @param engine   the stream's associated engine.
+   * @param stream   the stream to send trailers over.
+   * @param trailers the trailers to send.
    * @return int, the resulting status of the operation.
    */
-  protected static native int sendTrailers(long engine, long stream, byte[][] trailers);
+  protected static native int sendTrailers(long engine, long stream,
+                                           Map<String, List<String>> trailers);
 
   /**
    * Detach all callbacks from a stream and send an interrupt upstream if
@@ -138,7 +140,7 @@ public class JniLibrary {
    *
    * @param engine, the stream's associated engine.
    * @param stream, the stream to evict.
-   * @return int, the resulting status of the operation.
+   * @return the resulting status of the operation.
    */
   protected static native int resetStream(long engine, long stream);
 
@@ -202,19 +204,11 @@ public class JniLibrary {
                                                int count);
 
   /**
-   * Flush the stats sinks outside of a flushing interval.
-   * Note: stat flushing is done asynchronously, this function will never block.
-   * This is a noop if called before the underlying EnvoyEngine has started.
-   *
-   * @param engine engine whose stats should be flushed.
-   */
-  protected static native int flushStats(long engine);
-
-  /**
    * Retrieve the value of all active stats. Note that this function may block for some time.
+   * @param engine,  handle to the engine that owns the counter.
    * @return The list of active stats and their values, or empty string of the operation failed
    */
-  protected static native String dumpStats();
+  protected static native String dumpStats(long engine);
 
   /**
    * Register a platform-provided key-value store implementation.
@@ -263,6 +257,14 @@ public class JniLibrary {
   protected static native int setProxySettings(long engine, String host, int port);
 
   /**
+   * Update the log level for all active logs
+   *
+   * @param logLevel The Log level to change to. Must be an integer 0-6.
+   *                 See source/common/common/base_logger.h
+   */
+  protected static native void setLogLevel(int logLevel);
+
+  /**
    * Mimic a call to AndroidNetworkLibrary#verifyServerCertificates from native code.
    * To be used for testing only.
    *
@@ -288,6 +290,14 @@ public class JniLibrary {
    */
   public static native void callClearTestRootCertificateFromNative();
 
+  /*
+   * Given a filter name, create the proto or YAML config for adding the native filter
+   *
+   * @param filterName the name of the native filter
+   * @return a filter config which can be passed back to createBootstrap
+   */
+  public static native String getNativeFilterConfig(String filterName);
+
   /**
    * Uses the provided fields to generate an Envoy bootstrap proto.
    * The returned pointer is "owned" by the caller until ownership is passed back to C++ via
@@ -297,16 +307,18 @@ public class JniLibrary {
    *
    */
   public static native long createBootstrap(
-      String grpcStatsDomain, boolean adminInterfaceEnabled, long connectTimeoutSeconds,
-      long dnsRefreshSeconds, long dnsFailureRefreshSecondsBase, long dnsFailureRefreshSecondsMax,
-      long dnsQueryTimeoutSeconds, long dnsMinRefreshSeconds, byte[][] dnsPreresolveHostnames,
-      boolean enableDNSCache, long dnsCacheSaveIntervalSeconds, boolean enableDrainPostDnsRefresh,
-      boolean enableHttp3, boolean enableGzipDecompression, boolean enableBrotliDecompression,
-      boolean enableSocketTagging, boolean enableHappyEyeballs, boolean enableInterfaceBinding,
+      long connectTimeoutSeconds, long dnsRefreshSeconds, long dnsFailureRefreshSecondsBase,
+      long dnsFailureRefreshSecondsMax, long dnsQueryTimeoutSeconds, long dnsMinRefreshSeconds,
+      byte[][] dnsPreresolveHostnames, boolean enableDNSCache, long dnsCacheSaveIntervalSeconds,
+      boolean enableDrainPostDnsRefresh, boolean enableHttp3, String http3ConnectionOptions,
+      String http3ClientConnectionOptions, byte[][] quicHints, byte[][] quicCanonicalSuffixes,
+      boolean enableGzipDecompression, boolean enableBrotliDecompression,
+      boolean enablePortMigration, boolean enableSocketTagging, boolean enableInterfaceBinding,
       long h2ConnectionKeepaliveIdleIntervalMilliseconds, long h2ConnectionKeepaliveTimeoutSeconds,
-      long maxConnectionsPerHost, long statsFlushSeconds, long streamIdleTimeoutSeconds,
-      long perTryIdleTimeoutSeconds, String appVersion, String appId,
-      boolean trustChainVerification, byte[][] virtualClusters, byte[][] filterChain,
-      byte[][] statSinks, boolean enablePlatformCertificatesValidation,
-      boolean enableSkipDNSLookupForProxiedRequests, byte[][] runtimeGuards);
+      long maxConnectionsPerHost, long streamIdleTimeoutSeconds, long perTryIdleTimeoutSeconds,
+      String appVersion, String appId, boolean trustChainVerification, byte[][] filterChain,
+      boolean enablePlatformCertificatesValidation, byte[][] runtimeGuards, String rtdsResourceName,
+      long rtdsTimeoutSeconds, String xdsAddress, long xdsPort, byte[][] xdsGrpcInitialMetadata,
+      String xdsRootCerts, String nodeId, String nodeRegion, String nodeZone, String nodeSubZone,
+      byte[] nodeMetadata, String cdsResourcesLocator, long cdsTimeoutSeconds, boolean enableCds);
 }

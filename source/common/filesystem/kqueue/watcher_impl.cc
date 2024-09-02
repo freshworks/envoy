@@ -32,11 +32,13 @@ WatcherImpl::~WatcherImpl() {
   watches_.clear();
 }
 
-void WatcherImpl::addWatch(absl::string_view path, uint32_t events, Watcher::OnChangedCb cb) {
+absl::Status WatcherImpl::addWatch(absl::string_view path, uint32_t events,
+                                   Watcher::OnChangedCb cb) {
   FileWatchPtr watch = addWatch(path, events, cb, false);
   if (watch == nullptr) {
-    throw EnvoyException(absl::StrCat("invalid watch path ", path));
+    return absl::InvalidArgumentError(absl::StrCat("invalid watch path ", path));
   }
+  return absl::OkStatus();
 }
 
 WatcherImpl::FileWatchPtr WatcherImpl::addWatch(absl::string_view path, uint32_t events,
@@ -49,7 +51,9 @@ WatcherImpl::FileWatchPtr WatcherImpl::addWatch(absl::string_view path, uint32_t
       return nullptr;
     }
 
-    watch_fd = open(std::string(file_system_.splitPathFromFilename(path).directory_).c_str(), 0);
+    const auto result_or_error = file_system_.splitPathFromFilename(path);
+    THROW_IF_STATUS_NOT_OK(result_or_error, throw);
+    watch_fd = open(std::string(result_or_error.value().directory_).c_str(), 0);
     if (watch_fd == -1) {
       return nullptr;
     }
@@ -71,7 +75,7 @@ WatcherImpl::FileWatchPtr WatcherImpl::addWatch(absl::string_view path, uint32_t
          reinterpret_cast<void*>(watch_fd));
 
   if (kevent(queue_, &event, 1, nullptr, 0, nullptr) == -1 || event.flags & EV_ERROR) {
-    throw EnvoyException(
+    throwEnvoyExceptionOrPanic(
         fmt::format("unable to add filesystem watch for file {}: {}", path, errorDetails(errno)));
   }
 
@@ -106,7 +110,10 @@ void WatcherImpl::onKqueueEvent() {
     ASSERT(file != nullptr);
     ASSERT(watch_fd == file->fd_);
 
-    auto pathname = file_system_.splitPathFromFilename(file->file_);
+    absl::StatusOr<PathSplitResult> pathname_or_error =
+        file_system_.splitPathFromFilename(file->file_);
+    THROW_IF_STATUS_NOT_OK(pathname_or_error, throw);
+    PathSplitResult& pathname = pathname_or_error.value();
 
     if (file->watching_dir_) {
       if (event.fflags & NOTE_DELETE) {
@@ -158,7 +165,7 @@ void WatcherImpl::onKqueueEvent() {
 
     if (events & file->events_) {
       ENVOY_LOG(debug, "matched callback: file: {}", file->file_);
-      file->callback_(events);
+      THROW_IF_NOT_OK(file->callback_(events));
     }
   }
 }

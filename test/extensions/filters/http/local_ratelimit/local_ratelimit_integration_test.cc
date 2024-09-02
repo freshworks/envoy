@@ -79,7 +79,7 @@ protected:
     }
   }
 
-  const std::string filter_config_ =
+  static constexpr absl::string_view filter_config_ =
       R"EOF(
 name: envoy.filters.http.local_ratelimit
 typed_config:
@@ -179,12 +179,14 @@ virtual_hosts:
 )EOF";
 };
 
-INSTANTIATE_TEST_SUITE_P(Protocols, LocalRateLimitFilterIntegrationTest,
-                         testing::ValuesIn(HttpProtocolIntegrationTest::getProtocolTestParams()),
-                         HttpProtocolIntegrationTest::protocolTestParamsToString);
+// TODO(#26236): Fix test suite for HTTP/3.
+INSTANTIATE_TEST_SUITE_P(
+    Protocols, LocalRateLimitFilterIntegrationTest,
+    testing::ValuesIn(HttpProtocolIntegrationTest::getProtocolTestParamsWithoutHTTP3()),
+    HttpProtocolIntegrationTest::protocolTestParamsToString);
 
 TEST_P(LocalRateLimitFilterIntegrationTest, DenyRequestPerProcess) {
-  initializeFilter(fmt::format(fmt::runtime(filter_config_), "false"));
+  initializeFilter(fmt::format(filter_config_, "false"));
 
   codec_client_ = makeHttpConnection(lookupPort("http"));
   auto response = codec_client_->makeRequestWithBody(default_request_headers_, 0);
@@ -211,7 +213,7 @@ TEST_P(LocalRateLimitFilterIntegrationTest, DenyRequestPerProcess) {
 }
 
 TEST_P(LocalRateLimitFilterIntegrationTest, DenyRequestWithinSameConnection) {
-  initializeFilter(fmt::format(fmt::runtime(filter_config_), "true"));
+  initializeFilter(fmt::format(filter_config_, "true"));
 
   codec_client_ = makeHttpConnection(lookupPort("http"));
   auto response = codec_client_->makeRequestWithBody(default_request_headers_, 0);
@@ -236,7 +238,7 @@ TEST_P(LocalRateLimitFilterIntegrationTest, DenyRequestWithinSameConnection) {
 }
 
 TEST_P(LocalRateLimitFilterIntegrationTest, PermitRequestAcrossDifferentConnections) {
-  initializeFilter(fmt::format(fmt::runtime(filter_config_), "true"));
+  initializeFilter(fmt::format(filter_config_, "true"));
 
   codec_client_ = makeHttpConnection(lookupPort("http"));
   auto response = codec_client_->makeRequestWithBody(default_request_headers_, 0);
@@ -270,8 +272,7 @@ TEST_P(LocalRateLimitFilterIntegrationTest, PermitRequestAcrossDifferentConnecti
 }
 
 TEST_P(LocalRateLimitFilterIntegrationTest, BasicTestPerRouteAndRds) {
-  initializeFilterWithRds(fmt::format(fmt::runtime(filter_config_), true), "basic_routes",
-                          initial_route_config_);
+  initializeFilterWithRds(fmt::format(filter_config_, true), "basic_routes", initial_route_config_);
 
   codec_client_ = makeHttpConnection(lookupPort("http"));
 

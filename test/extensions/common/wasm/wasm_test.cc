@@ -638,7 +638,7 @@ TEST_P(WasmCommonTest, VmCache) {
   NiceMock<Init::MockManager> init_manager;
   NiceMock<Server::MockServerLifecycleNotifier2> lifecycle_notifier;
   Event::DispatcherPtr dispatcher(api->allocateDispatcher("wasm_test"));
-  Config::DataSource::RemoteAsyncDataProviderPtr remote_data_provider;
+  RemoteAsyncDataProviderPtr remote_data_provider;
   auto scope = Stats::ScopeSharedPtr(stats_store.createScope("wasm."));
   NiceMock<LocalInfo::MockLocalInfo> local_info;
   auto vm_configuration = "vm_cache";
@@ -682,8 +682,7 @@ TEST_P(WasmCommonTest, VmCache) {
              remote_data_provider,
              [&wasm_handle](const WasmHandleSharedPtr& w) { wasm_handle = w; });
   EXPECT_NE(wasm_handle, nullptr);
-  Event::PostCb post_cb = [] {};
-  lifecycle_callback(post_cb);
+  lifecycle_callback([] {});
 
   WasmHandleSharedPtr wasm_handle2;
   createWasm(plugin, scope, cluster_manager, init_manager, *dispatcher, *api, lifecycle_notifier,
@@ -738,7 +737,7 @@ TEST_P(WasmCommonTest, RemoteCode) {
   NiceMock<Server::MockServerLifecycleNotifier> lifecycle_notifier;
   Init::ExpectableWatcherImpl init_watcher;
   Event::DispatcherPtr dispatcher(api->allocateDispatcher("wasm_test"));
-  Config::DataSource::RemoteAsyncDataProviderPtr remote_data_provider;
+  RemoteAsyncDataProviderPtr remote_data_provider;
   auto scope = Stats::ScopeSharedPtr(stats_store.createScope("wasm."));
   NiceMock<LocalInfo::MockLocalInfo> local_info;
   auto vm_configuration = "vm_cache";
@@ -852,7 +851,7 @@ TEST_P(WasmCommonTest, RemoteCodeMultipleRetry) {
   NiceMock<Server::MockServerLifecycleNotifier> lifecycle_notifier;
   Init::ExpectableWatcherImpl init_watcher;
   Event::DispatcherPtr dispatcher(api->allocateDispatcher("wasm_test"));
-  Config::DataSource::RemoteAsyncDataProviderPtr remote_data_provider;
+  RemoteAsyncDataProviderPtr remote_data_provider;
   auto scope = Stats::ScopeSharedPtr(stats_store.createScope("wasm."));
   NiceMock<LocalInfo::MockLocalInfo> local_info;
   auto vm_configuration = "vm_cache";

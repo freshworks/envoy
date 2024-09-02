@@ -3,14 +3,11 @@
 #include <iostream>
 
 #include "source/common/api/api_impl.h"
-#include "source/common/common/random_generator.h"
 #include "source/common/common/thread.h"
-#include "source/common/event/real_time_system.h"
 #include "source/common/http/utility.h"
 #include "source/common/stats/allocator_impl.h"
 #include "source/common/stats/thread_local_store.h"
 #include "source/exe/platform_impl.h"
-#include "source/exe/process_wide.h"
 
 #include "library/common/data/utility.h"
 
@@ -37,7 +34,10 @@ void Fetch::fetch(const std::vector<absl::string_view>& urls) {
   }
   dispatcher_->exit();
   envoy_thread->join();
-  engine_->terminate();
+  {
+    absl::MutexLock lock(&engine_mutex_);
+    engine_->terminate();
+  }
 }
 
 void Fetch::sendRequest(const absl::string_view url_string) {
@@ -49,8 +49,11 @@ void Fetch::sendRequest(const absl::string_view url_string) {
   std::cout << "Fetching url: " << url.toString() << "\n";
 
   absl::Notification request_finished;
-  Platform::StreamPrototypeSharedPtr stream_prototype =
-      engine_->streamClient()->newStreamPrototype();
+  Platform::StreamPrototypeSharedPtr stream_prototype;
+  {
+    absl::MutexLock lock(&engine_mutex_);
+    stream_prototype = engine_->streamClient()->newStreamPrototype();
+  }
   stream_prototype->setOnHeaders(
       [](Platform::ResponseHeadersSharedPtr headers, bool, envoy_stream_intel intel) {
         std::cerr << "Received headers on connection: " << intel.connection_id << "\n";
@@ -101,8 +104,14 @@ void Fetch::sendRequest(const absl::string_view url_string) {
 
 void Fetch::runEngine(absl::Notification& engine_running) {
   Platform::EngineBuilder engine_builder;
+  engine_builder.setLogLevel(Logger::Logger::debug);
   engine_builder.setOnEngineRunning([&engine_running]() { engine_running.Notify(); });
-  engine_ = engine_builder.build();
+
+  {
+    absl::MutexLock lock(&engine_mutex_);
+    engine_ = engine_builder.build();
+  }
+
   dispatcher_->run(Event::Dispatcher::RunType::RunUntilExit);
 }
 

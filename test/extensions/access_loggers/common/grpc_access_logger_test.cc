@@ -16,7 +16,6 @@
 #include "test/mocks/ssl/mocks.h"
 #include "test/mocks/stream_info/mocks.h"
 #include "test/mocks/thread_local/mocks.h"
-#include "test/test_common/test_runtime.h"
 
 using testing::_;
 using testing::InSequence;
@@ -485,6 +484,7 @@ private:
   createLogger(const envoy::extensions::access_loggers::grpc::v3::CommonGrpcAccessLogConfig& config,
                Event::Dispatcher& dispatcher) override {
     auto client = async_client_manager_.factoryForGrpcService(config.grpc_service(), scope_, true)
+                      .value()
                       ->createUncachedRawAsyncClient();
     return std::make_shared<MockGrpcAccessLoggerImpl>(std::move(client), config, dispatcher, scope_,
                                                       "mock_access_log_prefix.",

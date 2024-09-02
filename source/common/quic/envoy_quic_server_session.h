@@ -86,6 +86,8 @@ public:
   void ProcessUdpPacket(const quic::QuicSocketAddress& self_address,
                         const quic::QuicSocketAddress& peer_address,
                         const quic::QuicReceivedPacket& packet) override;
+  std::vector<absl::string_view>::const_iterator
+  SelectAlpn(const std::vector<absl::string_view>& alpns) const override;
 
   void setHeadersWithUnderscoreAction(
       envoy::config::core::v3::HttpProtocolOptions::HeadersWithUnderscoresAction
@@ -98,7 +100,6 @@ public:
                                   ConnectionMapIter position);
 
   void setHttp3Options(const envoy::config::core::v3::Http3ProtocolOptions& http3_options) override;
-
   using quic::QuicSession::PerformActionOnActiveStreams;
 
 protected:
@@ -114,6 +115,14 @@ protected:
   quic::QuicSpdyStream* CreateIncomingStream(quic::PendingStream* pending) override;
   quic::QuicSpdyStream* CreateOutgoingBidirectionalStream() override;
   quic::QuicSpdyStream* CreateOutgoingUnidirectionalStream() override;
+
+  quic::HttpDatagramSupport LocalHttpDatagramSupport() override {
+#ifdef ENVOY_ENABLE_HTTP_DATAGRAMS
+    return quic::HttpDatagramSupport::kRfc;
+#else
+    return quic::HttpDatagramSupport::kNone;
+#endif
+  }
 
   // QuicFilterManagerConnectionImpl
   bool hasDataToWrite() override;

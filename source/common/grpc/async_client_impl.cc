@@ -17,11 +17,19 @@ namespace Grpc {
 AsyncClientImpl::AsyncClientImpl(Upstream::ClusterManager& cm,
                                  const envoy::config::core::v3::GrpcService& config,
                                  TimeSource& time_source)
-    : cm_(cm), remote_cluster_name_(config.envoy_grpc().cluster_name()),
+    : max_recv_message_length_(
+          PROTOBUF_GET_WRAPPED_OR_DEFAULT(config.envoy_grpc(), max_receive_message_length, 0)),
+      cm_(cm), remote_cluster_name_(config.envoy_grpc().cluster_name()),
       host_name_(config.envoy_grpc().authority()), time_source_(time_source),
       metadata_parser_(Router::HeaderParser::configure(
           config.initial_metadata(),
-          envoy::config::core::v3::HeaderValueOption::OVERWRITE_IF_EXISTS_OR_ADD)) {}
+          envoy::config::core::v3::HeaderValueOption::OVERWRITE_IF_EXISTS_OR_ADD)),
+      retry_policy_(
+          config.has_retry_policy()
+              ? absl::optional<envoy::config::route::v3::
+                                   RetryPolicy>{Http::Utility::convertCoreToRouteRetryPolicy(
+                    config.retry_policy(), "")}
+              : absl::nullopt) {}
 
 AsyncClientImpl::~AsyncClientImpl() {
   ASSERT(isThreadSafe());
@@ -70,7 +78,14 @@ AsyncStreamImpl::AsyncStreamImpl(AsyncClientImpl& parent, absl::string_view serv
                                  absl::string_view method_name, RawAsyncStreamCallbacks& callbacks,
                                  const Http::AsyncClient::StreamOptions& options)
     : parent_(parent), service_full_name_(service_full_name), method_name_(method_name),
-      callbacks_(callbacks), options_(options) {}
+      callbacks_(callbacks), options_(options) {
+  // Apply parent retry policy if no per-stream override.
+  if (!options.retry_policy.has_value() && parent_.retryPolicy().has_value()) {
+    options_.setRetryPolicy(*parent_.retryPolicy());
+  }
+  // Configure the maximum frame length
+  decoder_.setMaxFrameLength(parent_.max_recv_message_length_);
+}
 
 void AsyncStreamImpl::initialize(bool buffer_body_for_retry) {
   const auto thread_local_cluster = parent_.cm_.getThreadLocalCluster(parent_.remote_cluster_name_);
@@ -83,7 +98,6 @@ void AsyncStreamImpl::initialize(bool buffer_body_for_retry) {
   auto& http_async_client = thread_local_cluster->httpAsyncClient();
   dispatcher_ = &http_async_client.dispatcher();
   stream_ = http_async_client.start(*this, options_.setBufferBodyForRetry(buffer_body_for_retry));
-
   if (stream_ == nullptr) {
     callbacks_.onRemoteClose(Status::WellKnownGrpcStatus::Unavailable, EMPTY_STRING);
     http_reset_ = true;
@@ -96,9 +110,8 @@ void AsyncStreamImpl::initialize(bool buffer_body_for_retry) {
       parent_.host_name_.empty() ? parent_.remote_cluster_name_ : parent_.host_name_,
       service_full_name_, method_name_, options_.timeout);
   // Fill service-wide initial metadata.
-  // TODO(cpakulski): Find a better way to access requestHeaders after runtime guard
-  // envoy_reloadable_features_unified_header_formatter runtime guard is deprecated and
-  // request headers are not stored in stream_info.
+  // TODO(cpakulski): Find a better way to access requestHeaders
+  // request headers should not be stored in stream_info.
   // Maybe put it to parent_context?
   // Since request headers may be empty, consider using Envoy::OptRef.
   parent_.metadata_parser_->evaluateHeaders(headers_message_->headers(),
@@ -125,6 +138,7 @@ void AsyncStreamImpl::onHeaders(Http::ResponseHeaderMapPtr&& headers, bool end_s
       // TODO(mattklein123): clang-tidy is showing a use after move when passing to
       // onReceiveInitialMetadata() above. This looks like an actual bug that I will fix in a
       // follow up.
+      // NOLINTNEXTLINE(bugprone-use-after-move)
       onTrailers(Http::createHeaderMap<Http::ResponseTrailerMapImpl>(*headers));
       return;
     }
@@ -142,7 +156,17 @@ void AsyncStreamImpl::onHeaders(Http::ResponseHeaderMapPtr&& headers, bool end_s
 
 void AsyncStreamImpl::onData(Buffer::Instance& data, bool end_stream) {
   decoded_frames_.clear();
-  if (!decoder_.decode(data, decoded_frames_)) {
+  auto status = decoder_.decode(data, decoded_frames_);
+
+  // decode() currently only returns two types of error:
+  // - decoding error is mapped to ResourceExhausted
+  // - over-limit error is mapped to Internal.
+  // Other potential errors in the future are mapped to internal for now.
+  if (status.code() == absl::StatusCode::kResourceExhausted) {
+    streamError(Status::WellKnownGrpcStatus::ResourceExhausted);
+    return;
+  }
+  if (status.code() != absl::StatusCode::kOk) {
     streamError(Status::WellKnownGrpcStatus::Internal);
     return;
   }
@@ -194,10 +218,6 @@ void AsyncStreamImpl::onReset() {
 
   http_reset_ = true;
   streamError(Status::WellKnownGrpcStatus::Internal);
-}
-
-void AsyncStreamImpl::sendMessage(const Protobuf::Message& request, bool end_stream) {
-  stream_->sendData(*Common::serializeToGrpcFrame(request), end_stream);
 }
 
 void AsyncStreamImpl::sendMessageRaw(Buffer::InstancePtr&& buffer, bool end_stream) {
@@ -260,7 +280,8 @@ void AsyncRequestImpl::cancel() {
 }
 
 void AsyncRequestImpl::onCreateInitialMetadata(Http::RequestHeaderMap& metadata) {
-  current_span_->injectContext(metadata, nullptr);
+  Tracing::HttpTraceContext trace_context(metadata);
+  current_span_->injectContext(trace_context, nullptr);
   callbacks_.onCreateInitialMetadata(metadata);
 }
 

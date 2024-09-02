@@ -1,5 +1,7 @@
 #include "contrib/generic_proxy/filters/network/test/mocks/filter.h"
 
+#include <cstdint>
+
 #include "source/common/protobuf/protobuf.h"
 
 using testing::_;
@@ -11,6 +13,8 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace GenericProxy {
 
+MockStreamFrameHandler::MockStreamFrameHandler() = default;
+
 MockStreamFilterConfig::MockStreamFilterConfig() {
   ON_CALL(*this, createEmptyConfigProto()).WillByDefault(Invoke([]() {
     return std::make_unique<ProtobufWkt::Struct>();
@@ -18,7 +22,9 @@ MockStreamFilterConfig::MockStreamFilterConfig() {
   ON_CALL(*this, createFilterFactoryFromProto(_, _, _))
       .WillByDefault(Return([](FilterChainFactoryCallbacks&) {}));
   ON_CALL(*this, name()).WillByDefault(Return("envoy.filters.generic.mock_filter"));
-  ON_CALL(*this, configTypes()).WillByDefault(Return(std::set<std::string>{}));
+  ON_CALL(*this, configTypes()).WillByDefault(Invoke([this]() {
+    return NamedFilterConfigFactory::configTypes();
+  }));
 }
 
 MockFilterChainManager::MockFilterChainManager() {
@@ -41,6 +47,8 @@ MockStreamFilter::MockStreamFilter() {
   ON_CALL(*this, onStreamEncoded(_)).WillByDefault(Return(FilterStatus::Continue));
   ON_CALL(*this, onStreamDecoded(_)).WillByDefault(Return(FilterStatus::Continue));
 }
+
+MockDecoderFilterCallback::MockDecoderFilterCallback() = default;
 
 } // namespace GenericProxy
 } // namespace NetworkFilters

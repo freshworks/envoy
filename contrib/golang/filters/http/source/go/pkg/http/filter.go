@@ -20,7 +20,7 @@ package http
 /*
 // ref https://github.com/golang/go/issues/25832
 
-#cgo CFLAGS: -I../api
+#cgo CFLAGS: -I../../../../../../common/go/api -I../api
 #cgo linux LDFLAGS: -Wl,-unresolved-symbols=ignore-all
 #cgo darwin LDFLAGS: -Wl,-undefined,dynamic_lookup
 
@@ -33,9 +33,12 @@ package http
 import "C"
 import (
 	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"unsafe"
 
-	"github.com/envoyproxy/envoy/contrib/golang/filters/http/source/go/pkg/api"
+	"github.com/envoyproxy/envoy/contrib/golang/common/go/api"
 )
 
 const (
@@ -45,6 +48,11 @@ const (
 	HTTP30 = "HTTP/3.0"
 )
 
+const (
+	NoWaitingCallback  = 0
+	MayWaitingCallback = 1
+)
+
 var protocolsIdToName = map[uint64]string{
 	0: HTTP10,
 	1: HTTP11,
@@ -52,20 +60,80 @@ var protocolsIdToName = map[uint64]string{
 	3: HTTP30,
 }
 
+type panicInfo struct {
+	paniced bool
+	details string
+}
 type httpRequest struct {
-	req        *C.httpRequest
-	httpFilter api.StreamFilter
-	paniced    bool
+	req             *C.httpRequest
+	httpFilter      api.StreamFilter
+	pInfo           panicInfo
+	waitingLock     sync.Mutex // protect waitingCallback
+	cond            sync.Cond
+	waitingCallback int32
+
+	// protect multiple cases:
+	// 1. protect req_->strValue in the C++ side from being used concurrently.
+	// 2. protect waitingCallback from being modified in markMayWaitingCallback concurrently.
+	mutex sync.Mutex
 }
 
-func (r *httpRequest) safeReplyPanic() {
+// markWaitingOnEnvoy marks the request may be waiting a callback from envoy.
+// Must be the NoWaitingCallback state since it's invoked under the r.mutex lock.
+// We do not do lock waitingCallback here, to reduce lock contention.
+func (r *httpRequest) markMayWaitingCallback() {
+	if !atomic.CompareAndSwapInt32(&r.waitingCallback, NoWaitingCallback, MayWaitingCallback) {
+		panic("markWaitingCallback: unexpected state")
+	}
+}
+
+// markNoWaitingOnEnvoy marks the request is not waiting a callback from envoy.
+// Can not make sure it's in the MayWaitingCallback state, since the state maybe changed by OnDestroy.
+func (r *httpRequest) markNoWaitingCallback() {
+	atomic.StoreInt32(&r.waitingCallback, NoWaitingCallback)
+}
+
+// checkOrWaitCallback checks if we need to wait a callback from envoy, and wait it.
+func (r *httpRequest) checkOrWaitCallback() {
+	// need acquire the lock, since there might be concurrency race with resumeWaitCallback.
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
+
+	// callback or OnDestroy already called, no need to wait.
+	if atomic.LoadInt32(&r.waitingCallback) == NoWaitingCallback {
+		return
+	}
+	r.cond.Wait()
+}
+
+// resumeWaitCallback resumes the goroutine that waiting for the callback from envoy.
+func (r *httpRequest) resumeWaitCallback() {
+	// need acquire the lock, since there might be concurrency race with checkOrWaitCallback.
+	r.cond.L.Lock()
+	defer r.cond.L.Unlock()
+
+	if atomic.CompareAndSwapInt32(&r.waitingCallback, MayWaitingCallback, NoWaitingCallback) {
+		// Broadcast is safe even there is no waiters.
+		r.cond.Broadcast()
+	}
+}
+
+func (r *httpRequest) pluginName() string {
+	return C.GoStringN(r.req.plugin_name.data, C.int(r.req.plugin_name.len))
+}
+
+func (r *httpRequest) sendPanicReply(details string) {
 	defer r.RecoverPanic()
-	r.SendLocalReply(500, "error happened in Golang filter\r\n", map[string]string{}, 0, "")
+	cAPI.HttpSendPanicReply(unsafe.Pointer(r.req), details)
 }
 
 func (r *httpRequest) RecoverPanic() {
 	if e := recover(); e != nil {
-		// TODO: print an error message to Envoy error log.
+		const size = 64 << 10
+		buf := make([]byte, size)
+		buf = buf[:runtime.Stack(buf, false)]
+		api.LogErrorf("http: panic serving: %v\n%s", e, buf)
+
 		switch e {
 		case errRequestFinished, errFilterDestroyed:
 			// do nothing
@@ -73,7 +141,10 @@ func (r *httpRequest) RecoverPanic() {
 		case errNotInGo:
 			// We can not send local reply now, since not in go now,
 			// will delay to the next time entering Go.
-			r.paniced = true
+			r.pInfo = panicInfo{
+				paniced: true,
+				details: fmt.Sprint(e),
+			}
 
 		default:
 			// The following safeReplyPanic should only may get errRequestFinished,
@@ -81,9 +152,13 @@ func (r *httpRequest) RecoverPanic() {
 
 			// errInvalidPhase, or other panic, not from not-ok C return status.
 			// It's safe to try send a local reply with 500 status.
-			r.safeReplyPanic()
+			r.sendPanicReply(fmt.Sprint(e))
 		}
 	}
+}
+
+func (r *httpRequest) ClearRouteCache() {
+	cAPI.ClearRouteCache(unsafe.Pointer(r.req))
 }
 
 func (r *httpRequest) Continue(status api.StatusType) {
@@ -94,8 +169,24 @@ func (r *httpRequest) Continue(status api.StatusType) {
 	cAPI.HttpContinue(unsafe.Pointer(r.req), uint64(status))
 }
 
-func (r *httpRequest) SendLocalReply(responseCode int, bodyText string, headers map[string]string, grpcStatus int64, details string) {
+func (r *httpRequest) SendLocalReply(responseCode int, bodyText string, headers map[string][]string, grpcStatus int64, details string) {
 	cAPI.HttpSendLocalReply(unsafe.Pointer(r.req), responseCode, bodyText, headers, grpcStatus, details)
+}
+
+func (r *httpRequest) Log(level api.LogType, message string) {
+	// TODO performance optimization points:
+	// Add a new goroutine to write logs asynchronously and avoid frequent cgo calls
+	cAPI.HttpLog(level, fmt.Sprintf("[http][%v] %v", r.pluginName(), message))
+	// The default log format is:
+	// [2023-08-09 03:04:16.179][1390][error][golang] [contrib/golang/common/log/cgo.cc:24] [http][plugin_name] msg
+}
+
+func (r *httpRequest) LogLevel() api.LogType {
+	return cAPI.HttpLogLevel()
+}
+
+func (r *httpRequest) GetProperty(key string) (string, error) {
+	return cAPI.HttpGetStringProperty(unsafe.Pointer(r), key)
 }
 
 func (r *httpRequest) StreamInfo() api.StreamInfo {
@@ -113,12 +204,12 @@ type streamInfo struct {
 }
 
 func (s *streamInfo) GetRouteName() string {
-	name, _ := cAPI.HttpGetStringValue(unsafe.Pointer(s.request.req), ValueRouteName)
+	name, _ := cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueRouteName)
 	return name
 }
 
 func (s *streamInfo) FilterChainName() string {
-	name, _ := cAPI.HttpGetStringValue(unsafe.Pointer(s.request.req), ValueFilterChainName)
+	name, _ := cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueFilterChainName)
 	return name
 }
 
@@ -140,10 +231,136 @@ func (s *streamInfo) ResponseCode() (uint32, bool) {
 }
 
 func (s *streamInfo) ResponseCodeDetails() (string, bool) {
-	return cAPI.HttpGetStringValue(unsafe.Pointer(s.request.req), ValueResponseCodeDetails)
+	return cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueResponseCodeDetails)
 }
 
 func (s *streamInfo) AttemptCount() uint32 {
 	count, _ := cAPI.HttpGetIntegerValue(unsafe.Pointer(s.request.req), ValueAttemptCount)
 	return uint32(count)
+}
+
+type dynamicMetadata struct {
+	request *httpRequest
+}
+
+func (s *streamInfo) DynamicMetadata() api.DynamicMetadata {
+	return &dynamicMetadata{
+		request: s.request,
+	}
+}
+
+func (d *dynamicMetadata) Get(filterName string) map[string]interface{} {
+	return cAPI.HttpGetDynamicMetadata(unsafe.Pointer(d.request), filterName)
+}
+
+func (d *dynamicMetadata) Set(filterName string, key string, value interface{}) {
+	cAPI.HttpSetDynamicMetadata(unsafe.Pointer(d.request.req), filterName, key, value)
+}
+
+func (s *streamInfo) DownstreamLocalAddress() string {
+	address, _ := cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueDownstreamLocalAddress)
+	return address
+}
+
+func (s *streamInfo) DownstreamRemoteAddress() string {
+	address, _ := cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueDownstreamRemoteAddress)
+	return address
+}
+
+// UpstreamLocalAddress return the upstream local address.
+func (s *streamInfo) UpstreamLocalAddress() (string, bool) {
+	return cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueUpstreamLocalAddress)
+}
+
+// UpstreamRemoteAddress return the upstream remote address.
+func (s *streamInfo) UpstreamRemoteAddress() (string, bool) {
+	return cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueUpstreamRemoteAddress)
+}
+
+func (s *streamInfo) UpstreamClusterName() (string, bool) {
+	return cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueUpstreamClusterName)
+}
+
+func (s *streamInfo) VirtualClusterName() (string, bool) {
+	return cAPI.HttpGetStringValue(unsafe.Pointer(s.request), ValueVirtualClusterName)
+}
+
+func (s *streamInfo) WorkerID() uint32 {
+	return uint32(s.request.req.worker_id)
+}
+
+type filterState struct {
+	request *httpRequest
+}
+
+func (s *streamInfo) FilterState() api.FilterState {
+	return &filterState{
+		request: s.request,
+	}
+}
+
+func (f *filterState) SetString(key, value string, stateType api.StateType, lifeSpan api.LifeSpan, streamSharing api.StreamSharing) {
+	cAPI.HttpSetStringFilterState(unsafe.Pointer(f.request.req), key, value, stateType, lifeSpan, streamSharing)
+}
+
+func (f *filterState) GetString(key string) string {
+	return cAPI.HttpGetStringFilterState(unsafe.Pointer(f.request), key)
+}
+
+type httpConfig struct {
+	config *C.httpConfig
+}
+
+func (c *httpConfig) DefineCounterMetric(name string) api.CounterMetric {
+	id := cAPI.HttpDefineMetric(unsafe.Pointer(c.config), api.Counter, name)
+	return &counterMetric{
+		config:   c,
+		metricId: id,
+	}
+}
+
+func (c *httpConfig) DefineGaugeMetric(name string) api.GaugeMetric {
+	id := cAPI.HttpDefineMetric(unsafe.Pointer(c.config), api.Gauge, name)
+	return &gaugeMetric{
+		config:   c,
+		metricId: id,
+	}
+}
+
+func (c *httpConfig) Finalize() {
+	cAPI.HttpConfigFinalize(unsafe.Pointer(c.config))
+}
+
+type counterMetric struct {
+	config   *httpConfig
+	metricId uint32
+}
+
+func (m *counterMetric) Increment(offset int64) {
+	cAPI.HttpIncrementMetric(unsafe.Pointer(m.config), m.metricId, offset)
+}
+
+func (m *counterMetric) Get() uint64 {
+	return cAPI.HttpGetMetric(unsafe.Pointer(m.config), m.metricId)
+}
+
+func (m *counterMetric) Record(value uint64) {
+	cAPI.HttpRecordMetric(unsafe.Pointer(m.config), m.metricId, value)
+}
+
+type gaugeMetric struct {
+	config   *httpConfig
+	metricId uint32
+}
+
+func (m *gaugeMetric) Increment(offset int64) {
+	cAPI.HttpIncrementMetric(unsafe.Pointer(m.config), m.metricId, offset)
+}
+
+func (m *gaugeMetric) Get() uint64 {
+	return cAPI.HttpGetMetric(unsafe.Pointer(m.config), m.metricId)
+}
+
+func (m *gaugeMetric) Record(value uint64) {
+	cAPI.HttpRecordMetric(unsafe.Pointer(m.config), m.metricId, value)
 }

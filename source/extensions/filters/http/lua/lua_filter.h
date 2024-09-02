@@ -162,6 +162,7 @@ public:
       http_request_->cancel();
       http_request_ = nullptr;
     }
+    on_reset_called_ = true;
   }
 
   static ExportedFunctions exportedFunctions() {
@@ -184,7 +185,8 @@ public:
             {"verifySignature", static_luaVerifySignature},
             {"base64Escape", static_luaBase64Escape},
             {"timestamp", static_luaTimestamp},
-            {"timestampString", static_luaTimestampString}};
+            {"timestampString", static_luaTimestampString},
+            {"connectionStreamInfo", static_luaConnectionStreamInfo}};
   }
 
 private:
@@ -251,6 +253,11 @@ private:
   DECLARE_LUA_FUNCTION(StreamHandleWrapper, luaConnection);
 
   /**
+   * @return a handle to the network connection's stream info.
+   */
+  DECLARE_LUA_FUNCTION(StreamHandleWrapper, luaConnectionStreamInfo);
+
+  /**
    * Log a message to the Envoy log.
    * @param 1 (string): The log message.
    */
@@ -314,6 +321,13 @@ private:
 
   int doHttpCall(lua_State* state, const HttpCallOptions& options);
 
+  // Resumes the coroutine only if it is safe to do so.
+  void resumeCoroutine(int num_args, const std::function<void()>& yield_callback) {
+    if (!on_reset_called_) {
+      coroutine_.resume(num_args, yield_callback);
+    }
+  }
+
   // Filters::Common::Lua::BaseLuaObject
   void onMarkDead() override {
     // Headers/body/trailers wrappers do not survive any yields. The user can request them
@@ -325,6 +339,7 @@ private:
     stream_info_wrapper_.reset();
     connection_wrapper_.reset();
     public_key_wrapper_.reset();
+    connection_stream_info_wrapper_.reset();
   }
 
   // Http::AsyncClient::Callbacks
@@ -332,6 +347,7 @@ private:
   void onFailure(const Http::AsyncClient::Request&, Http::AsyncClient::FailureReason) override;
   void onBeforeFinalizeUpstreamSpan(Tracing::Span&, const Http::ResponseHeaderMap*) override {}
 
+  // Coroutine resumption MUST use resumeCoroutine.
   Filters::Common::Lua::Coroutine& coroutine_;
   Http::RequestOrResponseHeaderMap& headers_;
   bool end_stream_;
@@ -339,6 +355,7 @@ private:
   bool buffered_body_{};
   bool saw_body_{};
   bool return_duplicate_headers_{};
+  bool on_reset_called_{};
   Filter& filter_;
   FilterCallbacks& callbacks_;
   Http::HeaderMap* trailers_{};
@@ -347,6 +364,7 @@ private:
   Filters::Common::Lua::LuaDeathRef<HeaderMapWrapper> trailers_wrapper_;
   Filters::Common::Lua::LuaDeathRef<Filters::Common::Lua::MetadataMapWrapper> metadata_wrapper_;
   Filters::Common::Lua::LuaDeathRef<StreamInfoWrapper> stream_info_wrapper_;
+  Filters::Common::Lua::LuaDeathRef<ConnectionStreamInfoWrapper> connection_stream_info_wrapper_;
   Filters::Common::Lua::LuaDeathRef<Filters::Common::Lua::ConnectionWrapper> connection_wrapper_;
   Filters::Common::Lua::LuaDeathRef<PublicKeyWrapper> public_key_wrapper_;
   State state_{State::Running};

@@ -52,10 +52,12 @@ void GrpcAccessLoggerImpl::initMessageRoot(
   auto* resource_logs = message_.add_resource_logs();
   root_ = resource_logs->add_scope_logs();
   auto* resource = resource_logs->mutable_resource();
-  *resource->add_attributes() = getStringKeyValue("log_name", config.common_config().log_name());
-  *resource->add_attributes() = getStringKeyValue("zone_name", local_info.zoneName());
-  *resource->add_attributes() = getStringKeyValue("cluster_name", local_info.clusterName());
-  *resource->add_attributes() = getStringKeyValue("node_name", local_info.nodeName());
+  if (!config.disable_builtin_labels()) {
+    *resource->add_attributes() = getStringKeyValue("log_name", config.common_config().log_name());
+    *resource->add_attributes() = getStringKeyValue("zone_name", local_info.zoneName());
+    *resource->add_attributes() = getStringKeyValue("cluster_name", local_info.clusterName());
+    *resource->add_attributes() = getStringKeyValue("node_name", local_info.nodeName());
+  }
 
   for (const auto& pair : config.resource_attributes().values()) {
     *resource->add_attributes() = pair;
@@ -86,10 +88,11 @@ GrpcAccessLoggerImpl::SharedPtr GrpcAccessLoggerCacheImpl::createLogger(
   // We pass skip_cluster_check=true to factoryForGrpcService in order to avoid throwing
   // exceptions in worker threads. Call sites of this getOrCreateLogger must check the cluster
   // availability via ClusterManager::checkActiveStaticCluster beforehand, and throw exceptions in
-  // the main thread if necessary.
-  auto client = async_client_manager_
-                    .factoryForGrpcService(config.common_config().grpc_service(), scope_, true)
-                    ->createUncachedRawAsyncClient();
+  // the main thread if necessary to ensure it does not throw here.
+  auto factory_or_error = async_client_manager_.factoryForGrpcService(
+      config.common_config().grpc_service(), scope_, true);
+  THROW_IF_STATUS_NOT_OK(factory_or_error, throw);
+  auto client = factory_or_error.value()->createUncachedRawAsyncClient();
   return std::make_shared<GrpcAccessLoggerImpl>(std::move(client), config, dispatcher, local_info_,
                                                 scope_);
 }

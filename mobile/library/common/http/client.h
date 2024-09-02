@@ -51,9 +51,9 @@ struct HttpClientStats {
  */
 class Client : public Logger::Loggable<Logger::Id::http> {
 public:
-  Client(ApiListener& api_listener, Event::ProvisionalDispatcher& dispatcher, Stats::Scope& scope,
-         Random::RandomGenerator& random)
-      : api_listener_(api_listener), dispatcher_(dispatcher),
+  Client(ApiListenerPtr&& api_listener, Event::ProvisionalDispatcher& dispatcher,
+         Stats::Scope& scope, Random::RandomGenerator& random)
+      : api_listener_(std::move(api_listener)), dispatcher_(dispatcher),
         stats_(
             HttpClientStats{ALL_HTTP_CLIENT_STATS(POOL_COUNTER_PREFIX(scope, "http.client."),
                                                   POOL_HISTOGRAM_PREFIX(scope, "http.client."))}),
@@ -74,11 +74,12 @@ public:
   /**
    * Send headers over an open HTTP stream. This method can be invoked once and needs to be called
    * before send_data.
-   * @param stream, the stream to send headers over.
-   * @param headers, the headers to send.
-   * @param end_stream, indicates whether to close the stream locally after sending this frame.
+   *
+   * @param stream the stream to send headers over.
+   * @param headers the headers to send.
+   * @param end_stream indicates whether to close the stream locally after sending this frame.
    */
-  void sendHeaders(envoy_stream_t stream, envoy_headers headers, bool end_stream);
+  void sendHeaders(envoy_stream_t stream, RequestHeaderMapPtr headers, bool end_stream);
 
   /**
    * Notify the stream that the caller is ready to receive more data from the response stream. Only
@@ -105,10 +106,11 @@ public:
   /**
    * Send trailers over an open HTTP stream. This method can only be invoked once per stream.
    * Note that this method implicitly closes the stream locally.
-   * @param stream, the stream to send trailers over.
-   * @param trailers, the trailers to send.
+   *
+   * @param stream the stream to send trailers over.
+   * @param trailers the trailers to send.
    */
-  void sendTrailers(envoy_stream_t stream, envoy_headers trailers);
+  void sendTrailers(envoy_stream_t stream, RequestTrailerMapPtr trailers);
 
   /**
    * Reset an open HTTP stream. This operation closes the stream locally, and remote.
@@ -127,6 +129,8 @@ public:
     CONSTRUCT_ON_FIRST_USE(std::string, "client_cancelled_stream");
   }
 
+  void shutdownApiListener() { api_listener_.reset(); }
+
 private:
   class DirectStream;
   friend class ClientTest;
@@ -141,16 +145,13 @@ private:
   public:
     DirectStreamCallbacks(DirectStream& direct_stream, envoy_http_callbacks bridge_callbacks,
                           Client& http_client);
+    virtual ~DirectStreamCallbacks();
 
-    void closeStream();
+    void closeStream(bool end_stream = true);
     void onComplete();
     void onCancel();
     void onError();
     void onSendWindowAvailable();
-
-    // Remove the stream and clear up state if possible, else set up deferred
-    // removal path.
-    void removeStream();
 
     // ResponseEncoder
     void encodeHeaders(const ResponseHeaderMap& headers, bool end_stream) override;
@@ -183,18 +184,18 @@ private:
     //
     // Bytes will only be sent up once, even if the bytes available are fewer
     // than bytes_to_send.
-    void resumeData(int32_t bytes_to_send);
+    void resumeData(size_t bytes_to_send);
 
-    void setFinalStreamIntel(StreamInfo::StreamInfo& stream_info);
+    void latchError();
 
   private:
     bool hasBufferedData() { return response_data_.get() && response_data_->length() != 0; }
 
     void sendDataToBridge(Buffer::Instance& data, bool end_stream);
     void sendTrailersToBridge(const ResponseTrailerMap& trailers);
+    void sendErrorToBridge();
     envoy_stream_intel streamIntel();
     envoy_final_stream_intel& finalStreamIntel();
-    envoy_error streamError();
 
     DirectStream& direct_stream_;
     const envoy_http_callbacks bridge_callbacks_;
@@ -215,7 +216,7 @@ private:
     bool remote_end_stream_received_{};
     // Set true when the end stream has been forwarded to the bridge.
     bool remote_end_stream_forwarded_{};
-    uint32_t bytes_to_send_{};
+    size_t bytes_to_send_{};
   };
 
   using DirectStreamCallbacksPtr = std::unique_ptr<DirectStreamCallbacks>;
@@ -235,6 +236,8 @@ private:
     // Stream
     void addCallbacks(StreamCallbacks& callbacks) override { addCallbacksHelper(callbacks); }
     void removeCallbacks(StreamCallbacks& callbacks) override { removeCallbacksHelper(callbacks); }
+    CodecEventCallbacks* registerCodecEventCallbacks(CodecEventCallbacks* codec_callbacks) override;
+
     void resetStream(StreamResetReason) override;
     Network::ConnectionInfoProvider& connectionInfoProvider() override {
       return parent_.address_provider_;
@@ -274,13 +277,43 @@ private:
     // Latches latency info from stream info before it goes away.
     void saveFinalStreamIntel();
 
+    // Various signals to propagate to the adapter.
+    enum class AdapterSignal { EncodeComplete, Error, Cancel };
+
+    // Used to notify adapter of stream's completion.
+    void notifyAdapter(AdapterSignal signal) {
+      if (codec_callbacks_) {
+        switch (signal) {
+        case AdapterSignal::EncodeComplete:
+          codec_callbacks_->onCodecEncodeComplete();
+          break;
+        case AdapterSignal::Error:
+          FALLTHRU;
+        case AdapterSignal::Cancel:
+          codec_callbacks_->onCodecLowLevelReset();
+        }
+        registerCodecEventCallbacks(nullptr);
+      }
+    }
+
+    OptRef<RequestDecoder> requestDecoder() {
+      if (!request_decoder_) {
+        return {};
+      }
+      ENVOY_BUG(request_decoder_->get(), "attempting to access deleted decoder");
+      return request_decoder_->get();
+    }
+
     const envoy_stream_t stream_handle_;
 
     // Used to issue outgoing HTTP stream operations.
-    RequestDecoder* request_decoder_;
+    RequestDecoderHandlePtr request_decoder_;
     // Used to receive incoming HTTP stream operations.
     DirectStreamCallbacksPtr callbacks_;
     Client& parent_;
+    // Used to communicate with the HTTP Connection Manager that
+    // it can destroy the active stream.
+    CodecEventCallbacks* codec_callbacks_{nullptr};
     // Response details used by the connection manager.
     absl::string_view response_details_;
     // Tracks read disable calls. Different buffers can call read disable, and
@@ -340,7 +373,7 @@ private:
   void removeStream(envoy_stream_t stream_handle);
   void setDestinationCluster(RequestHeaderMap& headers);
 
-  ApiListener& api_listener_;
+  ApiListenerPtr api_listener_;
   Event::ProvisionalDispatcher& dispatcher_;
   Event::SchedulableCallbackPtr scheduled_callback_;
   HttpClientStats stats_;

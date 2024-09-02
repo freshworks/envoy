@@ -1,11 +1,14 @@
 #include "source/common/grpc/google_async_client_impl.h"
 
+#include "envoy/common/time.h"
 #include "envoy/config/core/v3/grpc_service.pb.h"
+#include "envoy/http/protocol.h"
 #include "envoy/stats/scope.h"
 
 #include "source/common/common/base64.h"
 #include "source/common/common/empty_string.h"
 #include "source/common/common/lock_guard.h"
+#include "source/common/common/utility.h"
 #include "source/common/config/datasource.h"
 #include "source/common/grpc/common.h"
 #include "source/common/grpc/google_grpc_creds_impl.h"
@@ -79,7 +82,8 @@ GoogleAsyncClientImpl::GoogleAsyncClientImpl(Event::Dispatcher& dispatcher,
                                              GoogleStubFactory& stub_factory,
                                              Stats::ScopeSharedPtr scope,
                                              const envoy::config::core::v3::GrpcService& config,
-                                             Api::Api& api, const StatNames& stat_names)
+                                             Server::Configuration::CommonFactoryContext& context,
+                                             const StatNames& stat_names)
     : dispatcher_(dispatcher), tls_(tls), stat_prefix_(config.google_grpc().stat_prefix()),
       target_uri_(config.google_grpc().target_uri()), scope_(scope),
       per_stream_buffer_limit_bytes_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(
@@ -91,7 +95,7 @@ GoogleAsyncClientImpl::GoogleAsyncClientImpl(Event::Dispatcher& dispatcher,
   // smart enough to do connection pooling and reuse with identical channel args, so this should
   // have comparable overhead to what we are doing in Grpc::AsyncClientImpl, i.e. no expensive
   // new connection implied.
-  std::shared_ptr<grpc::Channel> channel = GoogleGrpcUtils::createChannel(config, api);
+  std::shared_ptr<grpc::Channel> channel = GoogleGrpcUtils::createChannel(config, context);
   // Get state with try_to_connect = true to try connection at channel creation.
   // This is for initializing gRPC channel at channel creation. This GetState(true) is used to poke
   // the gRPC lb at channel creation, it doesn't have any effect no matter it succeeds or fails. But
@@ -161,7 +165,8 @@ GoogleAsyncStreamImpl::GoogleAsyncStreamImpl(GoogleAsyncClientImpl& parent,
                                              const Http::AsyncClient::StreamOptions& options)
     : parent_(parent), tls_(parent_.tls_), dispatcher_(parent_.dispatcher_), stub_(parent_.stub_),
       service_full_name_(service_full_name), method_name_(method_name), callbacks_(callbacks),
-      options_(options) {}
+      options_(options), unused_stream_info_(Http::Protocol::Http2, dispatcher_.timeSource(),
+                                             Network::ConnectionInfoProviderSharedPtr{}) {}
 
 GoogleAsyncStreamImpl::~GoogleAsyncStreamImpl() {
   ENVOY_LOG(debug, "GoogleAsyncStreamImpl destruct");
@@ -182,9 +187,8 @@ void GoogleAsyncStreamImpl::initialize(bool /*buffer_body_for_retry*/) {
   ctxt_.set_deadline(abs_deadline);
   // Fill service-wide initial metadata.
   auto initial_metadata = Http::RequestHeaderMapImpl::create();
-  // TODO(cpakulski): Find a better way to access requestHeaders after runtime guard
-  // envoy_reloadable_features_unified_header_formatter runtime guard is deprecated
-  // and request headers are not stored in stream_info.
+  // TODO(cpakulski): Find a better way to access requestHeaders
+  // request headers should not be stored in stream_info.
   // Maybe put it to parent_context?
   parent_.metadata_parser_->evaluateHeaders(*initial_metadata, options_.parent_context.stream_info);
   callbacks_.onCreateInitialMetadata(*initial_metadata);
@@ -460,7 +464,8 @@ void GoogleAsyncRequestImpl::cancel() {
 }
 
 void GoogleAsyncRequestImpl::onCreateInitialMetadata(Http::RequestHeaderMap& metadata) {
-  current_span_->injectContext(metadata, nullptr);
+  Tracing::HttpTraceContext trace_context(metadata);
+  current_span_->injectContext(trace_context, nullptr);
   callbacks_.onCreateInitialMetadata(metadata);
 }
 

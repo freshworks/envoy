@@ -48,12 +48,19 @@ Install ``docker compose``
 The examples use
 `Docker compose configuration version 3.8 <https://docs.docker.com/compose/compose-file/compose-versioning/#version-38>`_.
 
-You will need to install a fairly recent version of `Docker Compose <https://docs.docker.com/compose/>`_.
+You will need to a fairly recent version of `Docker Compose <https://docs.docker.com/compose/>`_.
+
+.. note::
+   Any ``20.0+`` version of Docker provides a builtin ``docker compose`` command.
+
+   The sandboxes are tested using ``compose`` in this way, so this is preferable over using the python version.
+
+   See `Docker compose installation documenation <https://docs.docker.com/compose/install/>`_ for more information.
 
 Docker Compose (``docker-compose``) can also be installed as a `python application <https://pypi.org/project/docker-compose/>`_ and can be
-installed through a variety of methods including `pip <https://pip.pypa.io/en/stable/>`_ and
-`native operating system installation <https://docs.docker.com/compose/install/>`_. Most of the sandboxes should also
-work using ``docker-compose``.
+installed through a variety of methods including `pip <https://pip.pypa.io/en/stable/>`_ and native operating system installation.
+
+Most of the sandboxes should also work using ``docker-compose``.
 
 .. _start_sandboxes_setup_git:
 
@@ -100,6 +107,15 @@ Many of the examples use the `curl <https://curl.se/>`_ utility to make ``HTTP``
 Instructions for installing `curl <https://curl.se/>`_ on many platforms and operating systems
 can be `found on the curl website <https://curl.haxx.se/download.html>`_.
 
+.. _start_sandboxes_setup_envsubst:
+
+envsubst
+~~~~~~~~
+
+Some of the examples require the ``envsubst`` command to interpolate environment variables in templates.
+
+The command is a part of the GNU ‘gettext’ package, and is available through most package managers.
+
 .. _start_sandboxes_setup_jq:
 
 jq
@@ -110,6 +126,15 @@ whether it be ``HTTP`` response data, logs or statistics.
 
 Instructions for installing `jq <https://stedolan.github.io/jq/>`_ on many platforms and operating systems
 can be `found on the jq website <https://stedolan.github.io/jq/download/>`_.
+
+.. _start_sandboxes_setup_mkpasswd:
+
+mkpasswd
+~~~~~~~~
+
+Some of the examples require the ``mkpasswd`` command to generate ~random tokens.
+
+The command is a part of the ‘whois’ package, and is available through most package managers.
 
 .. _start_sandboxes_setup_netcat:
 

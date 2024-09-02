@@ -103,6 +103,9 @@ public:
 };
 
 TEST_F(GetAddrInfoDnsImplTest, LocalhostResolve) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   resolver_->resolve(
       "localhost", DnsLookupFamily::All,
       [this](DnsResolver::ResolutionStatus status, std::list<DnsResponse>&& response) {
@@ -114,6 +117,9 @@ TEST_F(GetAddrInfoDnsImplTest, LocalhostResolve) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, Cancel) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   auto query =
       resolver_->resolve("localhost", DnsLookupFamily::All,
                          [](DnsResolver::ResolutionStatus, std::list<DnsResponse>&&) { FAIL(); });
@@ -134,7 +140,7 @@ TEST_F(GetAddrInfoDnsImplTest, Failure) {
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
 
   EXPECT_CALL(os_sys_calls_, getaddrinfo(_, _, _, _))
-      .WillOnce(Return(Api::SysCallIntResult{EAI_AGAIN, 0}));
+      .WillOnce(Return(Api::SysCallIntResult{EAI_FAIL, 0}));
   resolver_->resolve(
       "localhost", DnsLookupFamily::All,
       [this](DnsResolver::ResolutionStatus status, std::list<DnsResponse>&& response) {
@@ -147,7 +153,50 @@ TEST_F(GetAddrInfoDnsImplTest, Failure) {
   dispatcher_->run(Event::Dispatcher::RunType::RunUntilExit);
 }
 
+TEST_F(GetAddrInfoDnsImplTest, TryAgainAndSuccess) {
+  TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
+
+  // 2 calls - one EAGAIN, one success.
+  EXPECT_CALL(os_sys_calls_, getaddrinfo(_, _, _, _))
+      .Times(2)
+      .WillOnce(Return(Api::SysCallIntResult{EAI_AGAIN, 0}))
+      .WillOnce(Return(Api::SysCallIntResult{0, 0}));
+  resolver_->resolve(
+      "localhost", DnsLookupFamily::All,
+      [this](DnsResolver::ResolutionStatus status, std::list<DnsResponse>&& response) {
+        EXPECT_EQ(status, DnsResolver::ResolutionStatus::Success);
+        EXPECT_TRUE(response.empty());
+
+        dispatcher_->exit();
+      });
+
+  dispatcher_->run(Event::Dispatcher::RunType::RunUntilExit);
+}
+
+TEST_F(GetAddrInfoDnsImplTest, TryAgainThenCancel) {
+  TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
+
+  std::atomic<ActiveDnsQuery*> query = nullptr;
+
+  EXPECT_CALL(os_sys_calls_, getaddrinfo(_, _, _, _))
+      .Times(testing::AnyNumber())
+      .WillOnce(Invoke([&](const char*, const char*, const addrinfo*, addrinfo**) {
+        query.load()->cancel(ActiveDnsQuery::CancelReason::QueryAbandoned);
+        dispatcher_->exit();
+        return Api::SysCallIntResult{EAI_AGAIN, 0};
+      }));
+  query =
+      resolver_->resolve("localhost", DnsLookupFamily::All,
+                         [](DnsResolver::ResolutionStatus, std::list<DnsResponse>&&) { FAIL(); });
+
+  dispatcher_->run(Event::Dispatcher::RunType::RunUntilExit);
+  resolver_.reset();
+}
+
 TEST_F(GetAddrInfoDnsImplTest, All) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai();
 
@@ -168,6 +217,9 @@ TEST_F(GetAddrInfoDnsImplTest, All) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, V4Only) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai();
 
@@ -188,6 +240,9 @@ TEST_F(GetAddrInfoDnsImplTest, V4Only) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, V6Only) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai();
 
@@ -208,6 +263,9 @@ TEST_F(GetAddrInfoDnsImplTest, V6Only) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, V4Preferred) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai();
 
@@ -228,6 +286,9 @@ TEST_F(GetAddrInfoDnsImplTest, V4Preferred) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, V4PreferredNoV4) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai({Utility::getIpv6LoopbackAddress()});
 
@@ -248,6 +309,9 @@ TEST_F(GetAddrInfoDnsImplTest, V4PreferredNoV4) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, Auto) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai();
 
@@ -268,6 +332,9 @@ TEST_F(GetAddrInfoDnsImplTest, Auto) {
 }
 
 TEST_F(GetAddrInfoDnsImplTest, AutoNoV6) {
+  // See https://github.com/envoyproxy/envoy/issues/28504.
+  DISABLE_UNDER_WINDOWS;
+
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls(&os_sys_calls_);
   setupFakeGai({Utility::getCanonicalIpv4LoopbackAddress()});
 

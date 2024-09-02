@@ -1,3 +1,5 @@
+#pragma once
+
 #import <Foundation/Foundation.h>
 
 #import "library/objective-c/EMODirectResponse.h"
@@ -33,7 +35,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param networkMonitoringMode Configure how the engines observe network reachability.
  */
 - (instancetype)initWithRunningCallback:(nullable void (^)())onEngineRunning
-                                 logger:(nullable void (^)(NSString *))logger
+                                 logger:(nullable void (^)(NSInteger, NSString *))logger
                            eventTracker:(nullable void (^)(EnvoyEvent *))eventTracker
                   networkMonitoringMode:(int)networkMonitoringMode;
 /**
@@ -76,11 +78,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (int)recordCounterInc:(NSString *)elements tags:(EnvoyTags *)tags count:(NSUInteger)count;
 
 /**
- Attempt to trigger a stat flush.
- */
-- (void)flushStats;
-
-/**
  Retrieve the value of all active stats. Note that this function may block for some time.
  @return The list of active stats and their values, or empty string of the operation failed
  */
@@ -96,8 +93,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Concrete implementation of the `EnvoyEngine` interface.
 @interface EnvoyEngineImpl : NSObject <EnvoyEngine>
-
-@property (nonatomic, copy, nullable) void (^onEngineRunning)();
 
 @end
 

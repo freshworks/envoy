@@ -35,12 +35,12 @@ absl::optional<std::string> HeaderValueSelector::extract(Http::HeaderMap& map) c
 absl::optional<std::string> CookieValueSelector::extract(Http::HeaderMap& map) const {
   std::string value = Envoy::Http::Utility::parseCookieValue(map, cookie_);
   if (!value.empty()) {
-    return absl::optional<std::string>(std::move(value));
+    return {std::move(value)};
   }
   return absl::nullopt;
 }
 
-Rule::Rule(const ProtoRule& rule) : rule_(rule) {
+Rule::Rule(const ProtoRule& rule, Regex::Engine& regex_engine) : rule_(rule) {
   // Ensure only one of header and cookie is specified.
   // TODO(radha13): remove this once we are on v4 and these fields are folded into a oneof.
   if (!rule.cookie().empty() && !rule.header().empty()) {
@@ -83,15 +83,15 @@ Rule::Rule(const ProtoRule& rule) : rule_(rule) {
 
   if (rule.on_header_present().has_regex_value_rewrite()) {
     const auto& rewrite_spec = rule.on_header_present().regex_value_rewrite();
-    regex_rewrite_ = Regex::Utility::parseRegex(rewrite_spec.pattern());
+    regex_rewrite_ = Regex::Utility::parseRegex(rewrite_spec.pattern(), regex_engine);
     regex_rewrite_substitution_ = rewrite_spec.substitution();
   }
 }
 
 Config::Config(const envoy::extensions::filters::http::header_to_metadata::v3::Config config,
-               const bool per_route) {
-  request_set_ = Config::configToVector(config.request_rules(), request_rules_);
-  response_set_ = Config::configToVector(config.response_rules(), response_rules_);
+               Regex::Engine& regex_engine, const bool per_route) {
+  request_set_ = Config::configToVector(config.request_rules(), request_rules_, regex_engine);
+  response_set_ = Config::configToVector(config.response_rules(), response_rules_, regex_engine);
 
   // Note: empty configs are fine for the global config, which would be the case for enabling
   //       the filter globally without rules and then applying them at the virtual host or
@@ -103,15 +103,15 @@ Config::Config(const envoy::extensions::filters::http::header_to_metadata::v3::C
   }
 }
 
-bool Config::configToVector(const ProtobufRepeatedRule& proto_rules,
-                            HeaderToMetadataRules& vector) {
+bool Config::configToVector(const ProtobufRepeatedRule& proto_rules, HeaderToMetadataRules& vector,
+                            Regex::Engine& regex_engine) {
   if (proto_rules.empty()) {
     ENVOY_LOG(debug, "no rules provided");
     return false;
   }
 
   for (const auto& entry : proto_rules) {
-    vector.emplace_back(entry);
+    vector.emplace_back(entry, regex_engine);
   }
 
   return true;
@@ -150,7 +150,7 @@ void HeaderToMetadataFilter::setEncoderFilterCallbacks(
   encoder_callbacks_ = &callbacks;
 }
 
-bool HeaderToMetadataFilter::addMetadata(StructMap& map, const std::string& meta_namespace,
+bool HeaderToMetadataFilter::addMetadata(StructMap& struct_map, const std::string& meta_namespace,
                                          const std::string& key, std::string value, ValueType type,
                                          ValueEncode encode) const {
   ProtobufWkt::Value val;
@@ -196,15 +196,8 @@ bool HeaderToMetadataFilter::addMetadata(StructMap& map, const std::string& meta
   }
   }
 
-  // Have we seen this namespace before?
-  auto namespace_iter = map.find(meta_namespace);
-  if (namespace_iter == map.end()) {
-    map[meta_namespace] = ProtobufWkt::Struct();
-    namespace_iter = map.find(meta_namespace);
-  }
-
-  auto& keyval = namespace_iter->second;
-  (*keyval.mutable_fields())[key] = val;
+  auto& keyval = struct_map[meta_namespace];
+  (*keyval.mutable_fields())[key] = std::move(val);
 
   return true;
 }

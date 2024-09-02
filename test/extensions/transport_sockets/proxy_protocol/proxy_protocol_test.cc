@@ -117,7 +117,7 @@ TEST_F(ProxyProtocolTest, InjectesHeaderOnlyOnce) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   auto msg2 = Buffer::OwnedImpl("more data");
@@ -149,7 +149,7 @@ TEST_F(ProxyProtocolTest, BytesProcessedIncludesProxyProtocolHeader) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   auto msg2 = Buffer::OwnedImpl("more data");
@@ -185,15 +185,13 @@ TEST_F(ProxyProtocolTest, ReturnsKeepOpenWhenWriteErrorIsAgain) {
     InSequence s;
     EXPECT_CALL(io_handle_, write(BufferStringEqual(expected_buff.toString())))
         .WillOnce(Invoke([&](Buffer::Instance&) -> Api::IoCallUint64Result {
-          return Api::IoCallUint64Result(
-              0, Api::IoErrorPtr(Network::IoSocketError::getIoSocketEagainInstance(),
-                                 Network::IoSocketError::deleteIoError));
+          return {0, Network::IoSocketError::getIoSocketEagainError()};
         }));
     EXPECT_CALL(io_handle_, write(BufferStringEqual(expected_buff.toString())))
         .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
           auto length = buffer.length();
           buffer.drain(length);
-          return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+          return {length, Api::IoError::none()};
         }));
     EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false))
         .WillOnce(Return(Network::IoResult{Network::PostIoAction::KeepOpen, msg.length(), false}));
@@ -223,9 +221,7 @@ TEST_F(ProxyProtocolTest, ReturnsCloseWhenWriteErrorIsNotAgain) {
     InSequence s;
     EXPECT_CALL(io_handle_, write(_))
         .WillOnce(Invoke([&](Buffer::Instance&) -> Api::IoCallUint64Result {
-          return Api::IoCallUint64Result(0,
-                                         Api::IoErrorPtr(new Network::IoSocketError(EADDRNOTAVAIL),
-                                                         Network::IoSocketError::deleteIoError));
+          return {0, Network::IoSocketError::create(EADDRNOTAVAIL)};
         }));
   }
 
@@ -250,7 +246,7 @@ TEST_F(ProxyProtocolTest, V1IPV4LocalAddressWhenTransportOptionsAreNull) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -275,7 +271,7 @@ TEST_F(ProxyProtocolTest, V1IPV4LocalAddressesWhenHeaderOptionsAreNull) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = 43;
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {static_cast<unsigned long>(length), Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -300,7 +296,7 @@ TEST_F(ProxyProtocolTest, V1IPV6LocalAddressesWhenHeaderOptionsAreNull) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -334,7 +330,7 @@ TEST_F(ProxyProtocolTest, V1IPV4DownstreamAddresses) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -368,7 +364,7 @@ TEST_F(ProxyProtocolTest, V1IPV6DownstreamAddresses) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -393,7 +389,7 @@ TEST_F(ProxyProtocolTest, V2IPV4LocalCommandWhenTransportOptionsAreNull) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -418,7 +414,7 @@ TEST_F(ProxyProtocolTest, V2IPV4LocalCommandWhenHeaderOptionsAreNull) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -452,7 +448,7 @@ TEST_F(ProxyProtocolTest, V2IPV4DownstreamAddresses) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -487,7 +483,7 @@ TEST_F(ProxyProtocolTest, V2IPV6DownstreamAddresses) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -550,7 +546,7 @@ TEST_F(ProxyProtocolTest, V2IPV4DownstreamAddressesAndTLVs) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -590,7 +586,7 @@ TEST_F(ProxyProtocolTest, V2IPV4PassSpecificTLVs) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -628,7 +624,7 @@ TEST_F(ProxyProtocolTest, V2IPV4PassEmptyTLVs) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -696,7 +692,7 @@ TEST_F(ProxyProtocolTest, V2IPV6DownstreamAddressesAndTLVs) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));
@@ -734,7 +730,7 @@ TEST_F(ProxyProtocolTest, V2IPV6DownstreamAddressesAndTLVsWithoutPassConfig) {
       .WillOnce(Invoke([&](Buffer::Instance& buffer) -> Api::IoCallUint64Result {
         auto length = buffer.length();
         buffer.drain(length);
-        return Api::IoCallUint64Result(length, Api::IoErrorPtr(nullptr, [](Api::IoError*) {}));
+        return {length, Api::IoError::none()};
       }));
   auto msg = Buffer::OwnedImpl("some data");
   EXPECT_CALL(*inner_socket_, doWrite(BufferEqual(&msg), false));

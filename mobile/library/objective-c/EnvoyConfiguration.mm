@@ -1,7 +1,8 @@
 #import "library/objective-c/EnvoyEngine.h"
 
-#import "library/common/main_interface.h"
 #import "library/cc/engine_builder.h"
+#import "library/cc/direct_response_testing.h"
+#include "source/common/protobuf/utility.h"
 
 @implementation NSString (CXX)
 - (std::string)toCXXString {
@@ -17,16 +18,16 @@
   result.value = [self.value toCXXString];
   switch (self.mode) {
   case EMOMatchModeContains:
-    result.mode = Envoy::DirectResponseTesting::contains;
+    result.mode = Envoy::DirectResponseTesting::MatchMode::Contains;
     break;
   case EMOMatchModeExact:
-    result.mode = Envoy::DirectResponseTesting::exact;
+    result.mode = Envoy::DirectResponseTesting::MatchMode::Exact;
     break;
   case EMOMatchModePrefix:
-    result.mode = Envoy::DirectResponseTesting::prefix;
+    result.mode = Envoy::DirectResponseTesting::MatchMode::Prefix;
     break;
   case EMOMatchModeSuffix:
-    result.mode = Envoy::DirectResponseTesting::suffix;
+    result.mode = Envoy::DirectResponseTesting::MatchMode::Suffix;
     break;
   }
   return result;
@@ -66,9 +67,7 @@
 
 @implementation EnvoyConfiguration
 
-- (instancetype)initWithAdminInterfaceEnabled:(BOOL)adminInterfaceEnabled
-                                  grpcStatsDomain:(nullable NSString *)grpcStatsDomain
-                            connectTimeoutSeconds:(UInt32)connectTimeoutSeconds
+- (instancetype)initWithConnectTimeoutSeconds:(UInt32)connectTimeoutSeconds
                                 dnsRefreshSeconds:(UInt32)dnsRefreshSeconds
                      dnsFailureRefreshSecondsBase:(UInt32)dnsFailureRefreshSecondsBase
                       dnsFailureRefreshSecondsMax:(UInt32)dnsFailureRefreshSecondsMax
@@ -77,8 +76,9 @@
                            dnsPreresolveHostnames:(NSArray<NSString *> *)dnsPreresolveHostnames
                                    enableDNSCache:(BOOL)enableDNSCache
                       dnsCacheSaveIntervalSeconds:(UInt32)dnsCacheSaveIntervalSeconds
-                              enableHappyEyeballs:(BOOL)enableHappyEyeballs
                                       enableHttp3:(BOOL)enableHttp3
+                                        quicHints:(NSDictionary<NSString *, NSNumber *> *)quicHints
+                            quicCanonicalSuffixes:(NSArray<NSString *> *)quicCanonicalSuffixes
                           enableGzipDecompression:(BOOL)enableGzipDecompression
                         enableBrotliDecompression:(BOOL)enableBrotliDecompression
                            enableInterfaceBinding:(BOOL)enableInterfaceBinding
@@ -86,20 +86,17 @@
                     enforceTrustChainVerification:(BOOL)enforceTrustChainVerification
                                         forceIPv6:(BOOL)forceIPv6
               enablePlatformCertificateValidation:(BOOL)enablePlatformCertificateValidation
+                       respectSystemProxySettings:(BOOL)respectSystemProxySettings
     h2ConnectionKeepaliveIdleIntervalMilliseconds:
         (UInt32)h2ConnectionKeepaliveIdleIntervalMilliseconds
               h2ConnectionKeepaliveTimeoutSeconds:(UInt32)h2ConnectionKeepaliveTimeoutSeconds
                             maxConnectionsPerHost:(UInt32)maxConnectionsPerHost
-                                statsFlushSeconds:(UInt32)statsFlushSeconds
                          streamIdleTimeoutSeconds:(UInt32)streamIdleTimeoutSeconds
                          perTryIdleTimeoutSeconds:(UInt32)perTryIdleTimeoutSeconds
                                        appVersion:(NSString *)appVersion
                                             appId:(NSString *)appId
-                                  virtualClusters:(NSArray<NSString *> *)virtualClusters
                                     runtimeGuards:
                                         (NSDictionary<NSString *, NSString *> *)runtimeGuards
-                             typedDirectResponses:
-                                 (NSArray<EMODirectResponse *> *)typedDirectResponses
                                 nativeFilterChain:
                                     (NSArray<EnvoyNativeFilterConfig *> *)nativeFilterChain
                               platformFilterChain:
@@ -110,14 +107,25 @@
                                    keyValueStores:
                                        (NSDictionary<NSString *, id<EnvoyKeyValueStore>> *)
                                            keyValueStores
-                                       statsSinks:(NSArray<NSString *> *)statsSinks {
+                                           nodeId:(nullable NSString *)nodeId
+                                       nodeRegion:(nullable NSString *)nodeRegion
+                                         nodeZone:(nullable NSString *)nodeZone
+                                      nodeSubZone:(nullable NSString *)nodeSubZone
+                                 xdsServerAddress:(nullable NSString *)xdsServerAddress
+                                    xdsServerPort:(UInt32)xdsServerPort
+                           xdsGrpcInitialMetadata:
+                               (NSDictionary<NSString *, NSString *> *)xdsGrpcInitialMetadata
+                                  xdsSslRootCerts:(nullable NSString *)xdsSslRootCerts
+                                 rtdsResourceName:(nullable NSString *)rtdsResourceName
+                               rtdsTimeoutSeconds:(UInt32)rtdsTimeoutSeconds
+                                        enableCds:(BOOL)enableCds
+                              cdsResourcesLocator:(nullable NSString *)cdsResourcesLocator
+                                cdsTimeoutSeconds:(UInt32)cdsTimeoutSeconds {
   self = [super init];
   if (!self) {
     return nil;
   }
 
-  self.adminInterfaceEnabled = adminInterfaceEnabled;
-  self.grpcStatsDomain = grpcStatsDomain;
   self.connectTimeoutSeconds = connectTimeoutSeconds;
   self.dnsRefreshSeconds = dnsRefreshSeconds;
   self.dnsFailureRefreshSecondsBase = dnsFailureRefreshSecondsBase;
@@ -127,8 +135,9 @@
   self.dnsPreresolveHostnames = dnsPreresolveHostnames;
   self.enableDNSCache = enableDNSCache;
   self.dnsCacheSaveIntervalSeconds = dnsCacheSaveIntervalSeconds;
-  self.enableHappyEyeballs = enableHappyEyeballs;
   self.enableHttp3 = enableHttp3;
+  self.quicHints = quicHints;
+  self.quicCanonicalSuffixes = quicCanonicalSuffixes;
   self.enableGzipDecompression = enableGzipDecompression;
   self.enableBrotliDecompression = enableBrotliDecompression;
   self.enableInterfaceBinding = enableInterfaceBinding;
@@ -136,23 +145,35 @@
   self.enforceTrustChainVerification = enforceTrustChainVerification;
   self.forceIPv6 = forceIPv6;
   self.enablePlatformCertificateValidation = enablePlatformCertificateValidation;
+  self.respectSystemProxySettings = respectSystemProxySettings;
   self.h2ConnectionKeepaliveIdleIntervalMilliseconds =
       h2ConnectionKeepaliveIdleIntervalMilliseconds;
   self.h2ConnectionKeepaliveTimeoutSeconds = h2ConnectionKeepaliveTimeoutSeconds;
   self.maxConnectionsPerHost = maxConnectionsPerHost;
-  self.statsFlushSeconds = statsFlushSeconds;
   self.streamIdleTimeoutSeconds = streamIdleTimeoutSeconds;
   self.perTryIdleTimeoutSeconds = perTryIdleTimeoutSeconds;
   self.appVersion = appVersion;
   self.appId = appId;
-  self.virtualClusters = virtualClusters;
   self.runtimeGuards = runtimeGuards;
-  self.typedDirectResponses = typedDirectResponses;
   self.nativeFilterChain = nativeFilterChain;
   self.httpPlatformFilterFactories = httpPlatformFilterFactories;
   self.stringAccessors = stringAccessors;
   self.keyValueStores = keyValueStores;
-  self.statsSinks = statsSinks;
+  self.nodeId = nodeId;
+  self.nodeRegion = nodeRegion;
+  self.nodeZone = nodeZone;
+  self.nodeSubZone = nodeSubZone;
+  self.xdsServerAddress = xdsServerAddress;
+  self.xdsServerPort = xdsServerPort;
+  self.xdsGrpcInitialMetadata = xdsGrpcInitialMetadata;
+  self.xdsSslRootCerts = xdsSslRootCerts;
+  self.rtdsResourceName = rtdsResourceName;
+  self.rtdsTimeoutSeconds = rtdsTimeoutSeconds;
+  self.cdsResourcesLocator = cdsResourcesLocator;
+  self.cdsTimeoutSeconds = cdsTimeoutSeconds;
+  self.enableCds = enableCds;
+  self.bootstrapPointer = 0;
+
   return self;
 }
 
@@ -172,6 +193,12 @@
 
 #ifdef ENVOY_ENABLE_QUIC
   builder.enableHttp3(self.enableHttp3);
+  for (NSString *host in self.quicHints) {
+    builder.addQuicHint([host toCXXString], [[self.quicHints objectForKey:host] intValue]);
+  }
+  for (NSString *suffix in self.quicCanonicalSuffixes) {
+    builder.addQuicCanonicalSuffix([suffix toCXXString]);
+  }
 #endif
 
   builder.enableGzipDecompression(self.enableGzipDecompression);
@@ -180,10 +207,6 @@
   for (NSString *key in self.runtimeGuards) {
     BOOL value = [[self.runtimeGuards objectForKey:key] isEqualToString:@"true"];
     builder.setRuntimeGuard([key toCXXString], value);
-  }
-
-  for (EMODirectResponse *directResponse in self.typedDirectResponses) {
-    builder.addDirectResponse([directResponse toCXX]);
   }
 
   builder.addConnectTimeoutSeconds(self.connectTimeoutSeconds);
@@ -201,7 +224,6 @@
     }
     builder.addDnsPreresolveHostnames(hostnames);
   }
-  builder.enableHappyEyeballs(self.enableHappyEyeballs);
   builder.addDnsRefreshSeconds(self.dnsRefreshSeconds);
   builder.enableDrainPostDnsRefresh(self.enableDrainPostDnsRefresh);
   builder.enableInterfaceBinding(self.enableInterfaceBinding);
@@ -216,24 +238,39 @@
   builder.setAppVersion([self.appVersion toCXXString]);
   builder.setAppId([self.appId toCXXString]);
   builder.setDeviceOs("iOS");
-  for (NSString *cluster in self.virtualClusters) {
-    builder.addVirtualCluster([cluster toCXXString]);
-  }
-  builder.addStatsFlushSeconds(self.statsFlushSeconds);
   builder.enablePlatformCertificatesValidation(self.enablePlatformCertificateValidation);
+  builder.respectSystemProxySettings(self.respectSystemProxySettings);
   builder.enableDnsCache(self.enableDNSCache, self.dnsCacheSaveIntervalSeconds);
-  builder.addGrpcStatsDomain([self.grpcStatsDomain toCXXString]);
-  if (self.statsSinks.count > 0) {
-    std::vector<std::string> sinks;
-    sinks.reserve(self.statsSinks.count);
-    for (NSString *sink in self.statsSinks) {
-      sinks.push_back([sink toCXXString]);
-    }
-    builder.addStatsSinks(std::move(sinks));
+
+  if (self.nodeRegion != nil) {
+    builder.setNodeLocality([self.nodeRegion toCXXString], [self.nodeZone toCXXString],
+                            [self.nodeSubZone toCXXString]);
+  }
+  if (self.nodeId != nil) {
+    builder.setNodeId([self.nodeId toCXXString]);
   }
 
-#ifdef ENVOY_ADMIN_FUNCTIONALITY
-  builder.enableAdminInterface(self.adminInterfaceEnabled);
+#ifdef ENVOY_MOBILE_XDS
+  if (self.xdsServerAddress != nil) {
+    Envoy::Platform::XdsBuilder xdsBuilder([self.xdsServerAddress toCXXString], self.xdsServerPort);
+    for (NSString *header in self.xdsGrpcInitialMetadata) {
+      xdsBuilder.addInitialStreamHeader(
+          [header toCXXString], [[self.xdsGrpcInitialMetadata objectForKey:header] toCXXString]);
+    }
+    if (self.xdsSslRootCerts != nil) {
+      xdsBuilder.setSslRootCerts([self.xdsSslRootCerts toCXXString]);
+    }
+    if (self.rtdsResourceName != nil) {
+      xdsBuilder.addRuntimeDiscoveryService([self.rtdsResourceName toCXXString],
+                                            self.rtdsTimeoutSeconds);
+    }
+    if (self.enableCds) {
+      xdsBuilder.addClusterDiscoveryService(
+          self.cdsResourcesLocator != nil ? [self.cdsResourcesLocator toCXXString] : "",
+          self.cdsTimeoutSeconds);
+    }
+    builder.setXds(xdsBuilder);
+  }
 #endif
 
   return builder;

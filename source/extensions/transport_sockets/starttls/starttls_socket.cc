@@ -17,7 +17,6 @@ bool StartTlsSocket::startSecureTransport() {
     // does buffering, it should be flushed before destroying or
     // flush should be called from destructor.
     active_socket_ = std::move(tls_socket_);
-
     callbacks_.connection().connectionInfoSetter().setSslConnection(active_socket_->ssl());
     using_tls_ = true;
   }

@@ -94,7 +94,9 @@ envoy_cc_library(
     name = "smtp_utils_lib",
     srcs = ["smtp_utils.cc"],
     hdrs = ["smtp_utils.h"],
-    deps = [],
+    deps = [
+        "@com_google_absl//absl/strings"
+    ],
 )
 
 envoy_cc_contrib_extension(

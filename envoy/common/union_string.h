@@ -59,14 +59,14 @@ public:
    * Default constructor. Sets up for inline storage.
    */
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wuninitialized"
-#endif
+// #if defined(__GNUC__)
+// #pragma GCC diagnostic push
+// #pragma GCC diagnostic ignored "-Wuninitialized"
+// #endif
   UnionStringBase() : buffer_(InlinedStringVector()) {
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
+// #if defined(__GNUC__)
+// #pragma GCC diagnostic pop
+// #endif
     ASSERT((getInVec(buffer_).capacity()) >= MaxIntegerLength);
     ASSERT(valid());
   }

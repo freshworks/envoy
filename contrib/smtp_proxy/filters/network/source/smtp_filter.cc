@@ -33,7 +33,7 @@ SmtpFilter::SmtpFilter(SmtpFilterConfigSharedPtr config, TimeSource& time_source
 
 void SmtpFilter::emitLogEntry(StreamInfo::StreamInfo& stream_info) {
   for (const auto& access_log : config_->accessLogs()) {
-    access_log->log(nullptr, nullptr, nullptr, stream_info);
+    access_log->log({}, stream_info);
   }
 }
 

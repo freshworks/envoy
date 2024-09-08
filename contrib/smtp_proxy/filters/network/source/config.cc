@@ -35,7 +35,7 @@ NetworkFilters::SmtpProxy::SmtpConfigFactory::createFilterFactoryFromProtoTyped(
   auto& server_context = context.serverFactoryContext();
 
   auto& time_source = server_context.mainThreadDispatcher().timeSource();
-  return [filter_config, &time_source, &context](Network::FilterManager& filter_manager) -> void {
+  return [filter_config, &time_source, &server_context](Network::FilterManager& filter_manager) -> void {
     filter_manager.addFilter(
         std::make_shared<SmtpFilter>(filter_config, time_source, server_context.api().randomGenerator()));
   };

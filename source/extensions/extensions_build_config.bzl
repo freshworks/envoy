@@ -31,12 +31,12 @@ EXTENSIONS = {
     # Compression
     #
 
-    # "envoy.compression.gzip.compressor":                "//source/extensions/compression/gzip/compressor:config",
-    # "envoy.compression.gzip.decompressor":              "//source/extensions/compression/gzip/decompressor:config",
-    # "envoy.compression.brotli.compressor":              "//source/extensions/compression/brotli/compressor:config",
-    # "envoy.compression.brotli.decompressor":            "//source/extensions/compression/brotli/decompressor:config",
-    # "envoy.compression.zstd.compressor":                "//source/extensions/compression/zstd/compressor:config",
-    # "envoy.compression.zstd.decompressor":              "//source/extensions/compression/zstd/decompressor:config",
+    "envoy.compression.gzip.compressor":                "//source/extensions/compression/gzip/compressor:config",
+    "envoy.compression.gzip.decompressor":              "//source/extensions/compression/gzip/decompressor:config",
+    "envoy.compression.brotli.compressor":              "//source/extensions/compression/brotli/compressor:config",
+    "envoy.compression.brotli.decompressor":            "//source/extensions/compression/brotli/decompressor:config",
+    "envoy.compression.zstd.compressor":                "//source/extensions/compression/zstd/compressor:config",
+    "envoy.compression.zstd.decompressor":              "//source/extensions/compression/zstd/decompressor:config",
 
     #
     # Config validators
@@ -48,14 +48,14 @@ EXTENSIONS = {
     # gRPC Credentials Plugins
     #
 
-    # "envoy.grpc_credentials.file_based_metadata":       "//source/extensions/grpc_credentials/file_based_metadata:config",
-    # "envoy.grpc_credentials.aws_iam":                   "//source/extensions/grpc_credentials/aws_iam:config",
+    "envoy.grpc_credentials.file_based_metadata":       "//source/extensions/grpc_credentials/file_based_metadata:config",
+    "envoy.grpc_credentials.aws_iam":                   "//source/extensions/grpc_credentials/aws_iam:config",
 
     #
     # WASM
     #
 
-    # "envoy.bootstrap.wasm":                             "//source/extensions/bootstrap/wasm:config",
+    "envoy.bootstrap.wasm":                             "//source/extensions/bootstrap/wasm:config",
 
     #
     # Health checkers
@@ -215,15 +215,15 @@ EXTENSIONS = {
     "envoy.filters.network.set_filter_state":                     "//source/extensions/filters/network/set_filter_state:config",
     "envoy.filters.network.sni_cluster":                          "//source/extensions/filters/network/sni_cluster:config",
     "envoy.filters.network.sni_dynamic_forward_proxy":            "//source/extensions/filters/network/sni_dynamic_forward_proxy:config",
-    # "envoy.filters.network.wasm":                                 "//source/extensions/filters/network/wasm:config",
+    "envoy.filters.network.wasm":                                 "//source/extensions/filters/network/wasm:config",
     # "envoy.filters.network.zookeeper_proxy":                      "//source/extensions/filters/network/zookeeper_proxy:config",
 
     #
     # UDP filters
     #
 
-    # "envoy.filters.udp.dns_filter":                     "//source/extensions/filters/udp/dns_filter:config",
-    # "envoy.filters.udp_listener.udp_proxy":             "//source/extensions/filters/udp/udp_proxy:config",
+    "envoy.filters.udp.dns_filter":                     "//source/extensions/filters/udp/dns_filter:config",
+    "envoy.filters.udp_listener.udp_proxy":             "//source/extensions/filters/udp/udp_proxy:config",
 
     #
     # UDP Session filters
@@ -265,12 +265,12 @@ EXTENSIONS = {
     # Tracers
     #
 
-    # "envoy.tracers.dynamic_ot":                         "//source/extensions/tracers/dynamic_ot:config",
-    # "envoy.tracers.datadog":                            "//source/extensions/tracers/datadog:config",
-    # "envoy.tracers.zipkin":                             "//source/extensions/tracers/zipkin:config",
-    # "envoy.tracers.opencensus":                         "//source/extensions/tracers/opencensus:config",
-    # "envoy.tracers.xray":                               "//source/extensions/tracers/xray:config",
-    # "envoy.tracers.skywalking":                         "//source/extensions/tracers/skywalking:config",
+    "envoy.tracers.dynamic_ot":                         "//source/extensions/tracers/dynamic_ot:config",
+    "envoy.tracers.datadog":                            "//source/extensions/tracers/datadog:config",
+    "envoy.tracers.zipkin":                             "//source/extensions/tracers/zipkin:config",
+    "envoy.tracers.opencensus":                         "//source/extensions/tracers/opencensus:config",
+    "envoy.tracers.xray":                               "//source/extensions/tracers/xray:config",
+    "envoy.tracers.skywalking":                         "//source/extensions/tracers/skywalking:config",
     "envoy.tracers.opentelemetry":                      "//source/extensions/tracers/opentelemetry:config",
 
     #
@@ -347,10 +347,10 @@ EXTENSIONS = {
     # WebAssembly runtimes
     #
 
-    # "envoy.wasm.runtime.null":                          "//source/extensions/wasm_runtime/null:config",
-    # "envoy.wasm.runtime.v8":                            "//source/extensions/wasm_runtime/v8:config",
-    # "envoy.wasm.runtime.wamr":                          "//source/extensions/wasm_runtime/wamr:config",
-    # "envoy.wasm.runtime.wasmtime":                      "//source/extensions/wasm_runtime/wasmtime:config",
+    "envoy.wasm.runtime.null":                          "//source/extensions/wasm_runtime/null:config",
+    "envoy.wasm.runtime.v8":                            "//source/extensions/wasm_runtime/v8:config",
+    "envoy.wasm.runtime.wamr":                          "//source/extensions/wasm_runtime/wamr:config",
+    "envoy.wasm.runtime.wasmtime":                      "//source/extensions/wasm_runtime/wasmtime:config",
 
     #
     # Rate limit descriptors
@@ -408,16 +408,16 @@ EXTENSIONS = {
     # QUIC extensions
     #
 
-    # "envoy.quic.deterministic_connection_id_generator": "//source/extensions/quic/connection_id_generator:envoy_deterministic_connection_id_generator_config",
-    # "envoy.quic.crypto_stream.server.quiche":           "//source/extensions/quic/crypto_stream:envoy_quic_default_crypto_server_stream",
-    # "envoy.quic.proof_source.filter_chain":             "//source/extensions/quic/proof_source:envoy_quic_default_proof_source",
-    # "envoy.quic.server_preferred_address.fixed":        "//source/extensions/quic/server_preferred_address:fixed_server_preferred_address_config_factory_config",
+    "envoy.quic.deterministic_connection_id_generator": "//source/extensions/quic/connection_id_generator:envoy_deterministic_connection_id_generator_config",
+    "envoy.quic.crypto_stream.server.quiche":           "//source/extensions/quic/crypto_stream:envoy_quic_default_crypto_server_stream",
+    "envoy.quic.proof_source.filter_chain":             "//source/extensions/quic/proof_source:envoy_quic_default_proof_source",
+    "envoy.quic.server_preferred_address.fixed":        "//source/extensions/quic/server_preferred_address:fixed_server_preferred_address_config_factory_config",
 
     #
     # UDP packet writers
     #
-    # "envoy.udp_packet_writer.default":                  "//source/extensions/udp_packet_writer/default:config",
-    # "envoy.udp_packet_writer.gso":                      "//source/extensions/udp_packet_writer/gso:config",
+    "envoy.udp_packet_writer.default":                  "//source/extensions/udp_packet_writer/default:config",
+    "envoy.udp_packet_writer.gso":                      "//source/extensions/udp_packet_writer/gso:config",
 
     #
     # Formatter

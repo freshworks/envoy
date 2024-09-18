@@ -4,18 +4,18 @@ CONTRIB_EXTENSIONS = {
     # Compression
     #
 
-    "envoy.compression.qatzip.compressor":                      "//contrib/qat/compression/qatzip/compressor/source:config",
-    "envoy.compression.qatzstd.compressor":                      "//contrib/qat/compression/qatzstd/compressor/source:config",
+    # "envoy.compression.qatzip.compressor":                      "//contrib/qat/compression/qatzip/compressor/source:config",
+    # "envoy.compression.qatzstd.compressor":                      "//contrib/qat/compression/qatzstd/compressor/source:config",
 
     #
     # HTTP filters
     #
-    "envoy.filters.http.checksum":                              "//contrib/checksum/filters/http/source:config",
-    "envoy.filters.http.dynamo":                                "//contrib/dynamo/filters/http/source:config",
-    "envoy.filters.http.golang":                                "//contrib/golang/filters/http/source:config",
-    "envoy.filters.http.language":                              "//contrib/language/filters/http/source:config_lib",
-    "envoy.filters.http.squash":                                "//contrib/squash/filters/http/source:config",
-    "envoy.filters.http.sxg":                                   "//contrib/sxg/filters/http/source:config",
+    # "envoy.filters.http.checksum":                              "//contrib/checksum/filters/http/source:config",
+    # "envoy.filters.http.dynamo":                                "//contrib/dynamo/filters/http/source:config",
+    # "envoy.filters.http.golang":                                "//contrib/golang/filters/http/source:config",
+    # "envoy.filters.http.language":                              "//contrib/language/filters/http/source:config_lib",
+    # "envoy.filters.http.squash":                                "//contrib/squash/filters/http/source:config",
+    # "envoy.filters.http.sxg":                                   "//contrib/sxg/filters/http/source:config",
 
     #
     # Network filters
@@ -87,5 +87,5 @@ CONTRIB_EXTENSIONS = {
     # cluster specifier plugin
     #
 
-    "envoy.router.cluster_specifier_plugin.golang":             "//contrib/golang/router/cluster_specifier/source:config",
+    # "envoy.router.cluster_specifier_plugin.golang":             "//contrib/golang/router/cluster_specifier/source:config",
 }

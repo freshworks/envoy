@@ -49,13 +49,13 @@ CONTRIB_EXTENSIONS = {
     # Socket interface extensions
     #
 
-    "envoy.bootstrap.vcl":                                      "//contrib/vcl/source:config",
+    # "envoy.bootstrap.vcl":                                      "//contrib/vcl/source:config",
 
     #
     # Input matchers
     #
 
-    "envoy.matching.input_matchers.hyperscan":                  "//contrib/hyperscan/matching/input_matchers/source:config",
+    # "envoy.matching.input_matchers.hyperscan":                  "//contrib/hyperscan/matching/input_matchers/source:config",
 
     #
     # Connection Balance extensions
@@ -67,7 +67,7 @@ CONTRIB_EXTENSIONS = {
     # Regex engines
     #
 
-    "envoy.regex_engines.hyperscan":                            "//contrib/hyperscan/regex_engines/source:config",
+    # "envoy.regex_engines.hyperscan":                            "//contrib/hyperscan/regex_engines/source:config",
 
     #
     # Extensions for generic proxy

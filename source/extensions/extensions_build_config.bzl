@@ -347,10 +347,10 @@ EXTENSIONS = {
     # WebAssembly runtimes
     #
 
-    "envoy.wasm.runtime.null":                          "//source/extensions/wasm_runtime/null:config",
-    "envoy.wasm.runtime.v8":                            "//source/extensions/wasm_runtime/v8:config",
-    "envoy.wasm.runtime.wamr":                          "//source/extensions/wasm_runtime/wamr:config",
-    "envoy.wasm.runtime.wasmtime":                      "//source/extensions/wasm_runtime/wasmtime:config",
+    # "envoy.wasm.runtime.null":                          "//source/extensions/wasm_runtime/null:config",
+    # "envoy.wasm.runtime.v8":                            "//source/extensions/wasm_runtime/v8:config",
+    # "envoy.wasm.runtime.wamr":                          "//source/extensions/wasm_runtime/wamr:config",
+    # "envoy.wasm.runtime.wasmtime":                      "//source/extensions/wasm_runtime/wasmtime:config",
 
     #
     # Rate limit descriptors

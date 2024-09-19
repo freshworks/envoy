@@ -220,6 +220,9 @@ TagNameValues::TagNameValues() {
 
   // proxy_proto.(versions.v<version_number>.)**
   addRe2(PROXY_PROTOCOL_VERSION, R"(^proxy_proto\.(versions\.v(\d)\.)\w+)", "proxy_proto.versions");
+
+  // smtp.(<stat_prefix>.)*
+  addTokenized(SMTP_PREFIX, "smtp.$.**");
 }
 
 void TagNameValues::addRe2(const std::string& name, const std::string& regex,

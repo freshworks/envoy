@@ -4,14 +4,15 @@ package envoy.extensions.filters.network.smtp_proxy.v3alpha;
 
 import "envoy/config/accesslog/v3/accesslog.proto";
 
+import "udpa/annotations/status.proto";
 import "validate/validate.proto";
 
 option java_package = "io.envoyproxy.envoy.extensions.filters.network.smtp_proxy.v3alpha";
 option java_outer_classname = "SmtpProxyProto";
 option java_multiple_files = true;
 option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/smtp_proxy/v3alpha";
-// option (udpa.annotations.file_status).work_in_progress = true;
-// option (udpa.annotations.file_status).package_version_status = ACTIVE;
+option (udpa.annotations.file_status).work_in_progress = true;
+option (udpa.annotations.file_status).package_version_status = ACTIVE;
 
 // [#protodoc-title: SMTP Proxy]
 // SMTP Proxy :ref:`configuration overview

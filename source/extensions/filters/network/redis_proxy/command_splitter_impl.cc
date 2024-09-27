@@ -206,6 +206,11 @@ SingleServerRequest::~SingleServerRequest() { ASSERT(!handle_); }
 void SingleServerRequest::onResponse(Common::Redis::RespValuePtr&& response) {
   handle_ = nullptr;
   updateStats(true);
+  if (callbacks_.transaction().isTransactionMode() && callbacks_.transaction().shouldSendDiscardError() && callbacks_.transaction().should_close_) {
+    response.reset();
+    callbacks_.onResponse(Common::Redis::Utility::makeError("EXECABORT Transaction discarded because of previous errors"));
+    return;
+  }
   callbacks_.onResponse(std::move(response));
 }
 
@@ -984,8 +989,8 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   if (transaction.active_) {
     if (transaction.isSubscribedMode()) {
         if (!Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
-            callbacks.onResponse(
-                Common::Redis::Utility::makeError("Not supported command in subscribe state"));
+            callbacks.onResponse(Common::Redis::Utility::makeError("Not supported command in subscribe state"));
+            return nullptr;
         } else if (command_name == "quit") {
             transaction.should_close_ = true;
             transaction.subscribed_client_shard_index_ = -1;
@@ -1646,6 +1651,8 @@ SplitRequestPtr TransactionRequest::create(Router& router,
     callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("'{}' command is not supported within transaction",
                     incoming_request->asArray()[0].asString())));
+    transaction.setDiscardTransaction();
+    ENVOY_LOG(debug, "Transaction command not supported: '{}', Setting Discard flag", incoming_request->asArray()[0].asString());
     return nullptr;
   }
 
@@ -1674,15 +1681,28 @@ SplitRequestPtr TransactionRequest::create(Router& router,
     // Handle the case where the transaction is empty.
     if (transaction.key_.empty()) {
       if (command_name == "exec") {
-        Common::Redis::RespValuePtr empty_array{new Common::Redis::Client::EmptyArray{}};
-        callbacks.onResponse(std::move(empty_array));
+        if (transaction.isDiscardTransaction()){
+          callbacks.onResponse(Common::Redis::Utility::makeError("EXECABORT Transaction discarded because of previous errors"));
+        }else{
+          Common::Redis::RespValuePtr empty_array{new Common::Redis::Client::EmptyArray{}};
+          callbacks.onResponse(std::move(empty_array));
+        }
       } else {
         localResponse(callbacks, "OK");
       }
       transaction.close();
       return nullptr;
     }
+  //If Disard transaction flag is set, we will send discard in the place of exec
+  if (transaction.isDiscardTransaction() && command_name == "exec"){
+    auto new_request = std::make_unique<Common::Redis::RespValue>();
+    new_request->type(Common::Redis::RespType::Array);
+    addBulkString(*new_request, "DISCARD");
+    incoming_request = std::move(new_request);
+    ENVOY_LOG(debug, "Transaction command is set to discard, changing exec to discard");
+    transaction.setSendDiscardError();
 
+  }
     // In all other cases we will close the transaction connection after sending the last command.
     transaction.should_close_ = true;
   }
@@ -2002,12 +2022,24 @@ void InstanceImpl::addHandler(Stats::Scope& scope, const std::string& stat_prefi
 }
 
 InstanceImpl::HandlerDataPtr InstanceImpl::getHandlerForStreamsCommand(const std::string& command_name, const Common::Redis::RespValuePtr& request) {
-  // Check if the command is a stream blocking command.
+    // Check if the command is a stream blocking command.
   if (Common::Redis::SupportedCommands::streamBlockingCommands().contains(command_name)) {
-    // Check for "block" keyword in the appropriate positions of the request array.
-    if ((request->asArray().size() > 1 && absl::AsciiStrToLower(request->asArray()[1].asString()) == "block") ||
-        (request->asArray().size() > 3 && absl::AsciiStrToLower(request->asArray()[3].asString()) == "block")) {
-      return handler_lookup_table_.find("xread_blocking_command");
+    const auto& args = request->asArray();
+    size_t streams_pos = args.size();
+
+    // Find STREAMS keyword
+    for (size_t i = 1; i < args.size(); ++i) {
+      if (absl::AsciiStrToLower(args[i].asString()) == "streams") {
+        streams_pos = i;
+        break;
+      }
+    }
+
+    // Check for BLOCK keyword before STREAMS
+    for (size_t i = 1; i < streams_pos; ++i) {
+      if (absl::AsciiStrToLower(args[i].asString()) == "block") {
+        return handler_lookup_table_.find("xread_blocking_command");
+      }
     }
   }
 

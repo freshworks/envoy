@@ -280,11 +280,19 @@ struct Transaction {
 
   void setBlockingCommand() {is_blocking_command_ = true;}
 
+  void setDiscardTransaction() { discard_ = true; }
+
+  void setSendDiscardError() { send_discard_error_ = true; }
+
   bool isTransactionMode() { return is_transaction_mode_; }
 
   bool isSubscribedMode() { return is_subscribed_mode_; }
 
   bool isBlockingCommand() { return is_blocking_command_; }
+
+  bool isDiscardTransaction() { return discard_; }
+
+  bool shouldSendDiscardError() { return send_discard_error_; }
 
 
   void close() {
@@ -292,6 +300,8 @@ struct Transaction {
     is_transaction_mode_ = false;
     is_subscribed_mode_ = false;
     is_blocking_command_ = false;
+    discard_ = false;
+    send_discard_error_ = false;
     key_.clear();
     if (connection_established_) {
       for (auto& client : clients_) {
@@ -320,6 +330,8 @@ struct Transaction {
   }
 
   bool active_{false};
+  bool discard_{false};
+  bool send_discard_error_{false};
   bool connection_established_{false};
   bool should_close_{false};
   bool is_blocking_command_{false};

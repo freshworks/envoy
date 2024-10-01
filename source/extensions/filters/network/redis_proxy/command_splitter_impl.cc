@@ -1636,6 +1636,30 @@ void SplitKeysSumResultRequest::onChildResponse(Common::Redis::RespValuePtr&& va
   }
 }
 
+int32_t TransactionRequest::getShardingKeyIndex(const std::string command_name, const Common::Redis::RespValue& request) {
+    if (command_name == "xread" || command_name == "xreadgroup") {
+        int32_t count = request.asArray().size();
+        for (int32_t index = 0; index < count; ++index) {
+            if (absl::AsciiStrToLower(request.asArray()[index].asString()) == "streams") {
+                if (index + 1 < count) {
+                    return index + 1;  // Return the index of the key after "streams"
+                } else {
+                    return -1;  // "streams" is the last element
+                }
+            }
+        }
+        return -1;  // "streams" not found
+    } else if (command_name == "xgroup" || command_name == "xinfo") {
+        if (request.asArray().size() > 2) {
+            return 2;  // Return index 2 if there are more than 2 elements
+        } else {
+            return -1;  // Not enough elements
+        }
+    } else {
+        return 1;  // Default case for other commands
+    }
+}
+
 SplitRequestPtr TransactionRequest::create(Router& router,
                                            Common::Redis::RespValuePtr&& incoming_request,
                                            SplitCallbacks& callbacks, CommandStats& command_stats,
@@ -1714,7 +1738,14 @@ SplitRequestPtr TransactionRequest::create(Router& router,
 
   RouteSharedPtr route;
   if (transaction.key_.empty()) {
-    transaction.key_ = incoming_request->asArray()[1].asString();
+    int32_t shardKeyIndex = getShardingKeyIndex(command_name,*incoming_request);
+    if (shardKeyIndex < 0) {
+      ENVOY_LOG(error, "unexpected command : '{}'", incoming_request->toString());
+      callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("unexpected command format")));
+      transaction.setDiscardTransaction();
+      return nullptr;
+    }
+    transaction.key_ = incoming_request->asArray()[shardKeyIndex].asString();
     route = router.upstreamPool(transaction.key_, stream_info);
     Common::Redis::RespValueSharedPtr multi_request =
         std::make_shared<Common::Redis::Client::MultiRequest>();

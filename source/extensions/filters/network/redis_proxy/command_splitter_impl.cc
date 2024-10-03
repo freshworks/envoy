@@ -1636,7 +1636,7 @@ void SplitKeysSumResultRequest::onChildResponse(Common::Redis::RespValuePtr&& va
   }
 }
 
-int32_t TransactionRequest::getShardingKeyIndex(const std::string command_name, const Common::Redis::RespValue& request) {
+int32_t TransactionRequest::getShardingKeyIndex(const std::string& command_name, const Common::Redis::RespValue& request) {
     if (command_name == "xread" || command_name == "xreadgroup") {
         int32_t count = request.asArray().size();
         for (int32_t index = 0; index < count; ++index) {
@@ -1655,7 +1655,13 @@ int32_t TransactionRequest::getShardingKeyIndex(const std::string command_name, 
         } else {
             return -1;  // Not enough elements
         }
-    } else {
+    } else if(Common::Redis::SupportedCommands::evalCommands().contains(command_name)) {
+      if (!(request.asArray().size() < 4)) {
+        return 3;  // Return index 3 for eval commands
+      } else {
+        return -1;  // Not enough arguments to process in transaction
+      }
+    }else {
         return 1;  // Default case for other commands
     }
 }

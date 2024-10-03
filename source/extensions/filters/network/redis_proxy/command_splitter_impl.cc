@@ -935,6 +935,13 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   std::string key = std::string();
   int32_t redisShardsCount=0;
 
+  if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name) && incoming_request->asArray().size() < 2) {
+    ENVOY_LOG(debug, "Invalid request: '{}'", incoming_request->toString());
+    callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
+    return nullptr;
+  }
+  
+
   bool singleShardRequest = false;
   bool allShardsRequest = false;
   bool allShardwithSingleShardRequest = false;
@@ -1923,7 +1930,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   }
 
   if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
-  && (Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0)
+  && ((Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) && callbacks.transaction().active_ && callbacks.transaction().isSubscribedMode())
   && (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0)) {
     // Commands other than PING, TIME and transaction commands all have at least two arguments.
     ENVOY_LOG(error,"invalid request - not enough arguments for command: '{}'", command_name);
@@ -1973,6 +1980,9 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     }else if(Common::Redis::SupportedCommands::streamCommands().contains(command_name)){
       //Stream commands are not listed directly under any handler , we need to check if it is a blocking or simple command and choose appropriate handler
       handler=getHandlerForStreamsCommand(command_name,request);
+
+    }else if (callbacks.transaction().active_ && callbacks.transaction().isSubscribedMode() && Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
+      handler = handler_lookup_table_.find("subscribe");
 
     }else{
       stats_.unsupported_command_.inc();

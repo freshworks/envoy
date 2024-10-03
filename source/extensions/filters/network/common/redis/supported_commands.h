@@ -78,7 +78,7 @@ struct SupportedCommands {
    * @return commands allowed when a client is in subscribed state.
    */
   static const absl::flat_hash_set<std::string>& subcrStateallowedCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe","quit", "ping","reset");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe","quit", "ping");
   }
 
   /**

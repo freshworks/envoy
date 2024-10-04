@@ -1929,13 +1929,25 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     return nullptr;
   }
 
-  if (request->asArray().size() < 2 &&(Common::Redis::SupportedCommands::transactionCommands().count(command_name) == 0)
-  && ((Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) == 0) && callbacks.transaction().active_ && callbacks.transaction().isSubscribedMode())
-  && (Common::Redis::SupportedCommands::noArgCommands().count(command_name) == 0)) {
-    // Commands other than PING, TIME and transaction commands all have at least two arguments.
-    ENVOY_LOG(error,"invalid request - not enough arguments for command: '{}'", command_name);
-    onInvalidRequest(callbacks);
-    return nullptr;
+  if (request->asArray().size() < 2) {
+    if (Common::Redis::SupportedCommands::transactionCommands().count(command_name) > 0){
+
+        ENVOY_LOG(debug,"as this is a Transaction command lesser arguments are allowed, further argument count check would be done in transaction handler: '{}'", command_name);
+
+      } else if((Common::Redis::SupportedCommands::subcrStateallowedCommands().count(command_name) > 0) && callbacks.transaction().active_ && callbacks.transaction().isSubscribedMode()){
+
+        ENVOY_LOG(debug,"as we are in subscribed state we allow commands with less arguments, further argument count check would be done in pubsub handler: '{}'", command_name);
+
+      }else if (Common::Redis::SupportedCommands::noArgCommands().count(command_name) > 0) {
+
+        ENVOY_LOG(debug,"as it is no argument command lesser arguments allowed for: '{}'", command_name);
+
+      } else {
+      // Commands other than PING, TIME and transaction commands all have at least two arguments.
+      ENVOY_LOG(error,"invalid request - not enough arguments for command: '{}'", command_name);
+      onInvalidRequest(callbacks);
+      return nullptr;
+    }
   }
 
   // Handle CLIENT command locally

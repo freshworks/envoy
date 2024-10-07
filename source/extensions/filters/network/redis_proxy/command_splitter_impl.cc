@@ -1311,7 +1311,13 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
   if (cursor.length() > 4) {
     std::string index = cursor.substr(cursor.length() - 4);
     cursor = cursor.substr(0, cursor.length() - 4);
-    shard_idx = std::stoi(index);
+    try {
+      shard_idx = std::stoi(index);
+    } catch (const std::invalid_argument& e) {
+      ENVOY_LOG(error, "Invalid shard index: '{}'", e.what());
+      callbacks_.onResponse(Common::Redis::Utility::makeError(
+                            fmt::format("unexpected or wrong shard index from cursor")));
+    }
   }
 
   // Completely reconstructing the request to add/modify count since we can't override the incoming array directly

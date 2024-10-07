@@ -1315,8 +1315,9 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
       shard_idx = std::stoi(index);
     } catch (const std::invalid_argument& e) {
       ENVOY_LOG(error, "Invalid shard index: '{}'", e.what());
-      callbacks_.onResponse(Common::Redis::Utility::makeError(
-                            fmt::format("unexpected or wrong shard index from cursor")));
+      callbacks.onResponse(Common::Redis::Utility::makeError(
+                            fmt::format("ERR invalid cursor")));
+      return nullptr;
     }
   }
 

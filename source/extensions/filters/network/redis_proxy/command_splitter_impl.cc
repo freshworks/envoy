@@ -1842,19 +1842,19 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
                                           const StreamInfo::StreamInfo& stream_info) {
   // Validate request type and contents.
   if ((request->type() != Common::Redis::RespType::Array) || request->asArray().empty()) {
-    ENVOY_LOG(error,"invalid request - not an array or empty");
+    ENVOY_LOG(error,"invalid request - not an array or empty,sent from remote client ip '{}'",stream_info.downstreamAddressProvider().remoteAddress()->asString());
     onInvalidRequest(callbacks);
     return nullptr;
   }
 
   for (const Common::Redis::RespValue& value : request->asArray()) {
     if (value.type() != Common::Redis::RespType::BulkString) {
-      ENVOY_LOG(error,"invalid request - not an array of bulk strings");
+      ENVOY_LOG(error,"invalid request - not an array of bulk strings,sent from remote client ip '{}' ",stream_info.downstreamAddressProvider().remoteAddress()->asString());
       onInvalidRequest(callbacks);
       return nullptr;
     }
   }
-  ENVOY_LOG(info, "command to process '{}'", request->toString());
+  ENVOY_LOG(info, "command to process '{}'- sent from remote client ip '{}'", request->toString(),stream_info.downstreamAddressProvider().remoteAddress()->asString());
   // Extract command name
   std::string command_name = absl::AsciiStrToLower(request->asArray()[0].asString());
 
@@ -1867,7 +1867,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
   // Handle AUTH command
   if (command_name == Common::Redis::SupportedCommands::auth()) {
     if (request->asArray().size() < 2) {
-      ENVOY_LOG(error,"invalid request - not enough arguments for auth command");
+      ENVOY_LOG(error,"invalid request - not enough arguments for auth command  - sent from remote client ip '{}'",stream_info.downstreamAddressProvider().remoteAddress()->asString());
       onInvalidRequest(callbacks);
       return nullptr;
     }
@@ -1944,7 +1944,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
       } else {
       // Commands other than PING, TIME and transaction commands all have at least two arguments.
-      ENVOY_LOG(error,"invalid request - not enough arguments for command: '{}'", command_name);
+      ENVOY_LOG(error,"invalid request - not enough arguments for command: '{}' - sent from remote client ip '{}'", command_name,stream_info.downstreamAddressProvider().remoteAddress()->asString());
       onInvalidRequest(callbacks);
       return nullptr;
     }
@@ -1955,7 +1955,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
     std::string sub_command = absl::AsciiStrToLower(request->asArray()[1].asString());
     if (Common::Redis::SupportedCommands::clientSubCommands().count(sub_command) == 0) {
       stats_.unsupported_command_.inc();
-      ENVOY_LOG(error, "unsupported command '{}' '{}'",command_name, sub_command);
+      ENVOY_LOG(error, "unsupported command '{}' '{}'- sent from remote client ip '{}'",command_name, sub_command,stream_info.downstreamAddressProvider().remoteAddress()->asString());
       callbacks.onResponse(Common::Redis::Utility::makeError(
           fmt::format("unsupported command '{}' '{}'",command_name, sub_command)));
       return nullptr;
@@ -1998,7 +1998,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
 
     }else{
       stats_.unsupported_command_.inc();
-      ENVOY_LOG(error, "unsupported command '{}'", request->asArray()[0].asString());
+      ENVOY_LOG(error, "unsupported command '{}', sent from remote client ip '{}'", request->asArray()[0].asString(), stream_info.downstreamAddressProvider().remoteAddress()->asString());
       callbacks.onResponse(Common::Redis::Utility::makeError(
         fmt::format("unsupported command '{}'", request->asArray()[0].asString())));
       return nullptr;

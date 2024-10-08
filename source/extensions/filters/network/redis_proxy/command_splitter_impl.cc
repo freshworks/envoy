@@ -1265,6 +1265,30 @@ bool requiresValue(const std::string& arg) {
     return (arg == "count" || arg == "match" || arg == "type");
 }
 
+bool validateCursor(const std::string& cursor) {
+  // Cursor should be a valid integer
+  try {
+    std::stoi(cursor);
+    return true;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+bool validateArgument(const std::string& arg, const std::string& value) {
+  if (arg == "count") {
+    try {
+      int count = std::stoi(value);
+      return count > 0;
+    } catch (const std::exception&) {
+      return false;
+    }
+  } else if (arg == "match" || arg == "type") {
+    return !value.empty();
+  }
+  return false;
+}
+
 void ScanRequest::onChildError(Common::Redis::RespValuePtr&& value) {
   // Setting null pointer to all pending requests
   for (auto& request : pending_requests_) {
@@ -1288,8 +1312,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   // SCAN looks like: SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
   // Ensure there are at least two args to the command or it cannot be scanned.
-  // Also the number of arguments should be in even number, otherwise command is invalid
-  if (incoming_request->asArray().size() < 2 || incoming_request->asArray().size() % 2 != 0) {
+  if (incoming_request->asArray().size() < 2) {
     onWrongNumberOfArguments(callbacks, *incoming_request);
     command_stats.error_.inc();
     return nullptr;
@@ -1302,26 +1325,14 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
   Common::Redis::RespValue requestArray;
   requestArray.type(Common::Redis::RespType::Array);
 
-  // Getting the right cursor before sending request
-  // We are appending 4 digit custom value as shard index to the cursor returned from the previous scan request
-  // If it is a first request, the received cursor will be sent directly without any preprocessing
-  // Ex: If cursor length is more than 4 -> last four digits will be considered as index and the remaining will be taken as cursor
-  // If cursor length is less than or equal to 4 -> all digits will be considered as cursor
+  // Validate and process the cursor
   std::string cursor = incoming_request->asArray()[1].asString();
-  if (cursor.length() > 4) {
-    std::string index = cursor.substr(cursor.length() - 4);
-    cursor = cursor.substr(0, cursor.length() - 4);
-    try {
-      shard_idx = std::stoi(index);
-    } catch (const std::invalid_argument& e) {
-      ENVOY_LOG(error, "Invalid shard index: '{}'", e.what());
-      callbacks.onResponse(Common::Redis::Utility::makeError(
-                            fmt::format("ERR invalid cursor")));
-      return nullptr;
-    }
+  if (!validateCursor(cursor)) {
+    callbacks.onResponse(Common::Redis::Utility::makeError("ERR invalid cursor"));
+    command_stats.error_.inc();
+    return nullptr;
   }
 
-  // Completely reconstructing the request to add/modify count since we can't override the incoming array directly
   // Add the command and cursor to the request array
   addBulkString(requestArray, "SCAN");
   addBulkString(requestArray, cursor);
@@ -1329,64 +1340,58 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
   std::unique_ptr<ScanRequest> request_ptr{
       new ScanRequest(callbacks, command_stats, time_source, delay_command_latency)};
 
-  // TODO : This value should be configurable through protobuf
   // Setting default count value to 1000
   request_ptr->resp_obj_count_ = "1000";
 
-  // Iterate over the arguments modify count if necessary
+  // Iterate over the arguments and validate
   for (size_t i = 2; i < incoming_request->asArray().size(); i++) {
-    std::string arg = incoming_request->asArray()[i].asString();
-    addBulkString(requestArray, arg);
+    if (i + 1 >= incoming_request->asArray().size()) {
+      callbacks.onResponse(Common::Redis::Utility::makeError("ERR syntax error"));
+      command_stats.error_.inc();
+      return nullptr;
+    }
 
-    // Check if the argument requires a value
-    if (requiresValue(arg)) {
-      if (i + 1 < incoming_request->asArray().size()) {
-        std::string value = incoming_request->asArray()[++i].asString();
-        if (arg == "count") {
-          if (std::stoi(value) < 1000) {
-            addBulkString(requestArray, value);
-            request_ptr->resp_obj_count_ = value;
-          } else {
-            // Override with default value only when the count value is greater than 1000
-            addBulkString(requestArray, request_ptr->resp_obj_count_);
-          }
-        } else {
-          addBulkString(requestArray, value);
-        }
-      } else {
-        // Handle the case where a value is expected but not provided
-        ENVOY_LOG(error, "Missing value for argument: {}", arg);
-        callbacks.onResponse(Common::Redis::Utility::makeError(
-            fmt::format("ERR syntax error")));
+    std::string arg = incoming_request->asArray()[i].asString();
+    std::string value = incoming_request->asArray()[++i].asString();
+
+    if (!validateArgument(arg, value)) {
+      callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("ERR invalid argument '{}' for 'SCAN' command", arg)));
+      command_stats.error_.inc();
+      return nullptr;
+    }
+
+    addBulkString(requestArray, arg);
+    
+    if (arg == "count") {
+      int count;
+      try {
+        count = std::stoi(value);
+        if (count <= 0) throw std::out_of_range("Count must be positive");
+      } catch (const std::exception&) {
+        callbacks.onResponse(Common::Redis::Utility::makeError("ERR value is not an integer or out of range"));
+        command_stats.error_.inc();
         return nullptr;
       }
+      
+      if (count < 1000) {
+        addBulkString(requestArray, value);
+        request_ptr->resp_obj_count_ = value;
+      } else {
+        addBulkString(requestArray, request_ptr->resp_obj_count_);
+      }
+    } else {
+      addBulkString(requestArray, value);
     }
   }
 
   // If the "count" argument is not found, add it with the default value
-  bool hasCount = false;
-  for (const auto& element : requestArray.asArray()) {
-    if (element.type() == Common::Redis::RespType::BulkString && element.asString() == "count") {
-      hasCount = true;
-      break;
-    }
-  }
-  if (!hasCount) {
+  if (std::find_if(requestArray.asArray().begin(), requestArray.asArray().end(), 
+                   [](const Common::Redis::RespValue& v) { return v.asString() == "count"; }) 
+      == requestArray.asArray().end()) {
     addBulkString(requestArray, "count");
     addBulkString(requestArray, request_ptr->resp_obj_count_);
   }
-
-  // Un comment this to log the constructed request array
-  // std::string request_str;
-  // for (const auto& element : requestArray.asArray()) {
-  //   if (element.type() == Common::Redis::RespType::BulkString) {
-  //     request_str += element.asString() + " ";
-  //   }
-  // }
-
-  // // Log the constructed request array
-  // ENVOY_LOG(debug, "Constructed SCAN request: {}", request_str);
-
+  
   // caching the request and route for making child request from response
   request_ptr->request_ = requestArray;
   request_ptr->route_ = router.upstreamPool(key, stream_info);

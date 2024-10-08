@@ -1321,6 +1321,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     }
   }
 
+  // Completely reconstructing the request to add/modify count since we can't override the incoming array directly
   // Add the command and cursor to the request array
   addBulkString(requestArray, "SCAN");
   addBulkString(requestArray, cursor);

@@ -1312,7 +1312,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   // SCAN looks like: SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
   // Ensure there are at least two args to the command or it cannot be scanned.
-  if (incoming_request->asArray().size() < 2) {
+  if (incoming_request->asArray().size() < 2 || incoming_request->asArray().size() % 2 != 0) {
     onWrongNumberOfArguments(callbacks, *incoming_request);
     command_stats.error_.inc();
     return nullptr;
@@ -1327,12 +1327,22 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   // Validate and process the cursor
   std::string cursor = incoming_request->asArray()[1].asString();
-  if (!validateCursor(cursor)) {
-    callbacks.onResponse(Common::Redis::Utility::makeError("ERR invalid cursor"));
-    command_stats.error_.inc();
-    return nullptr;
-  }
 
+  try {
+    int64_t cursor_value = std::stoll(cursor);
+    if (cursor_value < 0) {
+        throw std::out_of_range("Negative cursor");
+    }
+    
+    if (cursor.length() > 4) {
+        shard_idx = std::stoi(cursor.substr(cursor.length() - 4));
+        cursor = cursor.substr(0, cursor.length() - 4);
+    }
+  } catch (const std::exception&) {
+      callbacks.onResponse(Common::Redis::Utility::makeError("ERR invalid cursor"));
+      command_stats.error_.inc();
+      return nullptr;
+  }
   // Add the command and cursor to the request array
   addBulkString(requestArray, "SCAN");
   addBulkString(requestArray, cursor);
@@ -1345,12 +1355,6 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   // Iterate over the arguments and validate
   for (size_t i = 2; i < incoming_request->asArray().size(); i++) {
-    if (i + 1 >= incoming_request->asArray().size()) {
-      callbacks.onResponse(Common::Redis::Utility::makeError("ERR syntax error"));
-      command_stats.error_.inc();
-      return nullptr;
-    }
-
     std::string arg = incoming_request->asArray()[i].asString();
     std::string value = incoming_request->asArray()[++i].asString();
 
@@ -1363,16 +1367,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     addBulkString(requestArray, arg);
     
     if (arg == "count") {
-      int count;
-      try {
-        count = std::stoi(value);
-        if (count <= 0) throw std::out_of_range("Count must be positive");
-      } catch (const std::exception&) {
-        callbacks.onResponse(Common::Redis::Utility::makeError("ERR value is not an integer or out of range"));
-        command_stats.error_.inc();
-        return nullptr;
-      }
-      
+      int count = std::stoi(value);
       if (count < 1000) {
         addBulkString(requestArray, value);
         request_ptr->resp_obj_count_ = value;

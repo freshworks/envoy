@@ -20,7 +20,7 @@ struct SupportedCommands {
    */
   static const absl::flat_hash_set<std::string>& simpleCommands() {
     CONSTRUCT_ON_FIRST_USE(
-        absl::flat_hash_set<std::string>, "append", "bitcount", "bitfield", "bitpos", "decr",
+        absl::flat_hash_set<std::string>, "append", "bitcount", "bitfield", "bitpos", "copy", "decr",
         "decrby", "dump", "expire", "expireat", "geoadd", "geodist", "geohash", "geopos",
         "georadius_ro", "georadiusbymember_ro", "get", "getbit", "getdel", "getrange", "getset",
         "hdel", "hexists", "hget", "hgetall", "hincrby", "hincrbyfloat", "hkeys", "hlen", "hmget",
@@ -64,7 +64,7 @@ struct SupportedCommands {
    * @return commands which handle Redis transactions allowed non simple commands.
    */
   static const absl::flat_hash_set<std::string>& transactionAllowedNonSimpleCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "del", "exists", "touch", "unlink", "xack", "xadd", "xautoclaim", "xclaim", "xdel", "xgroup", "xinfo", "xlen", "xpending", "xrange", "xrevrange","xtrim");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "del", "exists", "touch", "unlink", "xack", "xadd", "xautoclaim", "xclaim", "xdel", "xgroup", "xinfo", "xlen", "xpending", "xrange", "xrevrange","xtrim","eval", "evalsha","xread","xreadgroup","blpop", "brpop", "brpoplpush", "bzpopmax", "bzpopmin","blmove","mset","mget");
   }
 
    /**
@@ -78,7 +78,7 @@ struct SupportedCommands {
    * @return commands allowed when a client is in subscribed state.
    */
   static const absl::flat_hash_set<std::string>& subcrStateallowedCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe","quit", "ping","reset");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "subscribe", "psubscribe", "unsubscribe", "punsubscribe","quit", "ping");
   }
 
   /**
@@ -113,7 +113,7 @@ struct SupportedCommands {
   * @return client sub commands thats supported 
   */
   static const absl::flat_hash_set<std::string>& clientSubCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "getname", "list","setname");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "getname","setname");
   }
 
     /**

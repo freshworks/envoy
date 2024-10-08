@@ -1321,7 +1321,6 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     }
   }
 
-  // Completely reconstructing the request to add/modify count since we can't override the incoming array directly
   // Add the command and cursor to the request array
   addBulkString(requestArray, "SCAN");
   addBulkString(requestArray, cursor);
@@ -1334,36 +1333,57 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
   request_ptr->resp_obj_count_ = "1000";
 
   // Iterate over the arguments modify count if necessary
-  // We are setting 1000 as the default count value if the incoming request has more than that
-  for (size_t i = 2; i < incoming_request->asArray().size(); ++i) {
-      std::string arg = incoming_request->asArray()[i].asString();
-      addBulkString(requestArray, arg);
+  for (size_t i = 2; i < incoming_request->asArray().size(); i++) {
+    std::string arg = incoming_request->asArray()[i].asString();
+    addBulkString(requestArray, arg);
 
-      // Check if the argument requires a value
-      if (requiresValue(arg)) {
-          if (arg == "count") {
-            std::string count = incoming_request->asArray()[++i].asString();
-            if (std::stoi(count) < 1000) {
-              addBulkString(requestArray, count);
-              request_ptr->resp_obj_count_ = count;
-            } else {
-               // Override with default value only when the count value is greater than 1000
-              addBulkString(requestArray, request_ptr->resp_obj_count_);
-            }
-            ++i;
-          } else {
-            // If the current argument requires a value, add it to the request array
-            std::string value = incoming_request->asArray()[++i].asString();
+    // Check if the argument requires a value
+    if (requiresValue(arg)) {
+      if (i + 1 < incoming_request->asArray().size()) {
+        std::string value = incoming_request->asArray()[++i].asString();
+        if (arg == "count") {
+          if (std::stoi(value) < 1000) {
             addBulkString(requestArray, value);
+            request_ptr->resp_obj_count_ = value;
+          } else {
+            // Override with default value only when the count value is greater than 1000
+            addBulkString(requestArray, request_ptr->resp_obj_count_);
           }
+        } else {
+          addBulkString(requestArray, value);
+        }
+      } else {
+        // Handle the case where a value is expected but not provided
+        ENVOY_LOG(error, "Missing value for argument: {}", arg);
+        callbacks.onResponse(Common::Redis::Utility::makeError(
+            fmt::format("ERR syntax error")));
+        return nullptr;
       }
+    }
   }
 
   // If the "count" argument is not found, add it with the default value
-  if (incoming_request->asArray().size() == 2) {
-      addBulkString(requestArray, "count");
-      addBulkString(requestArray, request_ptr->resp_obj_count_);
+  bool hasCount = false;
+  for (const auto& element : requestArray.asArray()) {
+    if (element.type() == Common::Redis::RespType::BulkString && element.asString() == "count") {
+      hasCount = true;
+      break;
+    }
   }
+  if (!hasCount) {
+    addBulkString(requestArray, "count");
+    addBulkString(requestArray, request_ptr->resp_obj_count_);
+  }
+
+  std::string request_str;
+  for (const auto& element : requestArray.asArray()) {
+    if (element.type() == Common::Redis::RespType::BulkString) {
+      request_str += element.asString() + " ";
+    }
+  }
+
+  // Log the constructed request array
+  ENVOY_LOG(debug, "Constructed SCAN request: {}", request_str);
 
   // caching the request and route for making child request from response
   request_ptr->request_ = requestArray;

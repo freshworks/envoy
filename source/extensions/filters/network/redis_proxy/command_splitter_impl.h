@@ -415,6 +415,7 @@ private:
   TransactionRequest(SplitCallbacks& callbacks, CommandStats& command_stats,
                      TimeSource& time_source, bool delay_command_latency)
       : SingleServerRequest(callbacks, command_stats, time_source, delay_command_latency) {}
+  static int32_t getShardingKeyIndex(const std::string& command_name,const Common::Redis::RespValue& request);
 };
 
 /**

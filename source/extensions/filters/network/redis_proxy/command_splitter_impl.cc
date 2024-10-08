@@ -1375,15 +1375,16 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
     addBulkString(requestArray, request_ptr->resp_obj_count_);
   }
 
-  std::string request_str;
-  for (const auto& element : requestArray.asArray()) {
-    if (element.type() == Common::Redis::RespType::BulkString) {
-      request_str += element.asString() + " ";
-    }
-  }
+  // Un comment this to log the constructed request array
+  // std::string request_str;
+  // for (const auto& element : requestArray.asArray()) {
+  //   if (element.type() == Common::Redis::RespType::BulkString) {
+  //     request_str += element.asString() + " ";
+  //   }
+  // }
 
-  // Log the constructed request array
-  ENVOY_LOG(debug, "Constructed SCAN request: {}", request_str);
+  // // Log the constructed request array
+  // ENVOY_LOG(debug, "Constructed SCAN request: {}", request_str);
 
   // caching the request and route for making child request from response
   request_ptr->request_ = requestArray;

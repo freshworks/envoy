@@ -20,7 +20,7 @@ struct SupportedCommands {
    */
   static const absl::flat_hash_set<std::string>& simpleCommands() {
     CONSTRUCT_ON_FIRST_USE(
-        absl::flat_hash_set<std::string>, "append", "bitcount", "bitfield", "bitpos", "decr",
+        absl::flat_hash_set<std::string>, "append", "bitcount", "bitfield", "bitpos", "copy", "decr",
         "decrby", "dump", "expire", "expireat", "geoadd", "geodist", "geohash", "geopos",
         "georadius_ro", "georadiusbymember_ro", "get", "getbit", "getdel", "getrange", "getset",
         "hdel", "hexists", "hget", "hgetall", "hincrby", "hincrbyfloat", "hkeys", "hlen", "hmget",

@@ -1,0 +1,85 @@
+---
+buildPack: custom
+pipelineConfig:
+  pipelines:
+    release:
+      pipeline:
+        agent:
+          node:
+            label: ec2-builder
+        environment:
+        - name: ECR_REGISTRY
+          value: "582763096612.dkr.ecr.us-east-1.amazonaws.com/dbaas-redis"
+        - name: APP_NAME
+          value: "envoy"
+        - name: AWS_REGION
+          value: "us-east-1"
+        - name: VERSION
+          value: "$(git rev-parse --short HEAD)"
+        stages:
+        - name: build
+          steps:
+          - name: bazel-build-envoy
+            command: |
+              # Build Envoy using Bazel
+              echo "Building Envoy with Bazel..."
+              # Navigate to Envoy source directory if needed
+              mkdir -p ~/envoy-source-directory
+              cd ~/envoy-source-directory/
+              git clone -b v1.28.0-dbaas https://github.com/freshworks/envoy.git
+              cd envoy
+              git checkout ${BRANCH_NAME}
+              git pull origin ${BRANCH_NAME}
+              # Build Envoy binary
+              export CC=/usr/bin/clang
+              export CXX=/usr/bin/clang++
+              bazel build --config=clang --config=libc++ -c dbg --copt=-g --copt=-fno-omit-frame-pointer --copt=-Os --copt=-fdebug-types-section --features=per_object_debug_info --linkopt=-Wl,--strip-debug --cxxopt=-std=c++17 --host_cxxopt=-std=c++17 --cxxopt=-stdlib=libc++ --linkopt=-stdlib=libc++ --strip=never //source/exe:envoy-static --subcommands --verbose_failures > build_output.log 2>&1
+              # Copy the built binary to the expected location
+              cp bazel-bin/source/exe/envoy-static ~/envoy-source-directory/envoy-preprod-image
+              # Verify the binary exists
+              ls -l ~/envoy-source-directory/envoy-preprod-image
+
+          - name: build-image-envoy
+            command: |
+              sudo su
+              echo "Building image version: ${VERSION}"
+              docker build -t ${ECR_REGISTRY}/${APP_NAME}:${VERSION} .
+              # Also tag as latest
+              docker tag ${ECR_REGISTRY}/${APP_NAME}:${VERSION} ${ECR_REGISTRY}/${APP_NAME}:latest
+
+          - name: aws-ecr-login
+            command: |
+              sudo su
+              #Add retry logic for ECR login
+              max_attempts=3
+              attempt=1
+              while [ $attempt -le $max_attempts ]
+              do
+                if aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                then
+                  echo "Successfully logged in to ECR"
+                  break
+                else
+                  echo "Attempt $attempt of $max_attempts failed"
+                  attempt=$((attempt + 1))
+                  sleep 5
+                fi
+              done
+              if [ $attempt -gt $max_attempts ]
+              then
+                echo "Failed to log in to ECR after $max_attempts attempts"
+                exit 1
+              fi
+
+          - name: push-image
+            command: |
+              echo "Pushing image version: ${VERSION}"
+              sudo su
+              docker push ${ECR_REGISTRY}/${APP_NAME}:${VERSION}
+              docker push ${ECR_REGISTRY}/${APP_NAME}:latest
+
+    triggers:
+    - branch:
+      - cicd_trial
+      event:
+      - push

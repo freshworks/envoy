@@ -113,7 +113,7 @@ struct SupportedCommands {
   * @return client sub commands thats supported 
   */
   static const absl::flat_hash_set<std::string>& clientSubCommands() {
-    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "getname","setname");
+    CONSTRUCT_ON_FIRST_USE(absl::flat_hash_set<std::string>, "getname","setname", "setinfo");
   }
 
     /**

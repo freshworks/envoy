@@ -2007,6 +2007,9 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
         ClientResp->type(Common::Redis::RespType::BulkString);
         ClientResp->asString() = callbacks.getClientname();
       }
+    }else if (sub_command == "setinfo") {
+      ClientResp->type(Common::Redis::RespType::SimpleString);
+      ClientResp->asString() = "OK";
     }
     callbacks.onResponse(std::move(ClientResp));
     return nullptr;

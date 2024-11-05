@@ -936,9 +936,13 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   int32_t redisShardsCount=0;
 
   if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name) && incoming_request->asArray().size() < 2) {
-    ENVOY_LOG(debug, "Invalid request: '{}'", incoming_request->toString());
-    callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
-    return nullptr;
+    if (!Common::Redis::SupportedCommands::subcrStateNoArgallowedCommands().contains(command_name)) {
+      ENVOY_LOG(debug, "Invalid request: '{}'", incoming_request->toString());
+      callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
+      return nullptr;
+    } else {
+      ENVOY_LOG(debug, "No arguments acceptable for command: '{}'", command_name);
+    }
   }
   
 
@@ -1118,9 +1122,14 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
   ENVOY_LOG(debug, "message received on channel '{}' on shardIndex : '{}'", value->toString(),shardIndex);
 
   if (value->type() != Common::Redis::RespType::Array ||
-      value->asArray()[0].type() != Common::Redis::RespType::BulkString) {
-    ENVOY_LOG(error, "unexpected message format: '{}'", value->toString());
-    return;
+      value->asArray()[0].type() != Common::Redis::RespType::BulkString) {        
+        if (value->type() == Common::Redis::RespType::SimpleString && value->asString() == "OK") {
+          ENVOY_LOG(debug, "This is a private client creation auth command response - '{}'", value->toString());
+          return;
+        } else {
+          ENVOY_LOG(error, "unexpected message format: '{}'", value->toString());
+          return;
+        }
   }
 
   std::string message_type = value->asArray()[0].asString();
@@ -2007,7 +2016,7 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
         ClientResp->type(Common::Redis::RespType::BulkString);
         ClientResp->asString() = callbacks.getClientname();
       }
-    }else if (sub_command == "setinfo") {
+    } else if (sub_command == "setinfo") {
       ClientResp->type(Common::Redis::RespType::SimpleString);
       ClientResp->asString() = "OK";
     }

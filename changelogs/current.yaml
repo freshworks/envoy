@@ -28,4 +28,4 @@ bug_fixes:
     any route.
 - area: http_async_client
   change: |
-    Fixed the local reply and destroy order crashes when using the http async client for websocket handshake.
+    Fixed the local reply and destroy order crashes when using the HTTP async client for websocket handshake.

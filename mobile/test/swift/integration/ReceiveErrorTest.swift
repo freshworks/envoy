@@ -10,13 +10,6 @@ final class ReceiveErrorTests: XCTestCase {
     register_test_extensions()
   }
 
-  override static func tearDown() {
-    super.tearDown()
-    // Flush the stdout and stderror to show the print output.
-    fflush(stdout)
-    fflush(stderr)
-  }
-
   func testReceiveError() {
     let filterName = "error_validation_filter"
 
@@ -65,6 +58,9 @@ final class ReceiveErrorTests: XCTestCase {
       .setLogLevel(.debug)
       .setLogger { _, msg in
         print(msg, terminator: "")
+      }
+      .setLogger { _, msg in
+          print(msg, terminator: "")
       }
       .addPlatformFilter(
         name: filterName,

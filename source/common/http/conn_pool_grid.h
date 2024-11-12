@@ -184,8 +184,7 @@ public:
                    Upstream::ClusterConnectivityState& state, TimeSource& time_source,
                    HttpServerPropertiesCacheSharedPtr alternate_protocols,
                    ConnectivityOptions connectivity_options, Quic::QuicStatNames& quic_stat_names,
-                   Stats::Scope& scope, Http::PersistentQuicInfo& quic_info,
-                   OptRef<Quic::EnvoyQuicNetworkObserverRegistry> network_observer_registry);
+                   Stats::Scope& scope, Http::PersistentQuicInfo& quic_info);
   ~ConnectivityGrid() override;
 
   // Event::DeferredDeletable
@@ -299,8 +298,6 @@ private:
 
   // True iff this pool is being deferred deleted.
   bool deferred_deleting_{};
-
-  OptRef<Quic::EnvoyQuicNetworkObserverRegistry> network_observer_registry_;
 };
 
 } // namespace Http

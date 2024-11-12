@@ -31,7 +31,6 @@
 using testing::DoAll;
 using testing::Eq;
 using testing::Return;
-using testing::ReturnRef;
 
 namespace Envoy {
 namespace Network {
@@ -720,8 +719,6 @@ TEST(PacketLoss, LossTest) {
   IoSocketHandleImpl handle(fd);
   auto address = Network::Test::getCanonicalLoopbackAddress(version);
   NiceMock<MockUdpPacketProcessor> processor;
-  IoHandle::UdpSaveCmsgConfig udp_save_cmsg_config;
-  ON_CALL(processor, saveCmsgConfig()).WillByDefault(ReturnRef(udp_save_cmsg_config));
   MonotonicTime time(std::chrono::seconds(0));
   uint32_t packets_dropped = 0;
   UdpRecvMsgMethod recv_msg_method = UdpRecvMsgMethod::RecvMsg;

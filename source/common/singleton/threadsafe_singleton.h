@@ -66,9 +66,6 @@ public:
   }
   static void clear() { loader_ = nullptr; }
 
-  // Atomically replace the value, returning the old value.
-  static T* replaceForTest(T* new_value) { return loader_.exchange(new_value); }
-
 protected:
   static std::atomic<T*> loader_;
 };
@@ -89,16 +86,20 @@ private:
   std::unique_ptr<T> instance_;
 };
 
-// This class saves the singleton object and restore the original singleton at destroy.
-template <class T> class StackedScopedInjectableLoaderForTest {
+// This class saves the singleton object and restore the original singleton at destroy. This class
+// is not thread safe. It can be used in single thread test.
+template <class T>
+class StackedScopedInjectableLoader :
+    // To access the protected loader_.
+    protected InjectableSingleton<T> {
 public:
-  explicit StackedScopedInjectableLoaderForTest(std::unique_ptr<T>&& instance) {
+  explicit StackedScopedInjectableLoader(std::unique_ptr<T>&& instance) {
+    original_loader_ = InjectableSingleton<T>::getExisting();
+    InjectableSingleton<T>::clear();
     instance_ = std::move(instance);
-    original_loader_ = InjectableSingleton<T>::replaceForTest(instance_.get());
+    InjectableSingleton<T>::initialize(instance_.get());
   }
-  ~StackedScopedInjectableLoaderForTest() {
-    InjectableSingleton<T>::replaceForTest(original_loader_);
-  }
+  ~StackedScopedInjectableLoader() { InjectableSingleton<T>::loader_ = original_loader_; }
 
 private:
   std::unique_ptr<T> instance_;

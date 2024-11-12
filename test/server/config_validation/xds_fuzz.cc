@@ -323,8 +323,7 @@ void XdsFuzzTest::verifyListeners() {
   const auto dump = getListenersConfigDump().dynamic_listeners();
 
   for (const auto& rep : abstract_rep) {
-    ENVOY_LOG_MISC(debug, "Verifying {} with state {}", rep.listener.name(),
-                   static_cast<int>(rep.state));
+    ENVOY_LOG_MISC(debug, "Verifying {} with state {}", rep.listener.name(), rep.state);
 
     auto listener_dump = std::find_if(dump.begin(), dump.end(), [&](auto& listener) {
       return listener.name() == rep.listener.name();

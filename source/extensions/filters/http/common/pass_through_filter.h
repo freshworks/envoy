@@ -62,10 +62,6 @@ protected:
 // A filter which passes all data through with Continue status.
 class PassThroughFilter : public StreamFilter,
                           public PassThroughDecoderFilter,
-                          public PassThroughEncoderFilter {
-public:
-  // Http::StreamFilterBase
-  void onDestroy() override {}
-};
+                          public PassThroughEncoderFilter {};
 } // namespace Http
 } // namespace Envoy

@@ -11,13 +11,6 @@ final class IdleTimeoutTests: XCTestCase {
     register_test_extensions()
   }
 
-  override static func tearDown() {
-    super.tearDown()
-    // Flush the stdout and stderror to show the print output.
-    fflush(stdout)
-    fflush(stderr)
-  }
-
   func testIdleTimeout() {
     let filterName = "reset_idle_test_filter"
 
@@ -95,7 +88,7 @@ final class IdleTimeoutTests: XCTestCase {
 
     let client = engine.streamClient()
 
-    let port = String(EnvoyTestServer.getHttpPort())
+    let port = String(EnvoyTestServer.getEnvoyPort())
     let requestHeaders = RequestHeadersBuilder(
       method: .get, scheme: "http", authority: "localhost:" + port, path: "/"
     )
@@ -119,6 +112,6 @@ final class IdleTimeoutTests: XCTestCase {
     )
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestHttpServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 }

@@ -3,7 +3,7 @@
 set -e
 
 readonly DEFAULT_VALIDITY_DAYS=${DEFAULT_VALIDITY_DAYS:-730}
-HERE="$(realpath "$(dirname "${BASH_SOURCE[0]}")")"
+HERE=$(cd "$(dirname "$0")" && pwd)
 readonly HERE
 
 cd "$HERE" || exit 1
@@ -76,16 +76,6 @@ generate_x509_cert() {
     openssl req -new -key "${1}_key.pem" -out "${1}_cert.csr" -config "${1}_cert.cfg" -batch -sha256 "${extra_args[@]}"
     openssl x509 -req -days "$days" -in "${1}_cert.csr" -sha256 -CA "${2}_cert.pem" -CAkey \
             "${2}_key.pem" -CAcreateserial -out "${1}_cert.pem" -extensions v3_ca -extfile "${1}_cert.cfg" "${extra_args[@]}"
-    generate_info_header "$1"
-}
-
-# $1=<certificate name> $2=<CA name> $3=[days]
-generate_x509_cert_no_extension() {
-    local days
-    days="${3:-${DEFAULT_VALIDITY_DAYS}}"
-    openssl req -new -key "${1}_key.pem" -out "${1}_cert.csr" -config "${1}_cert.cfg" -batch -sha256
-    openssl x509 -req -days "$days" -in "${1}_cert.csr" -sha256 -CA "${2}_cert.pem" -CAkey \
-            "${2}_key.pem" -out "${1}_cert.pem" -extensions v3_req -extfile "${1}_cert.cfg"
     generate_info_header "$1"
 }
 
@@ -365,10 +355,6 @@ openssl rand 79 > ticket_key_wrong_len
 # Generate a certificate with no subject CN and no altnames.
 generate_rsa_key no_subject
 generate_x509_cert_nosubject no_subject ca
-
-# Generate a certificate with no extensions
-generate_rsa_key no_extension
-generate_x509_cert_no_extension no_extension ca
 
 # Generate unit test certificate
 generate_rsa_key unittest

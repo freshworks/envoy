@@ -149,6 +149,9 @@ def envoy_select_wasm_cpp_tests(xs):
 def envoy_select_wasm_rust_tests(xs):
     return select({
         "@envoy//bazel:wasm_disabled": [],
+        # TODO(phlax): re-enable once issues with llvm profiler are resolved
+        #   (see https://github.com/envoyproxy/envoy/issues/24164)
+        "@envoy//bazel:coverage_build": [],
         "//conditions:default": xs,
     })
 
@@ -159,6 +162,9 @@ def envoy_select_wasm_v8(xs):
         "@envoy//bazel:wasm_wamr": [],
         "@envoy//bazel:wasm_wasmtime": [],
         "@envoy//bazel:wasm_disabled": [],
+        # TODO(phlax): re-enable once issues with llvm profiler are resolved
+        #   (see https://github.com/envoyproxy/envoy/issues/24164)
+        "@envoy//bazel:coverage_build": [],
         "//conditions:default": xs,  # implicit default (v8)
     })
 
@@ -169,6 +175,9 @@ def envoy_select_wasm_v8_bool():
         "@envoy//bazel:wasm_wamr": False,
         "@envoy//bazel:wasm_wasmtime": False,
         "@envoy//bazel:wasm_disabled": False,
+        # TODO(phlax): re-enable once issues with llvm profiler are resolved
+        #   (see https://github.com/envoyproxy/envoy/issues/24164)
+        "@envoy//bazel:coverage_build": False,
         "//conditions:default": True,  # implicit default (v8)
     })
 

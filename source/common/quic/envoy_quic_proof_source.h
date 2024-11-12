@@ -19,7 +19,6 @@ public:
   ~EnvoyQuicProofSource() override = default;
 
   // quic::ProofSource
-  void OnNewSslCtx(SSL_CTX* ssl_ctx) override;
   quiche::QuicheReferenceCountedPointer<quic::ProofSource::Chain>
   GetCertChain(const quic::QuicSocketAddress& server_address,
                const quic::QuicSocketAddress& client_address, const std::string& hostname,

@@ -11,7 +11,6 @@ envoy_package()
 envoy_cc_test(
     name = "sampler_test",
     srcs = ["sampler_test.cc"],
-    rbe_pool = "2core",
     deps = [
         "//envoy/registry",
         "//source/extensions/tracers/opentelemetry:opentelemetry_tracer_lib",

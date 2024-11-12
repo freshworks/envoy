@@ -179,7 +179,7 @@ public:
   }
 
   // ScopeTrackedObject
-  OptRef<const StreamInfo::StreamInfo> trackedStream() const override;
+  ExecutionContext* executionContext() const override;
   void dumpState(std::ostream& os, int indent_level) const override;
 
 protected:

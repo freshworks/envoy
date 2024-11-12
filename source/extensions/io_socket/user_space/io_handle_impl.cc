@@ -90,8 +90,6 @@ Api::IoCallUint64Result IoHandleImpl::close() {
 
 bool IoHandleImpl::isOpen() const { return !closed_; }
 
-bool IoHandleImpl::wasConnected() const { return false; }
-
 Api::IoCallUint64Result IoHandleImpl::readv(uint64_t max_length, Buffer::RawSlice* slices,
                                             uint64_t num_slice) {
   if (!isOpen()) {
@@ -224,14 +222,11 @@ Api::IoCallUint64Result IoHandleImpl::sendmsg(const Buffer::RawSlice*, uint64_t,
 }
 
 Api::IoCallUint64Result IoHandleImpl::recvmsg(Buffer::RawSlice*, const uint64_t, uint32_t,
-                                              const Network::IoHandle::UdpSaveCmsgConfig&,
                                               RecvMsgOutput&) {
   return Network::IoSocketError::ioResultSocketInvalidAddress();
 }
 
-Api::IoCallUint64Result IoHandleImpl::recvmmsg(RawSliceArrays&, uint32_t,
-                                               const Network::IoHandle::UdpSaveCmsgConfig&,
-                                               RecvMsgOutput&) {
+Api::IoCallUint64Result IoHandleImpl::recvmmsg(RawSliceArrays&, uint32_t, RecvMsgOutput&) {
   return Network::IoSocketError::ioResultSocketInvalidAddress();
 }
 

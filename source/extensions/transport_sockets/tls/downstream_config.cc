@@ -21,7 +21,7 @@ DownstreamSslSocketFactory::createTransportSocketFactory(
           MessageUtil::downcastAndValidate<
               const envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext&>(
               message, context.messageValidationVisitor()),
-          context, false);
+          context);
   RETURN_IF_NOT_OK(server_config_or_error.status());
   return ServerSslSocketFactory::create(std::move(server_config_or_error.value()),
                                         context.sslContextManager(), context.statsScope(),

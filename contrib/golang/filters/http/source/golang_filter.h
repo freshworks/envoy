@@ -223,7 +223,6 @@ public:
   }
 
   // Http::StreamFilterBase
-  void onStreamComplete() override;
   void onDestroy() ABSL_LOCKS_EXCLUDED(mutex_) override;
   Http::LocalErrorStatus onLocalReply(const LocalReplyData&) override;
 
@@ -255,6 +254,8 @@ public:
   // AccessLog::Instance
   void log(const Formatter::HttpFormatterContext& log_context,
            const StreamInfo::StreamInfo& info) override;
+
+  void onStreamComplete() override {}
 
   CAPIStatus clearRouteCache();
   CAPIStatus continueStatus(ProcessorState& state, GolangStatus status);
@@ -292,7 +293,8 @@ public:
                                GoInt32* rc);
 
   bool isProcessingInGo() {
-    return decoding_state_.isProcessingInGo() || encoding_state_.isProcessingInGo();
+    return is_golang_processing_log_ || decoding_state_.isProcessingInGo() ||
+           encoding_state_.isProcessingInGo();
   }
   void deferredDeleteRequest(HttpRequestInternal* req);
 
@@ -344,8 +346,7 @@ private:
 
   // save temp values for fetching request attributes in the later phase,
   // like getting request size
-  Http::RequestHeaderMap* request_headers_{nullptr};
-  Http::RequestTrailerMap* request_trailers_{nullptr};
+  Http::RequestOrResponseHeaderMap* request_headers_{nullptr};
 
   HttpRequestInternal* req_{nullptr};
 
@@ -359,6 +360,8 @@ private:
   // back from go).
   Thread::MutexBasicLockable mutex_{};
   bool has_destroyed_ ABSL_GUARDED_BY(mutex_){false};
+
+  bool is_golang_processing_log_{false};
 };
 
 struct httpConfigInternal : httpConfig {

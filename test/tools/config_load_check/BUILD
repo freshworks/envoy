@@ -20,7 +20,6 @@ envoy_cc_test_library(
 
 envoy_cc_test_binary(
     name = "config_load_check_tool",
-    rbe_pool = "2core",
     deps = [
         ":config_load_check_lib",
         "//source/common/common:minimal_logger_lib",

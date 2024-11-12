@@ -18,11 +18,7 @@ public class JniHelperTest {
   // Native methods for testing.
   //================================================================================
   public static native void getFieldId(Class<?> clazz, String name, String signature);
-  public static native void getFieldIdFromCache(String className, String fieldName,
-                                                String signature);
   public static native void getStaticFieldId(Class<?> clazz, String name, String signature);
-  public static native void getStaticFieldIdFromCache(String className, String fieldName,
-                                                      String signature);
   public static native byte getByteField(Class<?> clazz, Object instance, String name,
                                          String signature);
   public static native char getCharField(Class<?> clazz, Object instance, String name,
@@ -42,12 +38,8 @@ public class JniHelperTest {
   public static native Object getObjectField(Class<?> clazz, Object instance, String name,
                                              String signature);
   public static native void getMethodId(Class<?> clazz, String name, String signature);
-  public static native void getMethodIdFromCache(String className, String methodName,
-                                                 String signature);
   public static native void getStaticMethodId(Class<?> clazz, String name, String signature);
-  public static native void getStaticMethodIdFromCache(String className, String methodName,
-                                                       String signature);
-  public static native Class<?> findClassFromCache(String className);
+  public static native Class<?> findClass(String className);
   public static native Class<?> getObjectClass(Object object);
   public static native Object newObject(Class<?> clazz, String name, String signature);
   public static native void throwNew(String className, String message);
@@ -168,33 +160,21 @@ public class JniHelperTest {
   static class Foo {
     private final int field = 1;
     private static int staticField = 2;
-    private static void staticMethod() {}
   }
 
   @Test
   public void testGetFieldId() {
-    getFieldId(Foo.class, "field", "I");
-  }
-
-  @Test
-  public void testGetFieldIdFromCache() {
     // Do it in a loop to test the cache.
     for (int i = 0; i < 10; i++) {
-      getFieldIdFromCache("io/envoyproxy/envoymobile/jni/JniHelperTest$Foo", "field", "I");
+      getFieldId(Foo.class, "field", "I");
     }
   }
 
   @Test
   public void testGetStaticFieldId() {
-    getStaticFieldId(Foo.class, "staticField", "I");
-  }
-
-  @Test
-  public void testGetStaticFieldIdFromCache() {
     // Do it in a loop to test the cache.
     for (int i = 0; i < 10; i++) {
-      getStaticFieldIdFromCache("io/envoyproxy/envoymobile/jni/JniHelperTest$Foo", "staticField",
-                                "I");
+      getStaticFieldId(Foo.class, "staticField", "I");
     }
   }
 
@@ -246,36 +226,25 @@ public class JniHelperTest {
 
   @Test
   public void testGetMethodId() {
-    getMethodId(Foo.class, "<init>", "()V");
-  }
-
-  @Test
-  public void testGetMethodIdFromCache() {
     // Do it in a loop to test the cache.
     for (int i = 0; i < 10; i++) {
-      getMethodIdFromCache("io/envoyproxy/envoymobile/jni/JniHelperTest$Foo", "<init>", "()V");
+      getMethodId(Foo.class, "<init>", "()V");
     }
   }
 
   @Test
   public void testGetStaticMethodId() {
-    getStaticMethodId(Foo.class, "staticMethod", "()V");
-  }
-
-  @Test
-  public void testGetStaticMethodIdFromCache() {
     // Do it in a loop to test the cache.
     for (int i = 0; i < 10; i++) {
-      getStaticMethodIdFromCache("io/envoyproxy/envoymobile/jni/JniHelperTest$Foo", "staticMethod",
-                                 "()V");
+      getStaticMethodId(JniHelperTest.class, "staticVoidMethod", "()V");
     }
   }
 
   @Test
-  public void testFindClassFromCache() {
+  public void testFindClass() {
     // Do it in a loop to test the cache.
     for (int i = 0; i < 10; i++) {
-      assertThat(findClassFromCache("java/lang/Exception")).isEqualTo(Exception.class);
+      assertThat(findClass("java/lang/Exception")).isEqualTo(Exception.class);
     }
   }
 

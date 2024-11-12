@@ -16,7 +16,6 @@ envoy_extension_cc_test(
     name = "kill_request_filter_test",
     srcs = ["kill_request_filter_test.cc"],
     extension_names = ["envoy.filters.http.kill_request"],
-    rbe_pool = "2core",
     deps = [
         "//envoy/http:metadata_interface",
         "//source/common/buffer:buffer_lib",
@@ -33,7 +32,6 @@ envoy_extension_cc_test(
     name = "kill_request_config_test",
     srcs = ["kill_request_config_test.cc"],
     extension_names = ["envoy.filters.http.kill_request"],
-    rbe_pool = "2core",
     deps = [
         "//source/extensions/filters/http/kill_request:kill_request_config",
         "//test/mocks/server:factory_context_mocks",
@@ -47,7 +45,6 @@ envoy_extension_cc_test(
     size = "large",
     srcs = ["kill_request_filter_integration_test.cc"],
     extension_names = ["envoy.filters.http.kill_request"],
-    rbe_pool = "2core",
     shard_count = 8,
     deps = [
         "//source/extensions/filters/http/kill_request:kill_request_config",
@@ -60,7 +57,6 @@ envoy_cc_test(
     size = "large",
     srcs = ["crash_integration_test.cc"],
     coverage = False,
-    rbe_pool = "2core",
     shard_count = 8,
     deps = [
         "//source/extensions/filters/http/kill_request:kill_request_config",

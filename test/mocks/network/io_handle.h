@@ -22,7 +22,6 @@ public:
   MOCK_METHOD(os_fd_t, fdDoNotUse, (), (const));
   MOCK_METHOD(Api::IoCallUint64Result, close, ());
   MOCK_METHOD(bool, isOpen, (), (const));
-  MOCK_METHOD(bool, wasConnected, (), (const));
   MOCK_METHOD(Api::IoCallUint64Result, readv,
               (uint64_t max_length, Buffer::RawSlice* slices, uint64_t num_slice));
   MOCK_METHOD(Api::IoCallUint64Result, read,
@@ -35,10 +34,9 @@ public:
                const Address::Ip* self_ip, const Address::Instance& peer_address));
   MOCK_METHOD(Api::IoCallUint64Result, recvmsg,
               (Buffer::RawSlice * slices, const uint64_t num_slice, uint32_t self_port,
-               const UdpSaveCmsgConfig& save_cmsg_config, RecvMsgOutput& output));
+               RecvMsgOutput& output));
   MOCK_METHOD(Api::IoCallUint64Result, recvmmsg,
-              (RawSliceArrays & slices, uint32_t self_port,
-               const UdpSaveCmsgConfig& save_cmsg_config, RecvMsgOutput& output));
+              (RawSliceArrays & slices, uint32_t self_port, RecvMsgOutput& output));
   MOCK_METHOD(Api::IoCallUint64Result, recv, (void* buffer, size_t length, int flags));
   MOCK_METHOD(bool, supportsMmsg, (), (const));
   MOCK_METHOD(bool, supportsUdpGro, (), (const));

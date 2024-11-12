@@ -42,7 +42,6 @@ envoy_cc_test_library(
         "uber_per_filter.cc",
     ],
     hdrs = ["uber_filter.h"],
-    rbe_pool = "2core",
     deps = [
         ":filter_fuzz_proto_cc_proto",
         ":http_filter_fuzzer_lib",
@@ -68,7 +67,6 @@ envoy_cc_fuzz_test(
     name = "filter_fuzz_test",
     srcs = ["filter_fuzz_test.cc"],
     corpus = "filter_corpus",
-    rbe_pool = "2core",
     # All Envoy extensions must be linked to the test in order for the fuzzer to pick
     # these up via the NamedHttpFilterConfigFactory.
     deps = [

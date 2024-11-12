@@ -15,7 +15,6 @@ envoy_extension_cc_test(
     name = "tracer_test",
     srcs = ["tracer_test.cc"],
     extension_names = ["envoy.tracers.opencensus"],
-    rbe_pool = "2core",
     # TODO(wrowe): envoy_extension_ rules don't currently exclude windows extensions
     tags = ["skip_on_windows"],
     deps = [
@@ -32,7 +31,6 @@ envoy_extension_cc_test(
     name = "config_test",
     srcs = ["config_test.cc"],
     extension_names = ["envoy.tracers.opencensus"],
-    rbe_pool = "2core",
     # TODO(wrowe): envoy_extension_ rules don't currently exclude windows extensions
     tags = ["skip_on_windows"],
     deps = [

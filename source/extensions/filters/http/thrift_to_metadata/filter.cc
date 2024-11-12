@@ -182,17 +182,19 @@ Http::FilterDataStatus Filter::decodeData(Buffer::Instance& data, bool end_strea
                                       : Http::FilterDataStatus::StopIterationAndBuffer;
 }
 
-void Filter::decodeComplete() {
+Http::FilterTrailersStatus Filter::decodeTrailers(Http::RequestTrailerMap&) {
   if (!config_->shouldParseRequestMetadata() || request_processing_finished_) {
-    return;
+    return Http::FilterTrailersStatus::Continue;
   }
 
   ENVOY_LOG(trace,
-            "thrift to metadata filter decodeComplete: handle incomplete request thrift message");
+            "thrift to metadata filter decodeTrailers: handle incomplete request thrift message");
 
   // Handle incomplete request thrift message while we reach here.
   handleAllOnMissing(config_->requestRules(), *decoder_callbacks_, request_processing_finished_);
   config_->rqstats().invalid_thrift_body_.inc();
+
+  return Http::FilterTrailersStatus::Continue;
 }
 
 Http::FilterHeadersStatus Filter::encodeHeaders(Http::ResponseHeaderMap& headers, bool end_stream) {
@@ -244,17 +246,19 @@ Http::FilterDataStatus Filter::encodeData(Buffer::Instance& data, bool end_strea
                                        : Http::FilterDataStatus::StopIterationAndBuffer;
 }
 
-void Filter::encodeComplete() {
+Http::FilterTrailersStatus Filter::encodeTrailers(Http::ResponseTrailerMap&) {
   if (!config_->shouldParseResponseMetadata() || response_processing_finished_) {
-    return;
+    return Http::FilterTrailersStatus::Continue;
   }
 
   ENVOY_LOG(trace,
-            "thrift to metadata filter encodeComplete: handle incomplete response thrift message");
+            "thrift to metadata filter encodeTrailers: handle incomplete response thrift message");
 
   // Handle incomplete response thrift message while we reach here.
   handleAllOnMissing(config_->responseRules(), *encoder_callbacks_, response_processing_finished_);
   config_->respstats().invalid_thrift_body_.inc();
+
+  return Http::FilterTrailersStatus::Continue;
 }
 
 bool Filter::processData(Buffer::Instance& incoming_data, Buffer::Instance& buffer,

@@ -19,10 +19,6 @@ public:
     return message;
   }
 
-  absl::optional<std::string> serializeAsString() const override {
-    return value_ ? "true" : "false";
-  }
-
   // From BoolAccessor.
   bool value() const override { return value_; }
 

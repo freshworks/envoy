@@ -56,12 +56,7 @@ public:
    * Accessor for the provisional event dispatcher.
    * @return Event::ProvisionalDispatcher&, the engine dispatcher.
    */
-  Event::ProvisionalDispatcher& dispatcher() const;
-
-  /**
-   * Accessor for the thread factory.
-   */
-  Thread::PosixThreadFactory& threadFactory() const;
+  Event::ProvisionalDispatcher& dispatcher();
 
   envoy_stream_t initStream();
 
@@ -78,12 +73,9 @@ public:
    * @param stream the stream to send headers over.
    * @param headers the headers to send.
    * @param end_stream indicates whether to close the stream locally after sending this frame.
-   * @param idempotent indicates that the request is idempotent. When idempotent is set to true
-   *                   Envoy Mobile will retry on HTTP/3 post-handshake failures. By default, it is
-   *                   set to false.
    */
   envoy_status_t sendHeaders(envoy_stream_t stream, Http::RequestHeaderMapPtr headers,
-                             bool end_stream, bool idempotent = false);
+                             bool end_stream);
 
   envoy_status_t readData(envoy_stream_t stream, size_t bytes_to_read);
 
@@ -111,32 +103,17 @@ public:
   // to networkConnectivityManager after doing a dispatcher post (thread context switch)
   envoy_status_t setProxySettings(const char* host, const uint16_t port);
   envoy_status_t resetConnectivityState();
-
   /**
-   * This function is called when the default network is available. This function is currently
-   * no-op.
-   */
-  void onDefaultNetworkAvailable();
-
-  /**
-   * This function does the following when the default network was changed.
+   * This function does the following on a network change event (such as switching from WiFI to
+   * cellular, WIFi A to WiFI B, etc.).
    *
    * - Sets the preferred network.
    * - Check for IPv6 connectivity. If there is no IPv6 no connectivity, it will call
    *   `setIpVersionToRemove` in the DNS cache implementation to remove the IPv6 addresses from
    *   the DNS response in the subsequent DNS resolutions.
    * - Force refresh the hosts in the DNS cache (will take `setIpVersionToRemove` into account).
-   * - Optionally (if configured) clear HTTP/3 broken status.
    */
-  void onDefaultNetworkChanged(NetworkType network);
-
-  /**
-   * This functions does the following when the default network is unavailable.
-   *
-   * - Cancel the DNS pending queries.
-   * - Stop the DNS timeout and refresh timers.
-   */
-  void onDefaultNetworkUnavailable();
+  envoy_status_t setPreferredNetwork(NetworkType network);
 
   /**
    * Increment a counter with a given string of elements and by the given count.
@@ -163,7 +140,6 @@ public:
   Stats::Store& getStatsStore();
 
 private:
-  // Needs access to the private constructor.
   GTEST_FRIEND_CLASS(InternalEngineTest, ThreadCreationFailed);
 
   InternalEngine(std::unique_ptr<EngineCallbacks> callbacks, std::unique_ptr<EnvoyLogger> logger,

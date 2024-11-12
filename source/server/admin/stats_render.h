@@ -83,7 +83,7 @@ public:
    *
    * @param array the json streaming array array to stream into.
    */
-  static void populateSupportedPercentiles(Json::BufferStreamer::Array& array);
+  static void populateSupportedPercentiles(Json::Streamer::Array& array);
 
   /**
    * Streams detail about the provided histogram into the provided JSON map.
@@ -98,7 +98,7 @@ public:
    */
   static void generateHistogramDetail(const std::string& name,
                                       const Stats::ParentHistogram& histogram,
-                                      Json::BufferStreamer::Map& map);
+                                      Json::Streamer::Map& map);
 
 private:
   // Collects the buckets from the specified histogram.
@@ -107,10 +107,10 @@ private:
                       const std::vector<uint64_t>& cumulative_buckets);
 
   static void populateBucketsVerbose(const std::vector<Stats::ParentHistogram::Bucket>& buckets,
-                                     Json::BufferStreamer::Map& map);
+                                     Json::Streamer::Map& map);
   void renderHistogramStart();
   static void populatePercentiles(const Stats::ParentHistogram& histogram,
-                                  Json::BufferStreamer::Map& map);
+                                  Json::Streamer::Map& map);
 
   // This function irons out an API mistake made when defining the StatsRender
   // interface. The issue is that callers can provide a response buffer when
@@ -138,12 +138,12 @@ private:
   // before the output stream is considered complete.
   struct JsonContext {
     explicit JsonContext(Buffer::Instance& response);
-    Json::BufferStreamer streamer_;
-    Json::BufferStreamer::MapPtr stats_map_;
-    Json::BufferStreamer::ArrayPtr stats_array_;
-    Json::BufferStreamer::MapPtr histogram_map1_;
-    Json::BufferStreamer::MapPtr histogram_map2_;
-    Json::BufferStreamer::ArrayPtr histogram_array_;
+    Json::Streamer streamer_;
+    Json::Streamer::MapPtr stats_map_;
+    Json::Streamer::ArrayPtr stats_array_;
+    Json::Streamer::MapPtr histogram_map1_;
+    Json::Streamer::MapPtr histogram_map2_;
+    Json::Streamer::ArrayPtr histogram_array_;
   };
   std::unique_ptr<JsonContext> json_;
   Buffer::Instance& response_;

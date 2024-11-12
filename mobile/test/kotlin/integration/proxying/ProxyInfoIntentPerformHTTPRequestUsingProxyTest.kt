@@ -13,7 +13,6 @@ import io.envoyproxy.envoymobile.RequestHeadersBuilder
 import io.envoyproxy.envoymobile.RequestMethod
 import io.envoyproxy.envoymobile.engine.JniLibrary
 import io.envoyproxy.envoymobile.engine.testing.HttpProxyTestServerFactory
-import io.envoyproxy.envoymobile.engine.testing.HttpTestServerFactory
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -21,8 +20,8 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.Mockito
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 
 //                                               ┌──────────────────┐
 //                                               │   Envoy Proxy    │
@@ -42,37 +41,32 @@ class ProxyInfoIntentPerformHTTPRequestUsingProxyTest {
   }
 
   private lateinit var httpProxyTestServer: HttpProxyTestServerFactory.HttpProxyTestServer
-  private lateinit var httpTestServer: HttpTestServerFactory.HttpTestServer
 
   @Before
   fun setUp() {
     httpProxyTestServer =
       HttpProxyTestServerFactory.start(HttpProxyTestServerFactory.Type.HTTP_PROXY)
-    httpTestServer = HttpTestServerFactory.start(HttpTestServerFactory.Type.HTTP1_WITHOUT_TLS)
   }
 
   @After
   fun tearDown() {
     httpProxyTestServer.shutdown()
-    httpTestServer.shutdown()
   }
 
   @Test
   fun `performs an HTTP request through a proxy`() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val connectivityManager =
-      context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    connectivityManager.bindProcessToNetwork(connectivityManager.activeNetwork)
-    shadowOf(connectivityManager)
-      .setProxyForNetwork(
-        connectivityManager.activeNetwork,
-        ProxyInfo.buildDirectProxy(httpProxyTestServer.ipAddress, httpProxyTestServer.port)
-      )
+    val context = Mockito.spy(ApplicationProvider.getApplicationContext<Context>())
+    val connectivityManager: ConnectivityManager = Mockito.mock(ConnectivityManager::class.java)
+    Mockito.doReturn(connectivityManager)
+      .`when`(context)
+      .getSystemService(Context.CONNECTIVITY_SERVICE)
+    Mockito.`when`(connectivityManager.defaultProxy)
+      .thenReturn(ProxyInfo.buildDirectProxy("127.0.0.1", httpProxyTestServer.port))
 
     val onEngineRunningLatch = CountDownLatch(1)
-    val onResponseHeadersLatch = CountDownLatch(1)
+    val onRespondeHeadersLatch = CountDownLatch(1)
 
-    context.sendBroadcast(Intent(Proxy.PROXY_CHANGE_ACTION))
+    context.sendStickyBroadcast(Intent(Proxy.PROXY_CHANGE_ACTION))
 
     val builder = AndroidEngineBuilder(context)
     val engine =
@@ -90,8 +84,8 @@ class ProxyInfoIntentPerformHTTPRequestUsingProxyTest {
       RequestHeadersBuilder(
           method = RequestMethod.GET,
           scheme = "http",
-          authority = httpTestServer.address,
-          path = "/"
+          authority = "api.lyft.com",
+          path = "/ping"
         )
         .build()
 
@@ -100,15 +94,15 @@ class ProxyInfoIntentPerformHTTPRequestUsingProxyTest {
       .newStreamPrototype()
       .setOnResponseHeaders { responseHeaders, _, _ ->
         val status = responseHeaders.httpStatus ?: 0L
-        assertThat(status).isEqualTo(200)
+        assertThat(status).isEqualTo(301)
         assertThat(responseHeaders.value("x-proxy-response")).isEqualTo(listOf("true"))
-        onResponseHeadersLatch.countDown()
+        onRespondeHeadersLatch.countDown()
       }
       .start(Executors.newSingleThreadExecutor())
       .sendHeaders(requestHeaders, true)
 
-    onResponseHeadersLatch.await(15, TimeUnit.SECONDS)
-    assertThat(onResponseHeadersLatch.count).isEqualTo(0)
+    onRespondeHeadersLatch.await(15, TimeUnit.SECONDS)
+    assertThat(onRespondeHeadersLatch.count).isEqualTo(0)
 
     engine.terminate()
   }

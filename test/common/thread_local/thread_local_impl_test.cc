@@ -378,9 +378,7 @@ TEST(ThreadLocalInstanceImplDispatcherTest, DestroySlotOnWorker) {
 
         EXPECT_CALL(main_dispatcher, isThreadSafe()).WillOnce(Return(false));
         // Destroy the slot on worker thread and expect the post() of main dispatcher to be called.
-        // Override the behavior to do nothing, because the default mock behavior asserts that the
-        // callback must run on the same thread as the dispatcher.
-        EXPECT_CALL(main_dispatcher, post(_)).WillOnce([]() {});
+        EXPECT_CALL(main_dispatcher, post(_));
 
         slot.reset();
 

@@ -41,8 +41,7 @@ public:
       const test::integration::filters::TestNetworkAsyncTcpFilterConfig& config,
       Stats::Scope& scope, Upstream::ClusterManager& cluster_manager)
       : stats_(generateStats("test_network_async_tcp_filter", scope)),
-        cluster_name_(config.cluster_name()), kill_after_on_data_(config.kill_after_on_data()),
-        cluster_manager_(cluster_manager) {
+        cluster_name_(config.cluster_name()), cluster_manager_(cluster_manager) {
     const auto thread_local_cluster = cluster_manager_.getThreadLocalCluster(cluster_name_);
     options_ = std::make_shared<Tcp::AsyncTcpClientOptions>(true);
     if (thread_local_cluster != nullptr) {
@@ -60,11 +59,6 @@ public:
     ENVOY_LOG_MISC(debug, "Downstream onData: {}, length: {} sending to upstream", data.toString(),
                    data.length());
     client_->write(data, end_stream);
-
-    if (kill_after_on_data_) {
-      Tcp::AsyncTcpClient* c1 = client_.release();
-      delete c1;
-    }
 
     return Network::FilterStatus::StopIteration;
   }
@@ -172,7 +166,6 @@ private:
   TestNetworkAsyncTcpFilterStats stats_;
   Tcp::AsyncTcpClientPtr client_;
   absl::string_view cluster_name_;
-  bool kill_after_on_data_;
   std::unique_ptr<RequestAsyncCallbacks> request_callbacks_;
   std::unique_ptr<DownstreamCallbacks> downstream_callbacks_;
   Upstream::ClusterManager& cluster_manager_;

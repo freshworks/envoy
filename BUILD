@@ -1,6 +1,9 @@
+load("//bazel:envoy_build_system.bzl", "envoy_package")
 load("//tools/python:namespace.bzl", "envoy_py_namespace")
 
 licenses(["notice"])  # Apache 2
+
+envoy_package()
 
 envoy_py_namespace()
 
@@ -19,13 +22,11 @@ exports_files([
 alias(
     name = "envoy",
     actual = "//source/exe:envoy",
-    visibility = ["//visibility:public"],
 )
 
 alias(
     name = "envoy.stripped",
     actual = "//source/exe:envoy-static.stripped",
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
@@ -65,6 +66,13 @@ package_group(
     name = "contrib_library",
     packages = [
         "//contrib/...",
+    ],
+)
+
+package_group(
+    name = "examples_library",
+    packages = [
+        "//examples/...",
     ],
 )
 

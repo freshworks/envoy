@@ -13,7 +13,6 @@ import static org.robolectric.Shadows.shadowOf;
 import android.content.Intent;
 import android.Manifest;
 import android.net.ConnectivityManager;
-import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.os.Build;
 import android.os.ConditionVariable;
@@ -60,7 +59,6 @@ import org.junit.rules.RuleChain;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.shadows.ShadowConnectivityManager;
-import org.robolectric.shadows.ShadowNetworkCapabilities;
 
 /**
  * Test functionality of CronetUrlRequest.
@@ -87,7 +85,6 @@ public class CronetUrlRequestTest {
     mMockUrlRequestJobFactory =
         new MockUrlRequestJobFactory(mTestRule.buildCronetTestFramework().mBuilder);
     assertTrue(NativeTestServer.startNativeTestServer(getContext()));
-    enableInternet(true);
   }
 
   @After
@@ -99,19 +96,6 @@ public class CronetUrlRequestTest {
     // instance instead of holding on a dangling EnvoyEngine because AndroidNetworkMonitor.load
     // does not update the singleton instance to a new one if there is already an existing instance.
     AndroidNetworkMonitor.shutdown();
-  }
-
-  private static void enableInternet(boolean enabled) {
-    AndroidNetworkMonitor androidNetworkMonitor = AndroidNetworkMonitor.getInstance();
-    ConnectivityManager connectivityManager = androidNetworkMonitor.getConnectivityManager();
-    ShadowNetworkCapabilities shadowNetworkCapabilities = shadowOf(
-        connectivityManager.getNetworkCapabilities(connectivityManager.getActiveNetwork()));
-
-    if (enabled) {
-      shadowNetworkCapabilities.addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-    } else {
-      shadowNetworkCapabilities.removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
-    }
   }
 
   private TestUrlRequestCallback startAndWaitForComplete(CronetEngine engine, String url)
@@ -2099,12 +2083,26 @@ public class CronetUrlRequestTest {
   @SmallTest
   @Feature({"Cronet"})
   public void testInternetDisconnectedError() throws Exception {
-    enableInternet(false);
+    AndroidNetworkMonitor androidNetworkMonitor = AndroidNetworkMonitor.getInstance();
+    Intent intent = new Intent(ConnectivityManager.CONNECTIVITY_ACTION);
+    // save old networkInfo before overriding
+    NetworkInfo networkInfo = androidNetworkMonitor.getConnectivityManager().getActiveNetworkInfo();
 
+    // simulate no network
+    ShadowConnectivityManager connectivityManager =
+        shadowOf(androidNetworkMonitor.getConnectivityManager());
+    connectivityManager.setActiveNetworkInfo(null);
+    androidNetworkMonitor.onReceive(getContext(), intent);
+
+    // send request and confirm errorcode
     checkSpecificErrorCode(
         EnvoyMobileError.DNS_RESOLUTION_FAILED, NetError.ERR_INTERNET_DISCONNECTED,
         NetworkException.ERROR_INTERNET_DISCONNECTED, "INTERNET_DISCONNECTED", false,
         /*error_details=*/"rc: 400|ec: 0|rsp_flags: 26|http: 1");
+
+    // bring back online since the AndroidNetworkMonitor class is a singleton
+    connectivityManager.setActiveNetworkInfo(networkInfo);
+    androidNetworkMonitor.onReceive(getContext(), intent);
   }
 
   /*

@@ -72,9 +72,9 @@ public:
    * @param bind_type supplies the bind type of the listen socket.
    * @param creation_options additional options for how to create the socket.
    * @param worker_index supplies the socket/worker index of the new socket.
-   * @return Network::SocketSharedPtr an initialized and potentially bound socket or error status.
+   * @return Network::SocketSharedPtr an initialized and potentially bound socket.
    */
-  virtual absl::StatusOr<Network::SocketSharedPtr> createListenSocket(
+  virtual Network::SocketSharedPtr createListenSocket(
       Network::Address::InstanceConstSharedPtr address, Network::Socket::Type socket_type,
       const Network::Socket::OptionsSharedPtr& options, BindType bind_type,
       const Network::SocketCreationOptions& creation_options, uint32_t worker_index) PURE;
@@ -83,10 +83,9 @@ public:
    * Creates a list of filter factories.
    * @param filters supplies the proto configuration.
    * @param context supplies the factory creation context.
-   * @return Filter::NetworkFilterFactoriesList the list of filter factories or
-   * error status.
+   * @return Filter::NetworkFilterFactoriesList the list of filter factories.
    */
-  virtual absl::StatusOr<Filter::NetworkFilterFactoriesList> createNetworkFilterFactoryList(
+  virtual Filter::NetworkFilterFactoriesList createNetworkFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>& filters,
       Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context) PURE;
 
@@ -96,7 +95,7 @@ public:
    * @param context supplies the factory creation context.
    * @return Filter::ListenerFilterFactoriesList the list of filter factories.
    */
-  virtual absl::StatusOr<Filter::ListenerFilterFactoriesList> createListenerFilterFactoryList(
+  virtual Filter::ListenerFilterFactoriesList createListenerFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context) PURE;
 
@@ -106,8 +105,7 @@ public:
    * @param context supplies the factory creation context.
    * @return std::vector<Network::UdpListenerFilterFactoryCb> the list of filter factories.
    */
-  virtual absl::StatusOr<std::vector<Network::UdpListenerFilterFactoryCb>>
-  createUdpListenerFilterFactoryList(
+  virtual std::vector<Network::UdpListenerFilterFactoryCb> createUdpListenerFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context) PURE;
 
@@ -117,8 +115,7 @@ public:
    * @param context supplies the factory creation context.
    * @return Filter::ListenerFilterFactoriesList the list of filter factories.
    */
-  virtual absl::StatusOr<Filter::QuicListenerFilterFactoriesList>
-  createQuicListenerFilterFactoryList(
+  virtual Filter::QuicListenerFilterFactoriesList createQuicListenerFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context) PURE;
 
@@ -226,10 +223,8 @@ public:
    * Start all workers accepting new connections on all added listeners.
    * @param guard_dog supplies the optional guard dog to use for thread watching.
    * @param callback supplies the callback to complete server initialization.
-   * @return a status indicating if the operation succeeded.
    */
-  virtual absl::Status startWorkers(OptRef<GuardDog> guard_dog,
-                                    std::function<void()> callback) PURE;
+  virtual void startWorkers(OptRef<GuardDog> guard_dog, std::function<void()> callback) PURE;
 
   /**
    * Stop all listeners from accepting new connections without actually removing any of them. This

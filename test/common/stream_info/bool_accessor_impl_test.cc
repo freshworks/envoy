@@ -22,12 +22,6 @@ TEST(BoolAccessorImplTest, TestProto) {
   EXPECT_NE(nullptr, message);
 }
 
-TEST(BoolAccessorImplTest, TestString) {
-  BoolAccessorImpl accessor(true);
-  auto str = accessor.serializeAsString();
-  EXPECT_EQ("true", str);
-}
-
 } // namespace
 } // namespace StreamInfo
 } // namespace Envoy

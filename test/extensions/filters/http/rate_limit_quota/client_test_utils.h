@@ -70,12 +70,12 @@ public:
   }
 
   Grpc::RawAsyncClientSharedPtr mockCreateAsyncClient(Unused, Unused, Unused) {
-    async_client_ = std::make_shared<Grpc::MockAsyncClient>();
-    EXPECT_CALL(*async_client_, startRaw("envoy.service.rate_limit_quota.v3.RateLimitQuotaService",
-                                         "StreamRateLimitQuotas", _, _))
-        .WillRepeatedly(Invoke(this, &RateLimitTestClient::mockStartRaw));
+    auto async_client = std::make_shared<Grpc::MockAsyncClient>();
+    EXPECT_CALL(*async_client, startRaw("envoy.service.rate_limit_quota.v3.RateLimitQuotaService",
+                                        "StreamRateLimitQuotas", _, _))
+        .WillOnce(Invoke(this, &RateLimitTestClient::mockStartRaw));
 
-    return async_client_;
+    return async_client;
   }
 
   Grpc::RawAsyncStream* mockStartRaw(Unused, Unused, Grpc::RawAsyncStreamCallbacks& callbacks,
@@ -97,7 +97,7 @@ public:
   Grpc::RawAsyncStreamCallbacks* stream_callbacks_;
   Grpc::Status::GrpcStatus grpc_status_ = Grpc::Status::WellKnownGrpcStatus::Ok;
   RateLimitClientPtr client_;
-  std::shared_ptr<Grpc::MockAsyncClient> async_client_ = nullptr;
+  // std::unique_ptr<RateLimitClient> client_;
   MockRateLimitQuotaCallbacks callbacks_;
   bool external_inited_ = false;
   bool start_failed_ = false;

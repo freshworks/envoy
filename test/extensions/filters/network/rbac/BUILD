@@ -15,7 +15,6 @@ envoy_extension_cc_test(
     name = "config_test",
     srcs = ["config_test.cc"],
     extension_names = ["envoy.filters.network.rbac"],
-    rbe_pool = "2core",
     tags = ["skip_on_windows"],
     deps = [
         "//source/extensions/filters/network/rbac:config",
@@ -29,7 +28,6 @@ envoy_extension_cc_test(
     name = "filter_test",
     srcs = ["filter_test.cc"],
     extension_names = ["envoy.filters.network.rbac"],
-    rbe_pool = "2core",
     tags = ["skip_on_windows"],
     deps = [
         "//source/extensions/filters/common/rbac:utility_lib",
@@ -49,7 +47,6 @@ envoy_extension_cc_test(
     size = "large",
     srcs = ["integration_test.cc"],
     extension_names = ["envoy.filters.network.rbac"],
-    rbe_pool = "2core",
     tags = ["skip_on_windows"],
     deps = [
         "//source/extensions/filters/network/echo:config",

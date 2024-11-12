@@ -91,7 +91,6 @@ public:
   size_t size() const override;
   HttpServerPropertiesCache::Http3StatusTracker&
   getOrCreateHttp3StatusTracker(const Origin& origin) override;
-  void resetBrokenness() override;
 
 private:
   // Time source used to check expiration of entries.

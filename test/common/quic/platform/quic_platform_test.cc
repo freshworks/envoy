@@ -363,7 +363,7 @@ TEST_F(QuicPlatformTest, QuicMutex) {
   mu.AssertReaderHeld();
   mu.WriterUnlock();
   {
-    quiche::QuicheReaderMutexLock rmu(&mu);
+    QuicReaderMutexLock rmu(&mu);
     mu.AssertReaderHeld();
   }
   mu.WriterLock();

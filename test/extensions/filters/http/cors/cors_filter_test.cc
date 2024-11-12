@@ -55,10 +55,12 @@ public:
     cors_policy_->allow_private_network_access_ = true;
     cors_policy_->max_age_ = "0";
 
-    ON_CALL(decoder_callbacks_, perFilterConfigs())
-        .WillByDefault(Invoke([this]() -> Router::RouteSpecificFilterConfigs {
-          return {cors_policy_.get(), cors_policy_.get()};
-        }));
+    ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
+        .WillByDefault(
+            Invoke([this](std::function<void(const Router::RouteSpecificFilterConfig&)> cb) {
+              cb(*cors_policy_); // Cors policy of virtual host.
+              cb(*cors_policy_); // Cors policy of route entry.
+            }));
 
     filter_.setDecoderFilterCallbacks(decoder_callbacks_);
     filter_.setEncoderFilterCallbacks(encoder_callbacks_);
@@ -87,8 +89,8 @@ TEST_F(CorsFilterTest, InitializeCorsPoliciesTest) {
     EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_.decodeHeaders(request_headers, true));
     EXPECT_EQ(false, isCorsRequest());
     EXPECT_EQ(2, filter_.policiesForTest().size());
-    EXPECT_EQ(cors_policy_.get(), &filter_.policiesForTest().at(0).get());
-    EXPECT_EQ(cors_policy_.get(), &filter_.policiesForTest().at(1).get());
+    EXPECT_EQ(cors_policy_.get(), filter_.policiesForTest().at(0));
+    EXPECT_EQ(cors_policy_.get(), filter_.policiesForTest().at(1));
   }
 
   // Only 'typed_per_filter_config' of virtual host has cors policy.
@@ -97,14 +99,16 @@ TEST_F(CorsFilterTest, InitializeCorsPoliciesTest) {
     filter_.setDecoderFilterCallbacks(decoder_callbacks_);
     filter_.setEncoderFilterCallbacks(encoder_callbacks_);
 
-    ON_CALL(decoder_callbacks_, perFilterConfigs())
-        .WillByDefault(Invoke(
-            [this]() -> Router::RouteSpecificFilterConfigs { return {cors_policy_.get()}; }));
+    ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
+        .WillByDefault(
+            Invoke([this](std::function<void(const Router::RouteSpecificFilterConfig&)> cb) {
+              cb(*cors_policy_); // Cors policy of virtual host.
+            }));
 
     EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_.decodeHeaders(request_headers, true));
     EXPECT_EQ(false, isCorsRequest());
     EXPECT_EQ(1, filter_.policiesForTest().size());
-    EXPECT_EQ(cors_policy_.get(), &filter_.policiesForTest().at(0).get());
+    EXPECT_EQ(cors_policy_.get(), filter_.policiesForTest().at(0));
   }
 
   // No cors policy in the 'typed_per_filter_config'.
@@ -114,14 +118,18 @@ TEST_F(CorsFilterTest, InitializeCorsPoliciesTest) {
     filter_.setEncoderFilterCallbacks(encoder_callbacks_);
 
     EXPECT_CALL(decoder_callbacks_.route_->route_entry_, corsPolicy()).WillOnce(Return(nullptr));
-    EXPECT_CALL(decoder_callbacks_.route_->virtual_host_, corsPolicy()).WillOnce(Return(nullptr));
+    EXPECT_CALL(decoder_callbacks_.route_->route_entry_.virtual_host_, corsPolicy())
+        .WillOnce(Return(nullptr));
 
-    ON_CALL(decoder_callbacks_, perFilterConfigs())
-        .WillByDefault(Invoke([]() -> Router::RouteSpecificFilterConfigs { return {}; }));
+    ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
+        .WillByDefault(
+            Invoke([](std::function<void(const Router::RouteSpecificFilterConfig&)>) {}));
 
     EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_.decodeHeaders(request_headers, true));
     EXPECT_EQ(false, isCorsRequest());
-    EXPECT_EQ(0, filter_.policiesForTest().size());
+    EXPECT_EQ(2, filter_.policiesForTest().size());
+    EXPECT_EQ(nullptr, filter_.policiesForTest().at(0));
+    EXPECT_EQ(nullptr, filter_.policiesForTest().at(1));
   }
   {
     filter_ = CorsFilter(config_);
@@ -130,15 +138,18 @@ TEST_F(CorsFilterTest, InitializeCorsPoliciesTest) {
 
     EXPECT_CALL(decoder_callbacks_.route_->route_entry_, corsPolicy())
         .WillOnce(Return(cors_policy_.get()));
-    EXPECT_CALL(decoder_callbacks_.route_->virtual_host_, corsPolicy()).WillOnce(Return(nullptr));
+    EXPECT_CALL(decoder_callbacks_.route_->route_entry_.virtual_host_, corsPolicy())
+        .WillOnce(Return(nullptr));
 
-    ON_CALL(decoder_callbacks_, perFilterConfigs())
-        .WillByDefault(Invoke([]() -> Router::RouteSpecificFilterConfigs { return {}; }));
+    ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
+        .WillByDefault(
+            Invoke([](std::function<void(const Router::RouteSpecificFilterConfig&)>) {}));
 
     EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_.decodeHeaders(request_headers, true));
     EXPECT_EQ(false, isCorsRequest());
-    EXPECT_EQ(1, filter_.policiesForTest().size());
-    EXPECT_EQ(cors_policy_.get(), &filter_.policiesForTest().at(0).get());
+    EXPECT_EQ(2, filter_.policiesForTest().size());
+    EXPECT_EQ(cors_policy_.get(), filter_.policiesForTest().at(0));
+    EXPECT_EQ(nullptr, filter_.policiesForTest().at(1));
   }
   {
     filter_ = CorsFilter(config_);
@@ -146,16 +157,18 @@ TEST_F(CorsFilterTest, InitializeCorsPoliciesTest) {
     filter_.setEncoderFilterCallbacks(encoder_callbacks_);
 
     EXPECT_CALL(decoder_callbacks_.route_->route_entry_, corsPolicy()).WillOnce(Return(nullptr));
-    EXPECT_CALL(decoder_callbacks_.route_->virtual_host_, corsPolicy())
+    EXPECT_CALL(decoder_callbacks_.route_->route_entry_.virtual_host_, corsPolicy())
         .WillOnce(Return(cors_policy_.get()));
 
-    ON_CALL(decoder_callbacks_, perFilterConfigs())
-        .WillByDefault(Invoke([]() -> Router::RouteSpecificFilterConfigs { return {}; }));
+    ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
+        .WillByDefault(
+            Invoke([](std::function<void(const Router::RouteSpecificFilterConfig&)>) {}));
 
     EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_.decodeHeaders(request_headers, false));
     EXPECT_EQ(false, isCorsRequest());
-    EXPECT_EQ(1, filter_.policiesForTest().size());
-    EXPECT_EQ(cors_policy_.get(), &filter_.policiesForTest().at(0).get());
+    EXPECT_EQ(2, filter_.policiesForTest().size());
+    EXPECT_EQ(nullptr, filter_.policiesForTest().at(0));
+    EXPECT_EQ(cors_policy_.get(), filter_.policiesForTest().at(1));
   }
 }
 
@@ -704,11 +717,12 @@ TEST_F(CorsFilterTest, NoCorsEntry) {
       {":method", "OPTIONS"}, {"origin", "localhost"}, {"access-control-request-method", "GET"}};
 
   // No cors policy in the 'typed_per_filter_config'.
-  ON_CALL(decoder_callbacks_, perFilterConfigs())
-      .WillByDefault(Invoke([]() -> Router::RouteSpecificFilterConfigs { return {}; }));
+  ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
+      .WillByDefault(Invoke([](std::function<void(const Router::RouteSpecificFilterConfig&)>) {}));
   // No cors policy in route entry or virtual host.
   ON_CALL(decoder_callbacks_.route_->route_entry_, corsPolicy()).WillByDefault(Return(nullptr));
-  ON_CALL(decoder_callbacks_.route_->virtual_host_, corsPolicy()).WillByDefault(Return(nullptr));
+  ON_CALL(decoder_callbacks_.route_->route_entry_.virtual_host_, corsPolicy())
+      .WillByDefault(Return(nullptr));
 
   EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_.decodeHeaders(request_headers, false));
   EXPECT_EQ(false, isCorsRequest());
@@ -730,9 +744,11 @@ TEST_F(CorsFilterTest, NoRouteCorsEntry) {
   Http::TestRequestHeaderMapImpl request_headers{
       {":method", "OPTIONS"}, {"origin", "localhost"}, {"access-control-request-method", "GET"}};
 
-  ON_CALL(decoder_callbacks_, perFilterConfigs())
+  ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
       .WillByDefault(
-          Invoke([this]() -> Router::RouteSpecificFilterConfigs { return {cors_policy_.get()}; }));
+          Invoke([this](std::function<void(const Router::RouteSpecificFilterConfig&)> cb) {
+            cb(*cors_policy_); // Cors policy of route entry.
+          }));
 
   Http::TestResponseHeaderMapImpl response_headers{
       {":status", "200"},
@@ -762,9 +778,11 @@ TEST_F(CorsFilterTest, NoVHostCorsEntry) {
 
   cors_policy_->allow_methods_ = "";
 
-  ON_CALL(decoder_callbacks_, perFilterConfigs())
+  ON_CALL(decoder_callbacks_, traversePerFilterConfig(_))
       .WillByDefault(
-          Invoke([this]() -> Router::RouteSpecificFilterConfigs { return {cors_policy_.get()}; }));
+          Invoke([this](std::function<void(const Router::RouteSpecificFilterConfig&)> cb) {
+            cb(*cors_policy_); // Cors policy of route entry.
+          }));
 
   Http::TestResponseHeaderMapImpl response_headers{
       {":status", "200"},

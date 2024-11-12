@@ -22,7 +22,6 @@ envoy_extension_cc_test(
         "//test/extensions/stats_sinks/wasm/test_data:test_context_cpp.wasm",
     ]),
     extension_names = ["envoy.stat_sinks.wasm"],
-    rbe_pool = "2core",
     tags = ["skip_on_windows"],
     deps = [
         "//source/extensions/stat_sinks/wasm:config",
@@ -40,7 +39,7 @@ envoy_extension_cc_test(
         "//test/extensions/stats_sinks/wasm/test_data:test_context_cpp.wasm",
     ]),
     extension_names = ["envoy.stat_sinks.wasm"],
-    rbe_pool = "2core",
+    external_deps = ["abseil_optional"],
     tags = ["skip_on_windows"],
     deps = [
         "//source/common/stats:stats_lib",
@@ -50,6 +49,5 @@ envoy_extension_cc_test(
         "//test/extensions/stats_sinks/wasm/test_data:test_context_cpp_plugin",
         "//test/mocks/stats:stats_mocks",
         "//test/test_common:wasm_lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )

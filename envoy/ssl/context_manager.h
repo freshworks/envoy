@@ -19,6 +19,9 @@ class CommonFactoryContext;
 
 namespace Ssl {
 
+// Opaque type defined and used by the ``ServerContext``.
+struct TlsContext;
+
 using ContextAdditionalInitFunc =
     std::function<absl::Status(Ssl::TlsContext& context, const Ssl::TlsCertificateConfig& cert)>;
 

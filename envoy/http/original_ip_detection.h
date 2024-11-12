@@ -39,8 +39,6 @@ struct OriginalIPDetectionResult {
   // If set, these parameters will be used to signal that detection failed and the request should
   // be rejected.
   absl::optional<OriginalIPRejectRequestOptions> reject_options;
-  // Whether to skip appending the detected remote address to ``x-forwarded-for``.
-  bool skip_xff_append;
 };
 
 /**
@@ -74,12 +72,12 @@ public:
   ~OriginalIPDetectionFactory() override = default;
 
   /**
-   * Creates a particular extension implementation or return an error status.
+   * Creates a particular extension implementation.
    *
    * @param config supplies the configuration for the original IP detection extension.
    * @return OriginalIPDetectionSharedPtr the extension instance.
    */
-  virtual absl::StatusOr<OriginalIPDetectionSharedPtr>
+  virtual OriginalIPDetectionSharedPtr
   createExtension(const Protobuf::Message& config,
                   Server::Configuration::FactoryContext& context) PURE;
 

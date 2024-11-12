@@ -377,6 +377,8 @@ public:
   void setupProvider(MetadataFetcher::MetadataReceiver::RefreshState refresh_state =
                          MetadataFetcher::MetadataReceiver::RefreshState::Ready,
                      std::chrono::seconds initialization_timer = std::chrono::seconds(2)) {
+    scoped_runtime_.mergeValues(
+        {{"envoy.reloadable_features.use_http_client_to_fetch_aws_credentials", "true"}});
     ON_CALL(context_, clusterManager()).WillByDefault(ReturnRef(cluster_manager_));
 
     provider_ = std::make_shared<InstanceProfileCredentialsProvider>(
@@ -1078,10 +1080,6 @@ public:
       : api_(Api::createApiForTest(time_system_)) {}
 
   void setupProvider() {
-
-    scoped_runtime_.mergeValues(
-        {{"envoy.reloadable_features.use_http_client_to_fetch_aws_credentials", "false"}});
-
     provider_ = std::make_shared<InstanceProfileCredentialsProvider>(
         *api_, absl::nullopt,
         [this](Http::RequestMessage& message) -> absl::optional<std::string> {
@@ -1136,7 +1134,6 @@ public:
     EXPECT_CALL(fetch_metadata_, fetch(messageMatches(headers))).WillOnce(Return(document));
   }
 
-  TestScopedRuntime scoped_runtime_;
   Event::SimulatedTimeSystem time_system_;
   Api::ApiPtr api_;
   NiceMock<MockFetchMetadata> fetch_metadata_;
@@ -1403,6 +1400,8 @@ public:
   void setupProvider(MetadataFetcher::MetadataReceiver::RefreshState refresh_state =
                          MetadataFetcher::MetadataReceiver::RefreshState::Ready,
                      std::chrono::seconds initialization_timer = std::chrono::seconds(2)) {
+    scoped_runtime_.mergeValues(
+        {{"envoy.reloadable_features.use_http_client_to_fetch_aws_credentials", "true"}});
     ON_CALL(context_, clusterManager()).WillByDefault(ReturnRef(cluster_manager_));
     provider_ = std::make_shared<ContainerCredentialsProvider>(
         *api_, context_,
@@ -1665,9 +1664,6 @@ public:
   void setupProvider(MetadataFetcher::MetadataReceiver::RefreshState refresh_state =
                          MetadataFetcher::MetadataReceiver::RefreshState::Ready,
                      std::chrono::seconds initialization_timer = std::chrono::seconds(2)) {
-    scoped_runtime_.mergeValues(
-        {{"envoy.reloadable_features.use_http_client_to_fetch_aws_credentials", "false"}});
-
     provider_ = std::make_shared<ContainerCredentialsProvider>(
         *api_, absl::nullopt,
         [this](Http::RequestMessage& message) -> absl::optional<std::string> {
@@ -1686,7 +1682,6 @@ public:
     EXPECT_CALL(fetch_metadata_, fetch(messageMatches(headers))).WillOnce(Return(document));
   }
 
-  TestScopedRuntime scoped_runtime_;
   Event::SimulatedTimeSystem time_system_;
   Api::ApiPtr api_;
   NiceMock<MockFetchMetadata> fetch_metadata_;
@@ -1831,6 +1826,8 @@ public:
   void setupProvider(MetadataFetcher::MetadataReceiver::RefreshState refresh_state =
                          MetadataFetcher::MetadataReceiver::RefreshState::Ready,
                      std::chrono::seconds initialization_timer = std::chrono::seconds(2)) {
+    scoped_runtime_.mergeValues(
+        {{"envoy.reloadable_features.use_http_client_to_fetch_aws_credentials", "true"}});
     ON_CALL(context_, clusterManager()).WillByDefault(ReturnRef(cluster_manager_));
     provider_ = std::make_shared<ContainerCredentialsProvider>(
         *api_, context_,
@@ -1953,6 +1950,8 @@ public:
   void setupProvider(MetadataFetcher::MetadataReceiver::RefreshState refresh_state =
                          MetadataFetcher::MetadataReceiver::RefreshState::Ready,
                      std::chrono::seconds initialization_timer = std::chrono::seconds(2)) {
+    scoped_runtime_.mergeValues(
+        {{"envoy.reloadable_features.use_http_client_to_fetch_aws_credentials", "true"}});
     ON_CALL(context_, clusterManager()).WillByDefault(ReturnRef(cluster_manager_));
     provider_ = std::make_shared<WebIdentityCredentialsProvider>(
         *api_, context_,

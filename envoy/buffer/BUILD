@@ -11,6 +11,9 @@ envoy_package()
 envoy_cc_library(
     name = "buffer_interface",
     hdrs = ["buffer.h"],
+    external_deps = [
+        "abseil_inlined_vector",
+    ],
     deps = [
         "//envoy/api:os_sys_calls_interface",
         "//envoy/common:exception_lib",
@@ -18,6 +21,5 @@ envoy_cc_library(
         "//source/common/common:assert_lib",
         "//source/common/common:byte_order_lib",
         "//source/common/common:utility_lib",
-        "@com_google_absl//absl/container:inlined_vector",
     ],
 )

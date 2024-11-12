@@ -9,7 +9,6 @@
 #include "test/mocks/tcp/mocks.h"
 #include "test/mocks/upstream/cluster_manager.h"
 #include "test/mocks/upstream/load_balancer_context.h"
-#include "test/test_common/test_runtime.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -25,20 +24,11 @@ namespace Extensions {
 namespace Upstreams {
 namespace Tcp {
 namespace Generic {
-class TcpConnPoolTest : public testing::TestWithParam<bool> {
+class TcpConnPoolTest : public ::testing::Test {
 public:
   TcpConnPoolTest() {
     EXPECT_CALL(lb_context_, downstreamConnection()).WillRepeatedly(Return(&connection_));
   }
-
-  void SetUp() override {
-    scoped_runtime_.mergeValues({{"envoy.restart_features.upstream_http_filters_with_tcp_proxy",
-                                  GetParam() ? "true" : "false"}});
-  }
-
-  bool useUpstreamFilters() { return GetParam(); }
-
-  TestScopedRuntime scoped_runtime_;
   NiceMock<Upstream::MockThreadLocalCluster> thread_local_cluster_;
   GenericConnPoolFactory factory_;
   NiceMock<Envoy::Tcp::ConnectionPool::MockUpstreamCallbacks> callbacks_;
@@ -52,17 +42,14 @@ public:
   NiceMock<Server::Configuration::MockFactoryContext> context_;
 };
 
-INSTANTIATE_TEST_SUITE_P(UpstreamHttpFiltersWithTunneling, TcpConnPoolTest,
-                         ::testing::Values(true, false));
-
-TEST_P(TcpConnPoolTest, TestNoTunnelingConfig) {
+TEST_F(TcpConnPoolTest, TestNoTunnelingConfig) {
   EXPECT_CALL(thread_local_cluster_, tcpConnPool(_, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(),
                          &lb_context_, callbacks_, decoder_callbacks_, downstream_stream_info_));
 }
 
-TEST_P(TcpConnPoolTest, TestTunnelingDisabledByFilterState) {
+TEST_F(TcpConnPoolTest, TestTunnelingDisabledByFilterState) {
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   tcp_proxy_.mutable_tunneling_config()->set_hostname("host");
   const TcpProxy::TunnelingConfigHelperImpl config(scope_, tcp_proxy_, context_);
@@ -78,7 +65,7 @@ TEST_P(TcpConnPoolTest, TestTunnelingDisabledByFilterState) {
                          &lb_context_, callbacks_, decoder_callbacks_, downstream_stream_info_));
 }
 
-TEST_P(TcpConnPoolTest, TestTunnelingNotDisabledIfFilterStateHasFalseValue) {
+TEST_F(TcpConnPoolTest, TestTunnelingNotDisabledIfFilterStateHasFalseValue) {
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   tcp_proxy_.mutable_tunneling_config()->set_hostname("host");
   const TcpProxy::TunnelingConfigHelperImpl config(scope_, tcp_proxy_, context_);
@@ -88,43 +75,37 @@ TEST_P(TcpConnPoolTest, TestTunnelingNotDisabledIfFilterStateHasFalseValue) {
       std::make_shared<StreamInfo::BoolAccessorImpl>(false),
       StreamInfo::FilterState::StateType::Mutable, StreamInfo::FilterState::LifeSpan::Connection);
 
-  if (!useUpstreamFilters()) {
-    EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
-  }
-
+  EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
                          &lb_context_, callbacks_, decoder_callbacks_, downstream_stream_info_));
 }
 
-TEST_P(TcpConnPoolTest, TestNoConnPool) {
+TEST_F(TcpConnPoolTest, TestNoConnPool) {
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   tcp_proxy_.mutable_tunneling_config()->set_hostname("host");
   const TcpProxy::TunnelingConfigHelperImpl config(scope_, tcp_proxy_, context_);
-  if (!useUpstreamFilters()) {
-    EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
-  }
+  EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
                          &lb_context_, callbacks_, decoder_callbacks_, downstream_stream_info_));
 }
 
-TEST_P(TcpConnPoolTest, Http2Config) {
+TEST_F(TcpConnPoolTest, Http2Config) {
   auto info = std::make_shared<Upstream::MockClusterInfo>();
   const std::string fake_cluster_name = "fake_cluster";
 
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   tcp_proxy_.mutable_tunneling_config()->set_hostname("host");
   const TcpProxy::TunnelingConfigHelperImpl config(scope_, tcp_proxy_, context_);
-  if (!useUpstreamFilters()) {
-    EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
-  }
+
+  EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
                          &lb_context_, callbacks_, decoder_callbacks_, downstream_stream_info_));
 }
 
-TEST_P(TcpConnPoolTest, Http3Config) {
+TEST_F(TcpConnPoolTest, Http3Config) {
   auto info = std::make_shared<Upstream::MockClusterInfo>();
   const std::string fake_cluster_name = "fake_cluster";
   EXPECT_CALL(*info, features())
@@ -134,9 +115,7 @@ TEST_P(TcpConnPoolTest, Http3Config) {
   envoy::extensions::filters::network::tcp_proxy::v3::TcpProxy_TunnelingConfig config_proto;
   tcp_proxy_.mutable_tunneling_config()->set_hostname("host");
   const TcpProxy::TunnelingConfigHelperImpl config(scope_, tcp_proxy_, context_);
-  if (!useUpstreamFilters()) {
-    EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
-  }
+  EXPECT_CALL(thread_local_cluster_, httpConnPool(_, _, _)).WillOnce(Return(absl::nullopt));
   EXPECT_EQ(nullptr, factory_.createGenericConnPool(
                          thread_local_cluster_, TcpProxy::TunnelingConfigHelperOptConstRef(config),
                          &lb_context_, callbacks_, decoder_callbacks_, downstream_stream_info_));

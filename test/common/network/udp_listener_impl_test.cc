@@ -60,8 +60,6 @@ public:
         .WillByDefault(Return(os_calls.latched().supportsMmsg()));
     ON_CALL(listener_callbacks_, numPacketsExpectedPerEventLoop())
         .WillByDefault(Return(MAX_NUM_PACKETS_PER_EVENT_LOOP));
-    ON_CALL(listener_callbacks_, udpSaveCmsgConfig())
-        .WillByDefault(ReturnRef(udp_save_cmsg_config_));
 
     // Set listening socket options.
     server_socket_->addOptions(SocketOptionFactory::buildIpPacketInfoOptions());
@@ -101,7 +99,6 @@ public:
   NiceMock<OverrideOsSysCallsImpl> override_syscall_;
   TestThreadsafeSingletonInjector<Api::OsSysCallsImpl> os_calls{&override_syscall_};
   bool recvbuf_large_enough_{true};
-  const IoHandle::UdpSaveCmsgConfig udp_save_cmsg_config_{};
 };
 
 INSTANTIATE_TEST_SUITE_P(IpVersions, UdpListenerImplTest,

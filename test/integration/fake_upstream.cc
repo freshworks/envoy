@@ -692,7 +692,7 @@ void FakeUpstream::initializeServer() {
   }
 
   dispatcher_->post([this]() -> void {
-    EXPECT_TRUE(socket_factories_[0]->doFinalPreWorkerInit().ok());
+    socket_factories_[0]->doFinalPreWorkerInit();
     handler_->addListener(absl::nullopt, listener_, runtime_, random_);
     server_initialized_.setReady();
   });
@@ -995,15 +995,14 @@ AssertionResult FakeUpstream::rawWriteConnection(uint32_t index, const std::stri
       timeout);
 }
 
-absl::Status FakeUpstream::FakeListenSocketFactory::doFinalPreWorkerInit() {
+void FakeUpstream::FakeListenSocketFactory::doFinalPreWorkerInit() {
   if (socket_->socketType() == Network::Socket::Type::Stream) {
-    EXPECT_EQ(0, socket_->ioHandle().listen(ENVOY_TCP_BACKLOG_SIZE).return_value_);
+    ASSERT_EQ(0, socket_->ioHandle().listen(ENVOY_TCP_BACKLOG_SIZE).return_value_);
   } else {
     ASSERT(socket_->socketType() == Network::Socket::Type::Datagram);
-    EXPECT_TRUE(Network::Socket::applyOptions(socket_->options(), *socket_,
+    ASSERT_TRUE(Network::Socket::applyOptions(socket_->options(), *socket_,
                                               envoy::config::core::v3::SocketOption::STATE_BOUND));
   }
-  return absl::OkStatus();
 }
 
 FakeRawConnection::~FakeRawConnection() {

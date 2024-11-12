@@ -46,6 +46,7 @@ envoy_cc_library(
 
 envoy_cc_library(
     name = "buffer_util_lib",
+    srcs = ["buffer_util.cc"],
     hdrs = ["buffer_util.h"],
     deps = [
         "//envoy/buffer:buffer_interface",

@@ -3,7 +3,6 @@
 #include <string>
 
 #include "source/common/config/metadata.h"
-#include "source/common/formatter/stream_info_formatter.h"
 #include "source/common/formatter/substitution_formatter.h"
 #include "source/common/http/utility.h"
 #include "source/common/protobuf/utility.h"
@@ -16,13 +15,13 @@ namespace Formatter {
 // Metadata formatter for route's metadata.
 class RouteMetadataFormatter : public ::Envoy::Formatter::MetadataFormatter {
 public:
-  RouteMetadataFormatter(absl::string_view filter_namespace,
-                         const std::vector<absl::string_view>& path,
+  RouteMetadataFormatter(const std::string& filter_namespace, const std::vector<std::string>& path,
                          absl::optional<size_t> max_length)
       : ::Envoy::Formatter::MetadataFormatter(filter_namespace, path, max_length,
                                               [](const StreamInfo::StreamInfo& stream_info)
                                                   -> const envoy::config::core::v3::Metadata* {
                                                 auto route = stream_info.route();
+
                                                 if (route == nullptr) {
                                                   return nullptr;
                                                 }
@@ -33,9 +32,8 @@ public:
 // Metadata formatter for listener metadata.
 class ListenerMetadataFormatter : public ::Envoy::Formatter::MetadataFormatter {
 public:
-  ListenerMetadataFormatter(absl::string_view filter_namespace,
-                            const std::vector<absl::string_view>& path,
-                            absl::optional<size_t> max_length)
+  ListenerMetadataFormatter(const std::string& filter_namespace,
+                            const std::vector<std::string>& path, absl::optional<size_t> max_length)
       : ::Envoy::Formatter::MetadataFormatter(
             filter_namespace, path, max_length,
             [](const StreamInfo::StreamInfo& stream_info)
@@ -51,8 +49,8 @@ public:
 // Metadata formatter for virtual host metadata.
 class VirtualHostMetadataFormatter : public ::Envoy::Formatter::MetadataFormatter {
 public:
-  VirtualHostMetadataFormatter(absl::string_view filter_namespace,
-                               const std::vector<absl::string_view>& path,
+  VirtualHostMetadataFormatter(const std::string& filter_namespace,
+                               const std::vector<std::string>& path,
                                absl::optional<size_t> max_length)
       : ::Envoy::Formatter::MetadataFormatter(filter_namespace, path, max_length,
                                               [](const StreamInfo::StreamInfo& stream_info)
@@ -62,78 +60,73 @@ public:
                                                 if (route == nullptr) {
                                                   return nullptr;
                                                 }
-                                                return &route->virtualHost().metadata();
+                                                const Router::RouteEntry* route_entry =
+                                                    route->routeEntry();
+                                                if (route_entry == nullptr) {
+                                                  return nullptr;
+                                                }
+                                                return &route_entry->virtualHost().metadata();
                                               }) {}
 };
 
-// Map used to dispatch types of metadata to individual handlers which will
-// access required metadata object.
-using FormatterProviderFunc = std::function<::Envoy::Formatter::StreamInfoFormatterProviderPtr(
-    absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-    absl::optional<size_t> max_length)>;
+// Constructor registers all types of supported metadata along with the
+// handlers accessing the required metadata type.
+MetadataFormatterCommandParser::MetadataFormatterCommandParser() {
+  metadata_formatter_providers_["DYNAMIC"] = [](const std::string& filter_namespace,
+                                                const std::vector<std::string>& path,
+                                                absl::optional<size_t> max_length) {
+    return std::make_unique<::Envoy::Formatter::DynamicMetadataFormatter>(filter_namespace, path,
+                                                                          max_length);
+  };
+  metadata_formatter_providers_["CLUSTER"] = [](const std::string& filter_namespace,
+                                                const std::vector<std::string>& path,
+                                                absl::optional<size_t> max_length) {
+    return std::make_unique<::Envoy::Formatter::ClusterMetadataFormatter>(filter_namespace, path,
+                                                                          max_length);
+  };
+  metadata_formatter_providers_["ROUTE"] = [](const std::string& filter_namespace,
+                                              const std::vector<std::string>& path,
+                                              absl::optional<size_t> max_length) {
+    return std::make_unique<RouteMetadataFormatter>(filter_namespace, path, max_length);
+  };
+  metadata_formatter_providers_["UPSTREAM_HOST"] = [](const std::string& filter_namespace,
+                                                      const std::vector<std::string>& path,
+                                                      absl::optional<size_t> max_length) {
+    return std::make_unique<::Envoy::Formatter::UpstreamHostMetadataFormatter>(filter_namespace,
+                                                                               path, max_length);
+  };
 
-using FormatterProviderFuncTable = absl::flat_hash_map<std::string, FormatterProviderFunc>;
+  metadata_formatter_providers_["LISTENER"] = [](const std::string& filter_namespace,
+                                                 const std::vector<std::string>& path,
+                                                 absl::optional<size_t> max_length) {
+    return std::make_unique<ListenerMetadataFormatter>(filter_namespace, path, max_length);
+  };
 
-const auto& formatterProviderFuncTable() {
-  CONSTRUCT_ON_FIRST_USE(
-      FormatterProviderFuncTable,
-      {
-          {"DYNAMIC",
-           [](absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-              absl::optional<size_t> max_length) {
-             return std::make_unique<::Envoy::Formatter::DynamicMetadataFormatter>(
-                 filter_namespace, path, max_length);
-           }},
-          {"CLUSTER",
-           [](absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-              absl::optional<size_t> max_length) {
-             return std::make_unique<::Envoy::Formatter::ClusterMetadataFormatter>(
-                 filter_namespace, path, max_length);
-           }},
-          {"ROUTE",
-           [](absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-              absl::optional<size_t> max_length) {
-             return std::make_unique<RouteMetadataFormatter>(filter_namespace, path, max_length);
-           }},
-          {"UPSTREAM_HOST",
-           [](absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-              absl::optional<size_t> max_length) {
-             return std::make_unique<::Envoy::Formatter::UpstreamHostMetadataFormatter>(
-                 filter_namespace, path, max_length);
-           }},
-          {"LISTENER",
-           [](absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-              absl::optional<size_t> max_length) {
-             return std::make_unique<ListenerMetadataFormatter>(filter_namespace, path, max_length);
-           }},
-          {"VIRTUAL_HOST",
-           [](absl::string_view filter_namespace, const std::vector<absl::string_view>& path,
-              absl::optional<size_t> max_length) {
-             return std::make_unique<VirtualHostMetadataFormatter>(filter_namespace, path,
-                                                                   max_length);
-           }},
-      });
+  metadata_formatter_providers_["VIRTUAL_HOST"] = [](const std::string& filter_namespace,
+                                                     const std::vector<std::string>& path,
+                                                     absl::optional<size_t> max_length) {
+    return std::make_unique<VirtualHostMetadataFormatter>(filter_namespace, path, max_length);
+  };
 }
 
 ::Envoy::Formatter::FormatterProviderPtr
-MetadataFormatterCommandParser::parse(absl::string_view command, absl::string_view subcommand,
-                                      absl::optional<size_t> max_length) const {
+MetadataFormatterCommandParser::parse(const std::string& command, const std::string& subcommand,
+                                      absl::optional<size_t>& max_length) const {
   if (command == "METADATA") {
     // Extract type of metadata and keys.
-    absl::string_view type, filter_namespace;
-    std::vector<absl::string_view> path;
+    std::string type, filter_namespace;
+    std::vector<std::string> path;
 
     ::Envoy::Formatter::SubstitutionFormatUtils::parseSubcommand(subcommand, ':', type,
                                                                  filter_namespace, path);
 
-    auto provider = formatterProviderFuncTable().find(type);
-    if (provider == formatterProviderFuncTable().end()) {
+    auto provider = metadata_formatter_providers_.find(type);
+    if (provider == metadata_formatter_providers_.end()) {
       throw EnvoyException(absl::StrCat(type, " is not supported type of metadata"));
     }
 
     // Return a pointer to formatter provider.
-    return std::make_unique<
-        Envoy::Formatter::StreamInfoFormatterWrapper<Envoy::Formatter::HttpFormatterContext>>(
+    return std::make_unique<Envoy::Formatter::StreamInfoFormatter>(
         provider->second(filter_namespace, path, max_length));
   }
   return nullptr;

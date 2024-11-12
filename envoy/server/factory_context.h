@@ -13,7 +13,6 @@
 #include "envoy/http/codes.h"
 #include "envoy/http/context.h"
 #include "envoy/http/filter.h"
-#include "envoy/http/http_server_properties_cache.h"
 #include "envoy/init/manager.h"
 #include "envoy/network/drain_decision.h"
 #include "envoy/network/filter.h"
@@ -120,11 +119,6 @@ public:
    * @return Upstream::ClusterManager& singleton for use by the entire server.
    */
   virtual Upstream::ClusterManager& clusterManager() PURE;
-
-  /**
-   * @return const Http::HttpServerPropertiesCacheManager& instance for use by the entire server.
-   */
-  virtual Http::HttpServerPropertiesCacheManager& httpServerPropertiesCacheManager() PURE;
 
   /**
    * @return TimeSource& a reference to the time source.

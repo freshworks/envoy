@@ -70,11 +70,9 @@ TEST_F(OpenTelemetryHttpTraceExporterTest, CreateExporterAndExportSpan) {
   Http::MockAsyncClientRequest request(&cluster_manager_.thread_local_cluster_.async_client_);
   Http::AsyncClient::Callbacks* callback;
 
-  EXPECT_CALL(cluster_manager_.thread_local_cluster_.async_client_,
-              send_(_, _,
-                    Http::AsyncClient::RequestOptions()
-                        .setTimeout(std::chrono::milliseconds(250))
-                        .setDiscardResponseBody(true)))
+  EXPECT_CALL(
+      cluster_manager_.thread_local_cluster_.async_client_,
+      send_(_, _, Http::AsyncClient::RequestOptions().setTimeout(std::chrono::milliseconds(250))))
       .WillOnce(
           Invoke([&](Http::RequestMessagePtr& message, Http::AsyncClient::Callbacks& callbacks,
                      const Http::AsyncClient::RequestOptions&) -> Http::AsyncClient::Request* {

@@ -2,7 +2,10 @@
 
 [[ -z "${SKIP_PROTO_FORMAT}" ]] && tools/proto_format/proto_format.sh fix
 
-opts=(--vscode)
+bazel_or_isk=bazelisk
+command -v bazelisk &> /dev/null || bazel_or_isk=bazel
+
+opts=(--vscode --bazel="$bazel_or_isk")
 
 [[ -z "${EXCLUDE_CONTRIB}" ]] || opts+=(--exclude_contrib)
 

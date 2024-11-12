@@ -48,7 +48,7 @@ public:
   /**
    * Static worker for createNetworkFilterFactoryList() that can be used directly in tests.
    */
-  static absl::StatusOr<Filter::NetworkFilterFactoriesList> createNetworkFilterFactoryListImpl(
+  static Filter::NetworkFilterFactoriesList createNetworkFilterFactoryListImpl(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>& filters,
       Configuration::FilterChainFactoryContext& filter_chain_factory_context,
       Filter::NetworkFilterConfigProviderManagerImpl& config_provider_manager);
@@ -56,7 +56,7 @@ public:
   /**
    * Static worker for createListenerFilterFactoryList() that can be used directly in tests.
    */
-  static absl::StatusOr<Filter::ListenerFilterFactoriesList> createListenerFilterFactoryListImpl(
+  static Filter::ListenerFilterFactoriesList createListenerFilterFactoryListImpl(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context,
       Filter::TcpListenerFilterConfigProviderManagerImpl& config_provider_manager);
@@ -64,16 +64,14 @@ public:
   /**
    * Static worker for createUdpListenerFilterFactoryList() that can be used directly in tests.
    */
-  static absl::StatusOr<std::vector<Network::UdpListenerFilterFactoryCb>>
-  createUdpListenerFilterFactoryListImpl(
+  static std::vector<Network::UdpListenerFilterFactoryCb> createUdpListenerFilterFactoryListImpl(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context);
 
   /**
    * Static worker for createQuicListenerFilterFactoryList() that can be used directly in tests.
    */
-  static absl::StatusOr<Filter::QuicListenerFilterFactoriesList>
-  createQuicListenerFilterFactoryListImpl(
+  static Filter::QuicListenerFilterFactoriesList createQuicListenerFilterFactoryListImpl(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context,
       Filter::QuicListenerFilterConfigProviderManagerImpl& config_provider_manager);
@@ -89,31 +87,30 @@ public:
         *server_.stats().rootScope(), server_.listenerManager(),
         server_.messageValidationContext().dynamicValidationVisitor());
   }
-  absl::StatusOr<Filter::NetworkFilterFactoriesList> createNetworkFilterFactoryList(
+  Filter::NetworkFilterFactoriesList createNetworkFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>& filters,
       Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context) override {
     return createNetworkFilterFactoryListImpl(filters, filter_chain_factory_context,
                                               network_config_provider_manager_);
   }
-  absl::StatusOr<Filter::ListenerFilterFactoriesList> createListenerFilterFactoryList(
+  Filter::ListenerFilterFactoriesList createListenerFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context) override {
     return createListenerFilterFactoryListImpl(filters, context,
                                                tcp_listener_config_provider_manager_);
   }
-  absl::StatusOr<std::vector<Network::UdpListenerFilterFactoryCb>>
-  createUdpListenerFilterFactoryList(
+  std::vector<Network::UdpListenerFilterFactoryCb> createUdpListenerFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context) override {
     return createUdpListenerFilterFactoryListImpl(filters, context);
   }
-  absl::StatusOr<Filter::QuicListenerFilterFactoriesList> createQuicListenerFilterFactoryList(
+  Filter::QuicListenerFilterFactoriesList createQuicListenerFilterFactoryList(
       const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>& filters,
       Configuration::ListenerFactoryContext& context) override {
     return createQuicListenerFilterFactoryListImpl(filters, context,
                                                    quic_listener_config_provider_manager_);
   }
-  absl::StatusOr<Network::SocketSharedPtr> createListenSocket(
+  Network::SocketSharedPtr createListenSocket(
       Network::Address::InstanceConstSharedPtr address, Network::Socket::Type socket_type,
       const Network::Socket::OptionsSharedPtr& options, BindType bind_type,
       const Network::SocketCreationOptions& creation_options, uint32_t worker_index) override;
@@ -225,7 +222,7 @@ public:
   listeners(ListenerState state = ListenerState::ACTIVE) override;
   uint64_t numConnections() const override;
   bool removeListener(const std::string& listener_name) override;
-  absl::Status startWorkers(OptRef<GuardDog> guard_dog, std::function<void()> callback) override;
+  void startWorkers(OptRef<GuardDog> guard_dog, std::function<void()> callback) override;
   void stopListeners(StopListenersType stop_listeners_type,
                      const Network::ExtraShutdownListenerOptions& options) override;
   void stopWorkers() override;
@@ -247,10 +244,9 @@ private:
    */
   using ListenerCompletionCallback = std::function<void()>;
 
-  absl::StatusOr<bool>
-  addOrUpdateListenerInternal(const envoy::config::listener::v3::Listener& config,
-                              const std::string& version_info, bool added_via_api,
-                              const std::string& name);
+  bool addOrUpdateListenerInternal(const envoy::config::listener::v3::Listener& config,
+                                   const std::string& version_info, bool added_via_api,
+                                   const std::string& name);
   bool removeListenerInternal(const std::string& listener_name, bool dynamic_listeners_only);
 
   struct DrainingListener {
@@ -327,12 +323,12 @@ private:
    */
   ListenerList::iterator getListenerByName(ListenerList& listeners, const std::string& name);
 
-  absl::Status setNewOrDrainingSocketFactory(const std::string& name, ListenerImpl& listener);
-  absl::Status createListenSocketFactory(ListenerImpl& listener);
+  void setNewOrDrainingSocketFactory(const std::string& name, ListenerImpl& listener);
+  void createListenSocketFactory(ListenerImpl& listener);
 
   void maybeCloseSocketsForListener(ListenerImpl& listener);
-  absl::Status setupSocketFactoryForListener(ListenerImpl& new_listener,
-                                             const ListenerImpl& existing_listener);
+  void setupSocketFactoryForListener(ListenerImpl& new_listener,
+                                     const ListenerImpl& existing_listener);
 
   ApiListenerPtr api_listener_;
   // Active listeners are listeners that are currently accepting new connections on the workers.
@@ -367,12 +363,12 @@ public:
   ListenerFilterChainFactoryBuilder(
       ListenerImpl& listener, Configuration::TransportSocketFactoryContextImpl& factory_context);
 
-  absl::StatusOr<Network::DrainableFilterChainSharedPtr>
+  Network::DrainableFilterChainSharedPtr
   buildFilterChain(const envoy::config::listener::v3::FilterChain& filter_chain,
                    FilterChainFactoryContextCreator& context_creator) const override;
 
 private:
-  absl::StatusOr<Network::DrainableFilterChainSharedPtr> buildFilterChainInternal(
+  Network::DrainableFilterChainSharedPtr buildFilterChainInternal(
       const envoy::config::listener::v3::FilterChain& filter_chain,
       Configuration::FilterChainFactoryContextPtr&& filter_chain_factory_context) const;
 

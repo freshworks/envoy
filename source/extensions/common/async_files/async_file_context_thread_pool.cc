@@ -21,9 +21,8 @@ namespace {
 
 template <typename T> class AsyncFileActionThreadPool : public AsyncFileActionWithResult<T> {
 public:
-  explicit AsyncFileActionThreadPool(AsyncFileHandle handle,
-                                     absl::AnyInvocable<void(T)> on_complete)
-      : AsyncFileActionWithResult<T>(std::move(on_complete)), handle_(std::move(handle)) {}
+  explicit AsyncFileActionThreadPool(AsyncFileHandle handle, std::function<void(T)> on_complete)
+      : AsyncFileActionWithResult<T>(on_complete), handle_(std::move(handle)) {}
 
 protected:
   int& fileDescriptor() { return context()->fileDescriptor(); }
@@ -40,9 +39,8 @@ protected:
 
 class ActionStat : public AsyncFileActionThreadPool<absl::StatusOr<struct stat>> {
 public:
-  ActionStat(AsyncFileHandle handle,
-             absl::AnyInvocable<void(absl::StatusOr<struct stat>)> on_complete)
-      : AsyncFileActionThreadPool<absl::StatusOr<struct stat>>(handle, std::move(on_complete)) {}
+  ActionStat(AsyncFileHandle handle, std::function<void(absl::StatusOr<struct stat>)> on_complete)
+      : AsyncFileActionThreadPool<absl::StatusOr<struct stat>>(handle, on_complete) {}
 
   absl::StatusOr<struct stat> executeImpl() override {
     ASSERT(fileDescriptor() != -1);
@@ -58,9 +56,8 @@ public:
 class ActionCreateHardLink : public AsyncFileActionThreadPool<absl::Status> {
 public:
   ActionCreateHardLink(AsyncFileHandle handle, absl::string_view filename,
-                       absl::AnyInvocable<void(absl::Status)> on_complete)
-      : AsyncFileActionThreadPool<absl::Status>(handle, std::move(on_complete)),
-        filename_(filename) {}
+                       std::function<void(absl::Status)> on_complete)
+      : AsyncFileActionThreadPool<absl::Status>(handle, on_complete), filename_(filename) {}
 
   absl::Status executeImpl() override {
     ASSERT(fileDescriptor() != -1);
@@ -73,12 +70,11 @@ public:
     return absl::OkStatus();
   }
 
-  void onCancelledBeforeCallback() override {
-    if (result_.value().ok()) {
+  void onCancelledBeforeCallback(absl::Status result) override {
+    if (result.ok()) {
       posix().unlink(filename_.c_str());
     }
   }
-  bool hasActionIfCancelledBeforeCallback() const override { return true; }
 
 private:
   const std::string filename_;
@@ -89,9 +85,8 @@ public:
   // Here we take a copy of the AsyncFileContext's file descriptor, because the close function
   // sets the AsyncFileContext's file descriptor to -1. This way there will be no race of trying
   // to use the handle again while the close is in flight.
-  explicit ActionCloseFile(AsyncFileHandle handle,
-                           absl::AnyInvocable<void(absl::Status)> on_complete)
-      : AsyncFileActionThreadPool<absl::Status>(handle, std::move(on_complete)),
+  explicit ActionCloseFile(AsyncFileHandle handle, std::function<void(absl::Status)> on_complete)
+      : AsyncFileActionThreadPool<absl::Status>(handle, on_complete),
         file_descriptor_(fileDescriptor()) {}
 
   absl::Status executeImpl() override {
@@ -102,8 +97,6 @@ public:
     return absl::OkStatus();
   }
 
-  bool executesEvenIfCancelled() const override { return true; }
-
 private:
   const int file_descriptor_;
 };
@@ -111,9 +104,8 @@ private:
 class ActionReadFile : public AsyncFileActionThreadPool<absl::StatusOr<Buffer::InstancePtr>> {
 public:
   ActionReadFile(AsyncFileHandle handle, off_t offset, size_t length,
-                 absl::AnyInvocable<void(absl::StatusOr<Buffer::InstancePtr>)> on_complete)
-      : AsyncFileActionThreadPool<absl::StatusOr<Buffer::InstancePtr>>(handle,
-                                                                       std::move(on_complete)),
+                 std::function<void(absl::StatusOr<Buffer::InstancePtr>)> on_complete)
+      : AsyncFileActionThreadPool<absl::StatusOr<Buffer::InstancePtr>>(handle, on_complete),
         offset_(offset), length_(length) {}
 
   absl::StatusOr<Buffer::InstancePtr> executeImpl() override {
@@ -141,9 +133,8 @@ private:
 class ActionWriteFile : public AsyncFileActionThreadPool<absl::StatusOr<size_t>> {
 public:
   ActionWriteFile(AsyncFileHandle handle, Buffer::Instance& contents, off_t offset,
-                  absl::AnyInvocable<void(absl::StatusOr<size_t>)> on_complete)
-      : AsyncFileActionThreadPool<absl::StatusOr<size_t>>(handle, std::move(on_complete)),
-        offset_(offset) {
+                  std::function<void(absl::StatusOr<size_t>)> on_complete)
+      : AsyncFileActionThreadPool<absl::StatusOr<size_t>>(handle, on_complete), offset_(offset) {
     contents_.move(contents);
   }
 
@@ -175,9 +166,8 @@ private:
 class ActionDuplicateFile : public AsyncFileActionThreadPool<absl::StatusOr<AsyncFileHandle>> {
 public:
   ActionDuplicateFile(AsyncFileHandle handle,
-                      absl::AnyInvocable<void(absl::StatusOr<AsyncFileHandle>)> on_complete)
-      : AsyncFileActionThreadPool<absl::StatusOr<AsyncFileHandle>>(handle, std::move(on_complete)) {
-  }
+                      std::function<void(absl::StatusOr<AsyncFileHandle>)> on_complete)
+      : AsyncFileActionThreadPool<absl::StatusOr<AsyncFileHandle>>(handle, on_complete) {}
 
   absl::StatusOr<AsyncFileHandle> executeImpl() override {
     ASSERT(fileDescriptor() != -1);
@@ -188,69 +178,61 @@ public:
     return std::make_shared<AsyncFileContextThreadPool>(context()->manager(), newfd.return_value_);
   }
 
-  void onCancelledBeforeCallback() override {
-    if (result_.value().ok()) {
-      result_.value().value()->close(nullptr, [](absl::Status) {}).IgnoreError();
+  void onCancelledBeforeCallback(absl::StatusOr<AsyncFileHandle> result) override {
+    if (result.ok()) {
+      result.value()->close([](absl::Status) {}).IgnoreError();
     }
   }
-  bool hasActionIfCancelledBeforeCallback() const override { return true; }
 };
 
 } // namespace
 
-absl::StatusOr<CancelFunction> AsyncFileContextThreadPool::stat(
-    Event::Dispatcher* dispatcher,
-    absl::AnyInvocable<void(absl::StatusOr<struct stat>)> on_complete) {
-  return checkFileAndEnqueue(dispatcher,
-                             std::make_unique<ActionStat>(handle(), std::move(on_complete)));
+absl::StatusOr<CancelFunction>
+AsyncFileContextThreadPool::stat(std::function<void(absl::StatusOr<struct stat>)> on_complete) {
+  return checkFileAndEnqueue(std::make_shared<ActionStat>(handle(), std::move(on_complete)));
 }
 
 absl::StatusOr<CancelFunction>
-AsyncFileContextThreadPool::createHardLink(Event::Dispatcher* dispatcher,
-                                           absl::string_view filename,
-                                           absl::AnyInvocable<void(absl::Status)> on_complete) {
-  return checkFileAndEnqueue(dispatcher, std::make_unique<ActionCreateHardLink>(
-                                             handle(), filename, std::move(on_complete)));
+AsyncFileContextThreadPool::createHardLink(absl::string_view filename,
+                                           std::function<void(absl::Status)> on_complete) {
+  return checkFileAndEnqueue(
+      std::make_shared<ActionCreateHardLink>(handle(), filename, std::move(on_complete)));
 }
 
-absl::StatusOr<CancelFunction>
-AsyncFileContextThreadPool::close(Event::Dispatcher* dispatcher,
-                                  absl::AnyInvocable<void(absl::Status)> on_complete) {
-  auto ret = checkFileAndEnqueue(
-      dispatcher, std::make_unique<ActionCloseFile>(handle(), std::move(on_complete)));
+absl::Status AsyncFileContextThreadPool::close(std::function<void(absl::Status)> on_complete) {
+  auto status =
+      checkFileAndEnqueue(std::make_shared<ActionCloseFile>(handle(), std::move(on_complete)))
+          .status();
   fileDescriptor() = -1;
-  return ret;
+  return status;
 }
 
 absl::StatusOr<CancelFunction> AsyncFileContextThreadPool::read(
-    Event::Dispatcher* dispatcher, off_t offset, size_t length,
-    absl::AnyInvocable<void(absl::StatusOr<Buffer::InstancePtr>)> on_complete) {
-  return checkFileAndEnqueue(dispatcher, std::make_unique<ActionReadFile>(handle(), offset, length,
-                                                                          std::move(on_complete)));
+    off_t offset, size_t length,
+    std::function<void(absl::StatusOr<Buffer::InstancePtr>)> on_complete) {
+  return checkFileAndEnqueue(
+      std::make_shared<ActionReadFile>(handle(), offset, length, std::move(on_complete)));
 }
 
 absl::StatusOr<CancelFunction>
-AsyncFileContextThreadPool::write(Event::Dispatcher* dispatcher, Buffer::Instance& contents,
-                                  off_t offset,
-                                  absl::AnyInvocable<void(absl::StatusOr<size_t>)> on_complete) {
-  return checkFileAndEnqueue(dispatcher, std::make_unique<ActionWriteFile>(
-                                             handle(), contents, offset, std::move(on_complete)));
+AsyncFileContextThreadPool::write(Buffer::Instance& contents, off_t offset,
+                                  std::function<void(absl::StatusOr<size_t>)> on_complete) {
+  return checkFileAndEnqueue(
+      std::make_shared<ActionWriteFile>(handle(), contents, offset, std::move(on_complete)));
 }
 
 absl::StatusOr<CancelFunction> AsyncFileContextThreadPool::duplicate(
-    Event::Dispatcher* dispatcher,
-    absl::AnyInvocable<void(absl::StatusOr<AsyncFileHandle>)> on_complete) {
+    std::function<void(absl::StatusOr<AsyncFileHandle>)> on_complete) {
   return checkFileAndEnqueue(
-      dispatcher, std::make_unique<ActionDuplicateFile>(handle(), std::move(on_complete)));
+      std::make_shared<ActionDuplicateFile>(handle(), std::move(on_complete)));
 }
 
 absl::StatusOr<CancelFunction>
-AsyncFileContextThreadPool::checkFileAndEnqueue(Event::Dispatcher* dispatcher,
-                                                std::unique_ptr<AsyncFileAction> action) {
+AsyncFileContextThreadPool::checkFileAndEnqueue(std::shared_ptr<AsyncFileAction> action) {
   if (fileDescriptor() == -1) {
     return absl::FailedPreconditionError("file was already closed");
   }
-  return enqueue(dispatcher, std::move(action));
+  return enqueue(action);
 }
 
 AsyncFileContextThreadPool::AsyncFileContextThreadPool(AsyncFileManager& manager, int fd)

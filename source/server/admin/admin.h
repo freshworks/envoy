@@ -118,8 +118,7 @@ public:
   bool createFilterChain(Http::FilterChainManager& manager, bool,
                          const Http::FilterChainOptions&) const override;
   bool createUpgradeFilterChain(absl::string_view, const Http::FilterChainFactory::UpgradeMap*,
-                                Http::FilterChainManager&,
-                                const Http::FilterChainOptions&) const override {
+                                Http::FilterChainManager&) const override {
     return false;
   }
 
@@ -148,7 +147,6 @@ public:
   absl::optional<std::chrono::milliseconds> maxConnectionDuration() const override {
     return max_connection_duration_;
   }
-  bool http1SafeMaxConnectionDuration() const override { return false; }
   uint32_t maxRequestHeadersKb() const override { return max_request_headers_kb_; }
   uint32_t maxRequestHeadersCount() const override { return max_request_headers_count_; }
   std::chrono::milliseconds streamIdleTimeout() const override { return {}; }
@@ -358,7 +356,7 @@ private:
     }
     Network::ListenSocketFactoryPtr clone() const override { return nullptr; }
     void closeAllSockets() override {}
-    absl::Status doFinalPreWorkerInit() override { return absl::OkStatus(); }
+    void doFinalPreWorkerInit() override {}
 
   private:
     Network::SocketSharedPtr socket_;

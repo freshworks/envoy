@@ -23,7 +23,5 @@ envoy_cc_library(
         "-Wno-non-virtual-dtor",
         "-Wno-unused-parameter",
     ],
-    deps = [
-        "@v8//:wee8",
-    ],
+    external_deps = ["wee8"],
 )

@@ -12,7 +12,6 @@
 #include "source/common/common/fmt.h"
 #include "source/common/common/macros.h"
 #include "source/common/common/utility.h"
-#include "source/common/formatter/substitution_format_utility.h"
 #include "source/common/grpc/common.h"
 #include "source/common/http/codes.h"
 #include "source/common/http/header_map_impl.h"

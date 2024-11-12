@@ -63,19 +63,12 @@ public interface EnvoyEngine {
   void resetConnectivityState();
 
   /**
-   * A callback into the Envoy Engine when the default network is available.
+   * Update the network interface to the preferred network for opening new
+   * streams.
+   *
+   * @param network The network to be preferred for new streams.
    */
-  void onDefaultNetworkAvailable();
-
-  /**
-   * A callback into the Envoy Engine when the default network type was changed.
-   */
-  void onDefaultNetworkChanged(EnvoyNetworkType network);
-
-  /**
-   * A callback into the Envoy Engine when the default network is unavailable.
-   */
-  void onDefaultNetworkUnavailable();
+  void setPreferredNetwork(EnvoyNetworkType network);
 
   /**
    * Update proxy settings.

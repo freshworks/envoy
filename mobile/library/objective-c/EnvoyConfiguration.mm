@@ -76,7 +76,6 @@
                            dnsPreresolveHostnames:(NSArray<NSString *> *)dnsPreresolveHostnames
                                    enableDNSCache:(BOOL)enableDNSCache
                       dnsCacheSaveIntervalSeconds:(UInt32)dnsCacheSaveIntervalSeconds
-                                    dnsNumRetries:(NSInteger)dnsNumRetries
                                       enableHttp3:(BOOL)enableHttp3
                                         quicHints:(NSDictionary<NSString *, NSNumber *> *)quicHints
                             quicCanonicalSuffixes:(NSArray<NSString *> *)quicCanonicalSuffixes
@@ -123,7 +122,6 @@
   self.dnsPreresolveHostnames = dnsPreresolveHostnames;
   self.enableDNSCache = enableDNSCache;
   self.dnsCacheSaveIntervalSeconds = dnsCacheSaveIntervalSeconds;
-  self.dnsNumRetries = dnsNumRetries;
   self.enableHttp3 = enableHttp3;
   self.quicHints = quicHints;
   self.quicCanonicalSuffixes = quicCanonicalSuffixes;
@@ -168,6 +166,7 @@
     builder.addPlatformFilter([filterFactory.filterName toCXXString]);
   }
 
+#ifdef ENVOY_ENABLE_QUIC
   builder.enableHttp3(self.enableHttp3);
   for (NSString *host in self.quicHints) {
     builder.addQuicHint([host toCXXString], [[self.quicHints objectForKey:host] intValue]);
@@ -175,6 +174,7 @@
   for (NSString *suffix in self.quicCanonicalSuffixes) {
     builder.addQuicCanonicalSuffix([suffix toCXXString]);
   }
+#endif
 
   builder.enableGzipDecompression(self.enableGzipDecompression);
   builder.enableBrotliDecompression(self.enableBrotliDecompression);
@@ -216,9 +216,7 @@
   builder.enablePlatformCertificatesValidation(self.enablePlatformCertificateValidation);
   builder.respectSystemProxySettings(self.respectSystemProxySettings);
   builder.enableDnsCache(self.enableDNSCache, self.dnsCacheSaveIntervalSeconds);
-  if (self.dnsNumRetries >= 0) {
-    builder.setDnsNumRetries(self.dnsNumRetries);
-  }
+
   if (self.upstreamTlsSni != nil) {
     builder.setUpstreamTlsSni([self.upstreamTlsSni toCXXString]);
   }

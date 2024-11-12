@@ -16,17 +16,19 @@ namespace AlternateProtocolsCache {
  */
 class FilterConfig {
 public:
-  FilterConfig(const envoy::extensions::filters::http::alternate_protocols_cache::v3::FilterConfig&
-                   proto_config,
-               Http::HttpServerPropertiesCacheManager& cache_manager, TimeSource& time_source);
+  FilterConfig(
+      const envoy::extensions::filters::http::alternate_protocols_cache::v3::FilterConfig&
+          proto_config,
+      Http::HttpServerPropertiesCacheManagerFactory& alternate_protocol_cache_manager_factory,
+      TimeSource& time_source);
 
   TimeSource& timeSource() { return time_source_; }
-  Http::HttpServerPropertiesCacheManager& alternateProtocolCacheManager() {
+  const Http::HttpServerPropertiesCacheManagerSharedPtr alternateProtocolCacheManager() {
     return alternate_protocol_cache_manager_;
   }
 
 private:
-  Http::HttpServerPropertiesCacheManager& alternate_protocol_cache_manager_;
+  const Http::HttpServerPropertiesCacheManagerSharedPtr alternate_protocol_cache_manager_;
   TimeSource& time_source_;
 };
 

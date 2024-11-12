@@ -171,8 +171,6 @@ TEST_F(SigV4SignerImplTest, DontDuplicateHeaders) {
 
 // Verify we sign the date header
 TEST_F(SigV4SignerImplTest, SignDateHeader) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(credentials_));
   addMethod("GET");
   addPath("/");
@@ -192,9 +190,6 @@ TEST_F(SigV4SignerImplTest, SignDateHeader) {
 
 // Verify we sign the security token header if the token is present in the credentials
 TEST_F(SigV4SignerImplTest, SignSecurityTokenHeader) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
-
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(token_credentials_));
   addMethod("GET");
   addPath("/");
@@ -215,8 +210,6 @@ TEST_F(SigV4SignerImplTest, SignSecurityTokenHeader) {
 
 // Verify we sign the content header as the hashed empty string if the body is empty
 TEST_F(SigV4SignerImplTest, SignEmptyContentHeader) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(credentials_));
   addMethod("GET");
   addPath("/");
@@ -238,8 +231,6 @@ TEST_F(SigV4SignerImplTest, SignEmptyContentHeader) {
 
 // Verify we sign the content header correctly when we have a body
 TEST_F(SigV4SignerImplTest, SignContentHeader) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(credentials_));
   addMethod("POST");
   addPath("/");
@@ -262,8 +253,6 @@ TEST_F(SigV4SignerImplTest, SignContentHeader) {
 
 // Verify we sign the content header correctly when we have a body with region override
 TEST_F(SigV4SignerImplTest, SignContentHeaderOverrideRegion) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(credentials_));
   addMethod("POST");
   addPath("/");
@@ -286,9 +275,6 @@ TEST_F(SigV4SignerImplTest, SignContentHeaderOverrideRegion) {
 
 // Verify we sign some extra headers
 TEST_F(SigV4SignerImplTest, SignExtraHeaders) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
-
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(credentials_));
   addMethod("GET");
   addPath("/");
@@ -308,8 +294,6 @@ TEST_F(SigV4SignerImplTest, SignExtraHeaders) {
 
 // Verify signing a host header
 TEST_F(SigV4SignerImplTest, SignHostHeader) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
   EXPECT_CALL(*credentials_provider_, getCredentials()).WillOnce(Return(credentials_));
   addMethod("GET");
   addPath("/");
@@ -350,8 +334,6 @@ TEST_F(SigV4SignerImplTest, QueryStringDefault5s) {
 // Verify sigv4 and query parameters
 TEST_F(SigV4SignerImplTest, QueryParameters) {
 
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
-
   Http::TestRequestHeaderMapImpl headers{};
 
   headers.setMethod("GET");
@@ -378,9 +360,6 @@ TEST_F(SigV4SignerImplTest, QueryParameters) {
 
 // Verify signing headers for services.
 TEST_F(SigV4SignerImplTest, SignHeadersByService) {
-  // These original tests used 2018-01-02 03:04:00 rather than 03:04:05
-  time_system_.setSystemTime(std::chrono::milliseconds(1514862240000));
-
   expectSignHeaders("s3", "d97cae067345792b78d2bad746f25c729b9eb4701127e13a7c80398f8216a167",
                     SigV4SignatureConstants::UnsignedPayload, true);
   expectSignHeaders("service", "d9fd9be575a254c924d843964b063d770181d938ae818f5b603ef0575a5ce2cd",

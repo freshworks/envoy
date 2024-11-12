@@ -72,10 +72,8 @@ public:
 
   std::vector<Upstream::HealthCheckerSharedPtr> healthCheckers() { return health_checkers_; };
   std::vector<HostSharedPtr> hosts() { return *hosts_; };
-  UnitFloat dropOverload() const override { return drop_overload_; }
-  const std::string& dropCategory() const override { return drop_category_; }
+  UnitFloat dropOverload() const override { return UnitFloat(0); }
   void setDropOverload(UnitFloat) override {}
-  void setDropCategory(absl::string_view) override {}
 
 protected:
   PrioritySetImpl priority_set_;
@@ -101,8 +99,6 @@ private:
   std::vector<Upstream::HealthCheckerSharedPtr> health_checkers_;
   HealthCheckerMap health_checkers_map_;
   TimeSource& time_source_;
-  UnitFloat drop_overload_{0};
-  const std::string drop_category_;
 
   absl::Status updateHealthchecks(
       const Protobuf::RepeatedPtrField<envoy::config::core::v3::HealthCheck>& health_checks);

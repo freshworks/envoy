@@ -11,10 +11,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-using testing::AllOf;
-using testing::InvokeWithoutArgs;
-using testing::Return;
-using testing::ReturnRef;
+using ::testing::AllOf;
 
 namespace Envoy {
 namespace Extensions {
@@ -186,35 +183,12 @@ std::string genGeoDbFilePath(std::string db_name) {
       "{{ test_rundir }}/test/extensions/geoip_providers/maxmind/test_data/" + db_name);
 }
 
-class MaxmindProviderConfigTest : public testing::Test {
-public:
-  MaxmindProviderConfigTest() : api_(Api::createApiForTest(stats_store_)) {
-    EXPECT_CALL(context_, serverFactoryContext())
-        .WillRepeatedly(ReturnRef(server_factory_context_));
-    EXPECT_CALL(server_factory_context_, api()).WillRepeatedly(ReturnRef(*api_));
-    EXPECT_CALL(server_factory_context_, mainThreadDispatcher())
-        .WillRepeatedly(ReturnRef(dispatcher_));
-    EXPECT_CALL(dispatcher_, createFilesystemWatcher_()).WillRepeatedly(InvokeWithoutArgs([&] {
-      Filesystem::MockWatcher* mock_watcher = new NiceMock<Filesystem::MockWatcher>();
-      EXPECT_CALL(*mock_watcher, addWatch(_, Filesystem::Watcher::Events::MovedTo, _))
-          .WillRepeatedly(Return(absl::OkStatus()));
-      return mock_watcher;
-    }));
-  }
-
-  Api::ApiPtr api_;
-  Stats::IsolatedStoreImpl stats_store_;
-  Event::MockDispatcher dispatcher_;
-  NiceMock<Server::Configuration::MockServerFactoryContext> server_factory_context_;
-  NiceMock<Server::Configuration::MockFactoryContext> context_;
-};
-
-TEST_F(MaxmindProviderConfigTest, EmptyProto) {
+TEST(MaxmindProviderConfigTest, EmptyProto) {
   MaxmindProviderFactory factory;
   EXPECT_TRUE(factory.createEmptyConfigProto() != nullptr);
 }
 
-TEST_F(MaxmindProviderConfigTest, ProviderConfigWithCorrectProto) {
+TEST(MaxmindProviderConfigTest, ProviderConfigWithCorrectProto) {
   const auto provider_config_yaml = R"EOF(
     common_provider_config:
       geo_headers_to_add:
@@ -239,9 +213,11 @@ TEST_F(MaxmindProviderConfigTest, ProviderConfigWithCorrectProto) {
   auto processed_provider_config_yaml =
       absl::StrFormat(provider_config_yaml, city_db_path, asn_db_path, anon_db_path);
   TestUtility::loadFromYaml(processed_provider_config_yaml, provider_config);
+  NiceMock<Server::Configuration::MockFactoryContext> context;
+  EXPECT_CALL(context, messageValidationVisitor());
   MaxmindProviderFactory factory;
   Geolocation::DriverSharedPtr driver =
-      factory.createGeoipProviderDriver(provider_config, "maxmind", context_);
+      factory.createGeoipProviderDriver(provider_config, "maxmind", context);
   EXPECT_THAT(driver, AllOf(HasCityDbPath(city_db_path), HasIspDbPath(asn_db_path),
                             HasAnonDbPath(anon_db_path), HasCountryHeader("x-geo-country"),
                             HasCityHeader("x-geo-city"), HasRegionHeader("x-geo-region"),
@@ -250,7 +226,7 @@ TEST_F(MaxmindProviderConfigTest, ProviderConfigWithCorrectProto) {
                             HasAnonHostingHeader("x-anon-hosting")));
 }
 
-TEST_F(MaxmindProviderConfigTest, ProviderConfigWithNoDbPaths) {
+TEST(MaxmindProviderConfigTest, ProviderConfigWithNoDbPaths) {
   std::string provider_config_yaml = R"EOF(
     common_provider_config:
       geo_headers_to_add:
@@ -260,6 +236,7 @@ TEST_F(MaxmindProviderConfigTest, ProviderConfigWithNoDbPaths) {
   MaxmindProviderConfig provider_config;
   TestUtility::loadFromYaml(provider_config_yaml, provider_config);
   NiceMock<Server::Configuration::MockFactoryContext> context;
+  EXPECT_CALL(context, messageValidationVisitor());
   MaxmindProviderFactory factory;
   EXPECT_THROW_WITH_MESSAGE(factory.createGeoipProviderDriver(provider_config, "maxmind", context),
                             Envoy::EnvoyException,
@@ -267,7 +244,7 @@ TEST_F(MaxmindProviderConfigTest, ProviderConfigWithNoDbPaths) {
                             "city_db_path, isp_db_path or anon_db_path");
 }
 
-TEST_F(MaxmindProviderConfigTest, ProviderConfigWithNoGeoHeaders) {
+TEST(MaxmindProviderConfigTest, ProviderConfigWithNoGeoHeaders) {
   std::string provider_config_yaml = R"EOF(
     isp_db_path: "/geoip2/Isp.mmdb"
   )EOF";
@@ -281,7 +258,7 @@ TEST_F(MaxmindProviderConfigTest, ProviderConfigWithNoGeoHeaders) {
                           "Proto constraint validation failed.*value is required.*");
 }
 
-TEST_F(MaxmindProviderConfigTest, DbPathFormatValidatedWhenNonEmptyValue) {
+TEST(MaxmindProviderConfigTest, DbPathFormatValidatedWhenNonEmptyValue) {
   std::string provider_config_yaml = R"EOF(
     isp_db_path: "/geoip2/Isp.exe"
   )EOF";
@@ -296,7 +273,7 @@ TEST_F(MaxmindProviderConfigTest, DbPathFormatValidatedWhenNonEmptyValue) {
       "Proto constraint validation failed.*value does not match regex pattern.*");
 }
 
-TEST_F(MaxmindProviderConfigTest, ReusesProviderInstanceForSameProtoConfig) {
+TEST(MaxmindProviderConfigTest, ReusesProviderInstanceForSameProtoConfig) {
   const auto provider_config_yaml = R"EOF(
     common_provider_config:
       geo_headers_to_add:
@@ -318,15 +295,17 @@ TEST_F(MaxmindProviderConfigTest, ReusesProviderInstanceForSameProtoConfig) {
   auto processed_provider_config_yaml =
       absl::StrFormat(provider_config_yaml, city_db_path, asn_db_path, anon_db_path);
   TestUtility::loadFromYaml(processed_provider_config_yaml, provider_config);
+  NiceMock<Server::Configuration::MockFactoryContext> context;
+  EXPECT_CALL(context, messageValidationVisitor()).Times(2);
   MaxmindProviderFactory factory;
   Geolocation::DriverSharedPtr driver1 =
-      factory.createGeoipProviderDriver(provider_config, "maxmind", context_);
+      factory.createGeoipProviderDriver(provider_config, "maxmind", context);
   Geolocation::DriverSharedPtr driver2 =
-      factory.createGeoipProviderDriver(provider_config, "maxmind", context_);
+      factory.createGeoipProviderDriver(provider_config, "maxmind", context);
   EXPECT_EQ(driver1.get(), driver2.get());
 }
 
-TEST_F(MaxmindProviderConfigTest, DifferentProviderInstancesForDifferentProtoConfig) {
+TEST(MaxmindProviderConfigTest, DifferentProviderInstancesForDifferentProtoConfig) {
   const auto provider_config_yaml1 = R"EOF(
     common_provider_config:
       geo_headers_to_add:
@@ -364,11 +343,13 @@ TEST_F(MaxmindProviderConfigTest, DifferentProviderInstancesForDifferentProtoCon
       absl::StrFormat(provider_config_yaml2, city_db_path, anon_db_path);
   TestUtility::loadFromYaml(processed_provider_config_yaml1, provider_config1);
   TestUtility::loadFromYaml(processed_provider_config_yaml2, provider_config2);
+  NiceMock<Server::Configuration::MockFactoryContext> context;
+  EXPECT_CALL(context, messageValidationVisitor()).Times(2);
   MaxmindProviderFactory factory;
   Geolocation::DriverSharedPtr driver1 =
-      factory.createGeoipProviderDriver(provider_config1, "maxmind", context_);
+      factory.createGeoipProviderDriver(provider_config1, "maxmind", context);
   Geolocation::DriverSharedPtr driver2 =
-      factory.createGeoipProviderDriver(provider_config2, "maxmind", context_);
+      factory.createGeoipProviderDriver(provider_config2, "maxmind", context);
   EXPECT_NE(driver1.get(), driver2.get());
 }
 

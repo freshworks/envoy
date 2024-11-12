@@ -7,6 +7,7 @@
 
 #include "source/common/common/logger.h"
 
+#include "absl/strings/str_format.h"
 #include "proto_field_extraction/field_value_extractor/field_value_extractor_factory.h"
 #include "proto_field_extraction/field_value_extractor/field_value_extractor_interface.h"
 
@@ -38,14 +39,18 @@ ExtractorImpl::processRequest(Protobuf::field_extraction::MessageData& message) 
 
   ExtractionResult result;
   for (const auto& it : per_field_extractors_) {
-    absl::StatusOr<ProtobufWkt::Value> extracted_value = it.second->ExtractValue(message);
-    if (!extracted_value.ok()) {
-      return extracted_value.status();
+    auto extracted_values = it.second->Extract(message);
+    if (!extracted_values.ok()) {
+      return extracted_values.status();
     }
 
     ENVOY_LOG_MISC(debug, "extracted the following resource values from the {} field: {}", it.first,
-                   extracted_value->DebugString());
-    result.push_back({it.first, std::move(*extracted_value)});
+                   std::accumulate(extracted_values.value().begin(), extracted_values.value().end(),
+                                   std::string(),
+                                   [](const std::string& lhs, const std::string& rhs) {
+                                     return absl::StrFormat("%s, %s", lhs, rhs);
+                                   }));
+    result.push_back({it.first, std::move(extracted_values.value())});
   }
 
   return result;

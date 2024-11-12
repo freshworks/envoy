@@ -208,9 +208,7 @@ public:
    */
   static Network::UpstreamTransportSocketFactoryPtr createQuicUpstreamTransportSocketFactory(
       Api::Api& api, Stats::Store& store, Ssl::ContextManager& context_manager,
-      ThreadLocal::Instance& threadlocal, const std::string& san_to_match,
-      // Allow configuring TLS to talk to upstreams instead of Envoy
-      bool connect_to_fake_upstreams = false);
+      ThreadLocal::Instance& threadlocal, const std::string& san_to_match);
 
   static Http::HeaderValidatorFactoryPtr makeHeaderValidationFactory(
       const ::envoy::extensions::http::header_validators::envoy_default::v3::HeaderValidatorConfig&

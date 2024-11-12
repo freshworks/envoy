@@ -10,7 +10,7 @@ namespace Envoy {
 namespace Network {
 
 // The interval at which system proxy settings should be polled at.
-CFTimeInterval kProxySettingsRefreshRateSeconds = 10;
+CFTimeInterval kProxySettingsRefreshRateSeconds = 7;
 
 AppleSystemProxySettingsMonitor::AppleSystemProxySettingsMonitor(
     SystemProxySettingsReadCallback proxy_settings_read_callback)

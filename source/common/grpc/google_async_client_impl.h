@@ -236,10 +236,9 @@ public:
     return bytes_in_write_pending_queue_ > parent_.perStreamBufferLimitBytes();
   }
   const StreamInfo::StreamInfo& streamInfo() const override { return unused_stream_info_; }
-  StreamInfo::StreamInfo& streamInfo() override { return unused_stream_info_; }
 
   // Google-gRPC code doesn't use Envoy watermark buffers, so the functions below are not used.
-  void setWatermarkCallbacks(Http::SidestreamWatermarkCallbacks&) override {}
+  void setWatermarkCallbacks(Http::DecoderFilterWatermarkCallbacks&) override {}
   void removeWatermarkCallbacks() override {}
 
 protected:
@@ -346,12 +345,8 @@ public:
 
   // Grpc::AsyncRequest
   void cancel() override;
-  const StreamInfo::StreamInfo& streamInfo() const override {
-    return GoogleAsyncStreamImpl::streamInfo();
-  }
 
 private:
-  using GoogleAsyncStreamImpl::streamInfo;
   // Grpc::RawAsyncStreamCallbacks
   void onCreateInitialMetadata(Http::RequestHeaderMap& metadata) override;
   void onReceiveInitialMetadata(Http::ResponseHeaderMapPtr&&) override;

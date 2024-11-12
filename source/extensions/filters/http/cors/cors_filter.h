@@ -83,16 +83,18 @@ public:
     encoder_callbacks_ = &callbacks;
   };
 
-  const auto& policiesForTest() const { return policies_; }
+  const absl::InlinedVector<const Envoy::Router::CorsPolicy*, 2>& policiesForTest() const {
+    return policies_;
+  }
 
 private:
   friend class CorsFilterTest;
 
-  absl::Span<const Matchers::StringMatcherPtr> allowOrigins();
-  absl::string_view allowMethods();
-  absl::string_view allowHeaders();
-  absl::string_view exposeHeaders();
-  absl::string_view maxAge();
+  const std::vector<Matchers::StringMatcherPtr>* allowOrigins();
+  const std::string& allowMethods();
+  const std::string& allowHeaders();
+  const std::string& exposeHeaders();
+  const std::string& maxAge();
   bool allowCredentials();
   bool allowPrivateNetworkAccess();
   bool shadowEnabled();
@@ -102,7 +104,7 @@ private:
 
   Http::StreamDecoderFilterCallbacks* decoder_callbacks_{};
   Http::StreamEncoderFilterCallbacks* encoder_callbacks_{};
-  absl::InlinedVector<std::reference_wrapper<const Envoy::Router::CorsPolicy>, 4> policies_;
+  absl::InlinedVector<const Envoy::Router::CorsPolicy*, 2> policies_;
   bool is_cors_request_{};
   std::string latched_origin_;
 

@@ -90,8 +90,6 @@ public:
   void expectNewStreamWithImmediateEncoder(Http::RequestEncoder& encoder,
                                            Http::ResponseDecoder** decoder,
                                            Http::Protocol protocol);
-  // Recreates filter under test after any values that affect its constructor were changed.
-  void recreateFilter();
 
   Event::SimulatedTimeSystem test_time_;
   std::string upstream_zone_{"to_az"};

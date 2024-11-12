@@ -12,7 +12,6 @@ envoy_contrib_package()
 envoy_cc_test(
     name = "config_unit_test",
     srcs = ["config_unit_test.cc"],
-    rbe_pool = "2core",
     deps = [
         "//contrib/kafka/filters/network/source/broker:config_lib",
         "//test/mocks/server:factory_context_mocks",
@@ -22,7 +21,6 @@ envoy_cc_test(
 envoy_cc_test(
     name = "filter_unit_test",
     srcs = ["filter_unit_test.cc"],
-    rbe_pool = "2core",
     deps = [
         "//contrib/kafka/filters/network/source/broker:filter_lib",
         "//envoy/event:timer_interface",

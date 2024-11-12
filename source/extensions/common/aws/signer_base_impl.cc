@@ -57,7 +57,7 @@ std::string SignerBaseImpl::getRegion() const { return region_; }
 absl::Status SignerBaseImpl::sign(Http::RequestHeaderMap& headers, const std::string& content_hash,
                                   const absl::string_view override_region) {
 
-  if (!query_string_ && !content_hash.empty()) {
+  if (!query_string_) {
     headers.setReferenceKey(SignatureHeaders::get().ContentSha256, content_hash);
   }
 
@@ -80,7 +80,15 @@ absl::Status SignerBaseImpl::sign(Http::RequestHeaderMap& headers, const std::st
   const auto short_date = short_date_formatter_.now(time_source_);
 
   if (!query_string_) {
-    addRequiredHeaders(headers, long_date, credentials.sessionToken(), override_region);
+    // Explicitly remove Authorization and security token header if present
+    headers.remove(Http::CustomHeaders::get().Authorization);
+    headers.remove(SignatureHeaders::get().SecurityToken);
+
+    if (credentials.sessionToken()) {
+      headers.setCopy(SignatureHeaders::get().SecurityToken, credentials.sessionToken().value());
+    }
+    headers.setCopy(SignatureHeaders::get().Date, long_date);
+    addRegionHeader(headers, override_region);
   }
 
   const auto canonical_headers = Utility::canonicalizeHeaders(headers, excluded_header_matchers_);
@@ -102,11 +110,9 @@ absl::Status SignerBaseImpl::sign(Http::RequestHeaderMap& headers, const std::st
     headers.setPath(query_params.replaceQueryString(headers.Path()->value()));
   }
 
-  auto canonical_request = Utility::createCanonicalRequest(
-      headers.Method()->value().getStringView(), headers.Path()->value().getStringView(),
-      canonical_headers,
-      content_hash.empty() ? SignatureConstants::HashedEmptyString : content_hash,
-      Utility::shouldNormalizeUriPath(service_name_), Utility::useDoubleUriEncode(service_name_));
+  const auto canonical_request = Utility::createCanonicalRequest(
+      service_name_, headers.Method()->value().getStringView(),
+      headers.Path()->value().getStringView(), canonical_headers, content_hash);
   ENVOY_LOG(debug, "Canonical request:\n{}", canonical_request);
 
   // Phase 2: Create a string to sign
@@ -146,22 +152,6 @@ absl::Status SignerBaseImpl::sign(Http::RequestHeaderMap& headers, const std::st
   return absl::OkStatus();
 }
 
-void SignerBaseImpl::addRequiredHeaders(Http::RequestHeaderMap& headers,
-                                        const std::string long_date,
-                                        const absl::optional<std::string> session_token,
-                                        const absl::string_view override_region) {
-  // Explicitly remove Authorization and security token header if present
-  headers.remove(Http::CustomHeaders::get().Authorization);
-  headers.remove(SignatureHeaders::get().SecurityToken);
-
-  if (session_token.has_value() && !session_token.value().empty()) {
-    headers.setCopy(SignatureHeaders::get().SecurityToken, session_token.value());
-  }
-
-  headers.setCopy(SignatureHeaders::get().Date, long_date);
-  addRegionHeader(headers, override_region);
-}
-
 std::string SignerBaseImpl::createContentHash(Http::RequestMessage& message, bool sign_body) const {
   if (!sign_body) {
     return std::string(SignatureConstants::HashedEmptyString);
@@ -196,17 +186,20 @@ void SignerBaseImpl::createQueryParams(Envoy::Http::Utility::QueryParamsMulti& q
   // These three parameters can contain characters that require URL encoding
   if (session_token.has_value()) {
     // X-Amz-Security-Token
+
+    // TODO (@nbaws) : This should be using Utility::encodeQueryParam, but that function appears to
+    // be incorrectly double encoding = signs. Will address this in a later patch and add test cases
+    // to ensure we haven't broken anything.
     query_params.add(
         SignatureQueryParameterValues::AmzSecurityToken,
         Envoy::Http::Utility::PercentEncoding::urlEncodeQueryParameter(session_token.value()));
   }
   // X-Amz-Credential
   query_params.add(SignatureQueryParameterValues::AmzCredential,
-                   Utility::encodeQueryComponent(credential));
+                   Utility::encodeQueryParam(credential));
   // X-Amz-SignedHeaders
-  query_params.add(
-      SignatureQueryParameterValues::AmzSignedHeaders,
-      Utility::encodeQueryComponent(Utility::joinCanonicalHeaderNames(signed_headers)));
+  query_params.add(SignatureQueryParameterValues::AmzSignedHeaders,
+                   Utility::encodeQueryParam(Utility::joinCanonicalHeaderNames(signed_headers)));
 }
 
 } // namespace Aws

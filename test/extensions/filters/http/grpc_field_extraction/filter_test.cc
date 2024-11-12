@@ -639,11 +639,6 @@ extractions_by_method: {
       value: {
       }
     }
-    request_field_extractions: {
-      key: "repeated_supported_types.map"
-      value: {
-      }
-    }
   }
 })pb");
   TestRequestHeaderMapImpl req_headers =
@@ -682,8 +677,6 @@ repeated_supported_types: {
   sfixed64: 1111
   float: 1.212
   double: 1.313
-  map { key: "key1" value: "value1" }
-  map { key: "key2" value: "value2" }
 }
 
 )pb");
@@ -857,25 +850,6 @@ fields {
       }
       values {
         string_value: "33"
-      }
-    }
-  }
-}
-fields {
-  key: "repeated_supported_types.map"
-  value {
-    list_value {
-      values {
-        struct_value {
-          fields {
-            key: "key1"
-            value { string_value: "value1" }
-          }
-          fields {
-            key: "key2"
-            value { string_value: "value2" }
-          }
-        }
       }
     }
   }

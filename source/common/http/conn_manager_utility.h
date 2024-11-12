@@ -138,8 +138,6 @@ public:
                              ConnectionManagerConfig& config, const Router::Route* route);
 
 private:
-  static void appendXff(RequestHeaderMap& request_headers, Network::Connection& connection,
-                        ConnectionManagerConfig& config);
   static void mutateXfccRequestHeader(RequestHeaderMap& request_headers,
                                       Network::Connection& connection,
                                       ConnectionManagerConfig& config);

@@ -68,6 +68,7 @@ envoy_cc_library(
     name = "conn_manager_lib",
     srcs = ["conn_manager.cc"],
     hdrs = ["conn_manager.h"],
+    external_deps = ["abseil_any"],
     deps = [
         ":app_exception_lib",
         ":decoder_lib",
@@ -92,7 +93,6 @@ envoy_cc_library(
         "//source/common/stats:timespan_lib",
         "//source/common/stream_info:stream_info_lib",
         "//source/extensions/filters/network/thrift_proxy/router:router_interface",
-        "@com_google_absl//absl/types:any",
     ],
 )
 
@@ -139,20 +139,21 @@ envoy_cc_library(
 envoy_cc_library(
     name = "metadata_lib",
     hdrs = ["metadata.h"],
+    external_deps = ["abseil_optional"],
     deps = [
         ":thrift_lib",
         ":tracing_interface",
         "//envoy/buffer:buffer_interface",
         "//source/common/common:macros",
         "//source/common/http:header_map_lib",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
 envoy_cc_library(
     name = "tracing_interface",
     hdrs = ["tracing.h"],
-    deps = ["@com_google_absl//absl/types:optional"],
+    external_deps = ["abseil_optional"],
+    deps = [],
 )
 
 envoy_cc_library(
@@ -172,6 +173,7 @@ envoy_cc_library(
     hdrs = [
         "protocol.h",
     ],
+    external_deps = ["abseil_optional"],
     deps = [
         ":conn_state_lib",
         ":decoder_events_lib",
@@ -185,7 +187,6 @@ envoy_cc_library(
         "//source/common/common:assert_lib",
         "//source/common/config:utility_lib",
         "//source/common/singleton:const_singleton",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -233,12 +234,12 @@ envoy_cc_library(
     hdrs = [
         "compact_protocol_impl.h",
     ],
+    external_deps = ["abseil_optional"],
     deps = [
         ":buffer_helper_lib",
         ":protocol_interface",
         "//source/common/common:macros",
         "//source/common/runtime:runtime_features_lib",
-        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
@@ -273,6 +274,7 @@ envoy_cc_library(
 envoy_cc_library(
     name = "transport_interface",
     hdrs = ["transport.h"],
+    external_deps = ["abseil_optional"],
     deps = [
         ":buffer_helper_lib",
         ":metadata_lib",
@@ -283,7 +285,6 @@ envoy_cc_library(
         "//source/common/common:assert_lib",
         "//source/common/config:utility_lib",
         "//source/common/singleton:const_singleton",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

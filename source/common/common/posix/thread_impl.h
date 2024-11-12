@@ -12,20 +12,16 @@ namespace Thread {
 
 class ThreadHandle {
 public:
-  ThreadHandle(std::function<void()> thread_routine, absl::optional<int> thread_priority);
+  explicit ThreadHandle(std::function<void()> thread_routine);
 
   /** Returns the thread routine. */
   std::function<void()>& routine();
-
-  /** Returns the thread priority, if any. */
-  absl::optional<int> priority() const;
 
   /** Returns the thread handle. */
   pthread_t& handle();
 
 private:
   std::function<void()> thread_routine_;
-  const absl::optional<int> thread_priority_;
   pthread_t thread_handle_;
 };
 
@@ -82,7 +78,7 @@ public:
    * Creates a new generic thread from the specified `thread_routine`. When the
    * thread cannot be created, this function will crash.
    */
-  ThreadPtr createThread(std::function<void()> thread_routine, OptionsOptConstRef options) override;
+  ThreadPtr createThread(std::function<void()> thread_routine, OptionsOptConstRef options);
 
   /**
    * Creates a new POSIX thread from the specified `thread_routine`. When
@@ -97,17 +93,10 @@ public:
    * thread ID. The thread ID returned from this call is not the same as the
    * thread ID returned from `currentPThreadId()`.
    */
-  ThreadId currentThreadId() const override;
-
-  /**
-   * On Linux and Android, this will return an integer value between [-20, 19].
-   * On Apple platforms, thread priorities range from [0,1] but this API normalizes the values to
-   * [0, 100] for consistency with the Options.priority_ values.
-   */
-  int currentThreadPriority() const;
+  ThreadId currentThreadId();
 
   /** Returns the current pthread ID. It uses `pthread_self()`. */
-  virtual ThreadId currentPthreadId() const;
+  virtual ThreadId currentPthreadId();
 
 protected:
   virtual int createPthread(ThreadHandle* thread_handle);

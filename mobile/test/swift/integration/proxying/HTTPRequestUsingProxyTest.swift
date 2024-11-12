@@ -12,13 +12,6 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
     register_test_extensions()
   }
 
-  override static func tearDown() {
-    super.tearDown()
-    // Flush the stdout and stderror to show the print output.
-    fflush(stdout)
-    fflush(stderr)
-  }
-
   private func executeRequest(engine: Engine, scheme: String, authority: String) -> String? {
     let responseHeadersExpectation =
         self.expectation(description: "Successful response headers received")
@@ -53,7 +46,7 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
 
   func testHTTPRequestUsingProxy() throws {
     EnvoyTestServer.startHttpProxyServer()
-    let port = EnvoyTestServer.getProxyPort()
+    let port = EnvoyTestServer.getEnvoyPort()
 
     let engineExpectation = self.expectation(description: "Run started engine")
 
@@ -77,13 +70,13 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
     }
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestProxyServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 
   // https://github.com/envoyproxy/envoy/issues/33014
   func skipped_testHTTPSRequestUsingProxy() throws {
     EnvoyTestServer.startHttpsProxyServer()
-    let port = EnvoyTestServer.getProxyPort()
+    let port = EnvoyTestServer.getEnvoyPort()
 
     let engineExpectation = self.expectation(description: "Run started engine")
     let responseHeadersExpectation =
@@ -136,13 +129,13 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
     }
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestProxyServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 
   // https://github.com/envoyproxy/envoy/issues/33014
   func skipped_testHTTPSRequestUsingPacFileUrlResolver() throws {
     EnvoyTestServer.startHttpsProxyServer()
-    let port = EnvoyTestServer.getProxyPort()
+    let port = EnvoyTestServer.getEnvoyPort()
 
     let engineExpectation = self.expectation(description: "Run started engine")
     let responseHeadersExpectation =
@@ -195,12 +188,12 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
     }
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestProxyServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 
   func testTwoHTTPRequestsUsingProxy() throws {
     EnvoyTestServer.startHttpProxyServer()
-    let port = EnvoyTestServer.getProxyPort()
+    let port = EnvoyTestServer.getEnvoyPort()
 
     let engineExpectation = self.expectation(description: "Run started engine")
 
@@ -227,12 +220,12 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
     }
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestProxyServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 
   func testHTTPRequestUsingProxyCancelStream() throws {
     EnvoyTestServer.startHttpProxyServer()
-    let port = EnvoyTestServer.getProxyPort()
+    let port = EnvoyTestServer.getEnvoyPort()
 
     let engineExpectation = self.expectation(description: "Run started engine")
 
@@ -271,7 +264,7 @@ final class HTTPRequestUsingProxyTest: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: [cancelExpectation], timeout: 10), .completed)
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestProxyServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 
   // TODO(abeyad): Add test for proxy system settings updated.

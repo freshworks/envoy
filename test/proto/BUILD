@@ -66,21 +66,6 @@ envoy_proto_descriptor(
 )
 
 envoy_proto_library(
-    name = "extraction_proto",
-    srcs = [
-        "extraction.proto",
-    ],
-)
-
-envoy_proto_descriptor(
-    name = "extraction_proto_descriptor",
-    srcs = [
-        "extraction.proto",
-    ],
-    out = "extraction.descriptor",
-)
-
-envoy_proto_library(
     name = "sensitive_proto",
     srcs = [":sensitive.proto"],
     java = False,

@@ -114,11 +114,3 @@ Two types of approvals:
 ```
 
 will labels the PR commented on with `backport/review`.
-
-### No stalebot labeling
-
-```
-/nostalebot
-```
-
-will label the issue or PR commented on with `no stalebot`.

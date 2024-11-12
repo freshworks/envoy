@@ -23,7 +23,11 @@ envoy_cc_library(
         "san_matcher.h",
         "utility.h",
     ],
-    external_deps = ["ssl"],
+    external_deps = [
+        "ssl",
+        "abseil_base",
+        "abseil_hash",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//envoy/config:typed_config_interface",
@@ -40,8 +44,6 @@ envoy_cc_library(
         "//source/common/stats:utility_lib",
         "//source/common/tls:stats_lib",
         "//source/common/tls:utility_lib",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/hash",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
         "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",

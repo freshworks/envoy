@@ -672,7 +672,7 @@ public:
     }
 
     auto cfg = *Extensions::TransportSockets::Tls::ServerContextConfigImpl::create(
-        tls_context, factory_context_, false);
+        tls_context, factory_context_);
 
     static auto* upstream_stats_store = new Stats::IsolatedStoreImpl();
     return *Extensions::TransportSockets::Tls::ServerSslSocketFactory::create(

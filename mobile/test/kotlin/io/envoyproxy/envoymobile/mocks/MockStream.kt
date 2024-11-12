@@ -24,9 +24,7 @@ class MockStream(underlyingStream: MockEnvoyHTTPStream) :
     EnvoyFinalStreamIntel(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0)
 
   /** Closure that will be called when request headers are sent. */
-  var onRequestHeaders:
-    ((headers: RequestHeaders, endStream: Boolean, idempotent: Boolean) -> Unit)? =
-    null
+  var onRequestHeaders: ((headers: RequestHeaders, endStream: Boolean) -> Unit)? = null
   /** Closure that will be called when request data is sent. */
   var onRequestData: ((data: ByteBuffer, endStream: Boolean) -> Unit)? = null
   /** Closure that will be called when request trailers are sent. */
@@ -34,12 +32,8 @@ class MockStream(underlyingStream: MockEnvoyHTTPStream) :
   /** Closure that will be called when the stream is canceled by the client. */
   var onCancel: (() -> Unit)? = null
 
-  override fun sendHeaders(
-    headers: RequestHeaders,
-    endStream: Boolean,
-    idempotent: Boolean
-  ): Stream {
-    onRequestHeaders?.invoke(headers, endStream, idempotent)
+  override fun sendHeaders(headers: RequestHeaders, endStream: Boolean): Stream {
+    onRequestHeaders?.invoke(headers, endStream)
     return this
   }
 

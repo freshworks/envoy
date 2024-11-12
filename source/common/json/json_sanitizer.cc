@@ -5,7 +5,6 @@
 #include "source/common/json/json_internal.h"
 
 #include "absl/strings/str_format.h"
-#include "utf8_validity.h"
 
 namespace Envoy {
 namespace Json {
@@ -66,7 +65,7 @@ absl::string_view sanitize(std::string& buffer, absl::string_view str) {
   if (need_slow == 0) {
     return str; // Fast path, should be executed most of the time.
   }
-  if (utf8_range::IsStructurallyValid(str)) {
+  TRY_ASSERT_MAIN_THREAD {
     // The Nlohmann JSON library supports serialization and is not too slow. A
     // hand-rolled sanitizer can be a little over 2x faster at the cost of added
     // production complexity. The main drawback is that this code cannot be used
@@ -75,27 +74,19 @@ absl::string_view sanitize(std::string& buffer, absl::string_view str) {
     // adds complexity to the production code base.
     buffer = Nlohmann::Factory::serialize(str);
     return stripDoubleQuotes(buffer);
-  } else {
-    // If Nlohmann throws an error, emit a hex escape for any character
+  }
+  END_TRY
+  catch (std::exception&) {
+    // If Nlohmann throws an error, emit an octal escape for any character
     // requiring it. This can occur for invalid utf-8 sequences, and we don't
     // want to crash the server if such a sequence makes its way into a string
     // we need to serialize. For example, if admin endpoint /stats?format=json
     // is called, and a stat name was synthesized from dynamic content such as a
     // gRPC method.
-    //
-    // Note that JSON string escapes are always 4 digit hex. 3 digit octal would
-    // be more compact, and is legal JavaScript, but not legal JSON. See
-    // https://www.json.org/json-en.html for details.
-    //
-    // TODO(jmarantz): It would better to use the compact JSON escapes for
-    // quotes, slashes, backspace, form-feed, linefeed, CR, and tab, in which
-    // case we'd also need to modify jsonEquivalentStrings in
-    // test/common/json/json_sanitizer_test_util.h. We don't expect to hit this
-    // often, so it isn't a priority to use these more compact encodings.
     buffer.clear();
     for (char c : str) {
       if (needs_slow_sanitizer[static_cast<uint8_t>(c)]) {
-        buffer.append(absl::StrFormat("\\u%04x", c));
+        buffer.append(absl::StrFormat("\\%03o", c));
       } else {
         buffer.append(1, c);
       }

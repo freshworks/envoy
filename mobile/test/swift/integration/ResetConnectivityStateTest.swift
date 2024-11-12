@@ -11,13 +11,6 @@ final class ResetConnectivityStateTest: XCTestCase {
     register_test_extensions()
   }
 
-  override static func tearDown() {
-    super.tearDown()
-    // Flush the stdout and stderror to show the print output.
-    fflush(stdout)
-    fflush(stderr)
-  }
-
   func testResetConnectivityState() {
     EnvoyTestServer.startHttp1PlaintextServer()
 
@@ -30,7 +23,7 @@ final class ResetConnectivityStateTest: XCTestCase {
 
     let client = engine.streamClient()
 
-    let port = String(EnvoyTestServer.getHttpPort())
+    let port = String(EnvoyTestServer.getEnvoyPort())
     let requestHeaders = RequestHeadersBuilder(method: .get, scheme: "http",
                                                authority: "localhost:" + port, path: "/simple.txt")
       .build()
@@ -98,6 +91,6 @@ final class ResetConnectivityStateTest: XCTestCase {
     XCTAssertTrue(resultEndStream2)
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestHttpServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 }

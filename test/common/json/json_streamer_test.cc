@@ -11,183 +11,124 @@ namespace Envoy {
 namespace Json {
 namespace {
 
-class BufferOutputWrapper {
-public:
-  using Type = BufferOutput;
-  std::string toString() { return underlying_buffer_.toString(); }
-  void clear() { underlying_buffer_.drain(underlying_buffer_.length()); }
-  Buffer::OwnedImpl underlying_buffer_;
+class JsonStreamerTest : public testing::Test {
+protected:
+  Buffer::OwnedImpl buffer_;
+  Json::Streamer streamer_{buffer_};
 };
 
-class StringOutputWrapper {
-public:
-  using Type = StringOutput;
-  std::string toString() { return underlying_buffer_; }
-  void clear() { underlying_buffer_.clear(); }
-  std::string underlying_buffer_;
-};
+TEST_F(JsonStreamerTest, Empty) { EXPECT_EQ("", buffer_.toString()); }
 
-template <typename T> class JsonStreamerTest : public testing::Test {
-public:
-  T buffer_;
-  Json::StreamerBase<typename T::Type> streamer_{this->buffer_.underlying_buffer_};
-};
-
-using OutputBufferTypes = ::testing::Types<BufferOutputWrapper, StringOutputWrapper>;
-TYPED_TEST_SUITE(JsonStreamerTest, OutputBufferTypes);
-
-TYPED_TEST(JsonStreamerTest, Empty) { EXPECT_EQ("", this->buffer_.toString()); }
-
-TYPED_TEST(JsonStreamerTest, EmptyMap) {
-  this->streamer_.makeRootMap();
-  EXPECT_EQ("{}", this->buffer_.toString());
+TEST_F(JsonStreamerTest, EmptyMap) {
+  streamer_.makeRootMap();
+  EXPECT_EQ("{}", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapOneDouble) {
+TEST_F(JsonStreamerTest, MapOneDouble) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", 3.141592654}});
   }
-  EXPECT_EQ(R"EOF({"a":3.141592654})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":3.141592654})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapTwoDoubles) {
+TEST_F(JsonStreamerTest, MapTwoDoubles) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", -989282.1087}, {"b", 1.23456789012345e+67}});
   }
-  EXPECT_EQ(R"EOF({"a":-989282.1087,"b":1.23456789012345e+67})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":-989282.1087,"b":1.23456789012345e+67})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapOneUInt) {
+TEST_F(JsonStreamerTest, MapOneUInt) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", static_cast<uint64_t>(0xffffffffffffffff)}});
   }
-  EXPECT_EQ(R"EOF({"a":18446744073709551615})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":18446744073709551615})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapTwoInts) {
+TEST_F(JsonStreamerTest, MapTwoInts) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", static_cast<int64_t>(0x7fffffffffffffff)},
                      {"b", static_cast<int64_t>(0x8000000000000000)}});
   }
-  EXPECT_EQ(R"EOF({"a":9223372036854775807,"b":-9223372036854775808})EOF",
-            this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":9223372036854775807,"b":-9223372036854775808})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapOneString) {
+TEST_F(JsonStreamerTest, MapOneString) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", "b"}});
   }
-  EXPECT_EQ(R"EOF({"a":"b"})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":"b"})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapOneBool) {
+TEST_F(JsonStreamerTest, MapOneBool) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", true}});
   }
-  EXPECT_EQ(R"EOF({"a":true})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":true})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapTwoBools) {
+TEST_F(JsonStreamerTest, MapTwoBools) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addEntries({{"a", true}, {"b", false}});
   }
-  EXPECT_EQ(R"EOF({"a":true,"b":false})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":true,"b":false})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapOneSanitized) {
+TEST_F(JsonStreamerTest, MapOneSanitized) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addKey("a");
     map->addString("\b\001");
   }
-  EXPECT_EQ(R"EOF({"a":"\b\u0001"})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":"\b\u0001"})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, MapTwoSanitized) {
+TEST_F(JsonStreamerTest, MapTwoSanitized) {
   {
-    auto map = this->streamer_.makeRootMap();
+    Streamer::MapPtr map = streamer_.makeRootMap();
     map->addKey("a");
     map->addString("\b\001");
     map->addKey("b");
     map->addString("\r\002");
   }
-  EXPECT_EQ(R"EOF({"a":"\b\u0001","b":"\r\u0002"})EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF({"a":"\b\u0001","b":"\r\u0002"})EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, SubArray) {
-  auto map = this->streamer_.makeRootMap();
+TEST_F(JsonStreamerTest, SubArray) {
+  Streamer::MapPtr map = streamer_.makeRootMap();
   map->addKey("a");
-  auto array = map->addArray();
+  Streamer::ArrayPtr array = map->addArray();
   array->addEntries({1.0, "two", 3.5, true, false, std::nan("")});
   array.reset();
   map->addEntries({{"embedded\"quote", "value"}});
   map.reset();
   EXPECT_EQ(R"EOF({"a":[1,"two",3.5,true,false,null],"embedded\"quote":"value"})EOF",
-            this->buffer_.toString());
+            buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, TopArray) {
+TEST_F(JsonStreamerTest, TopArray) {
   {
-    auto array = this->streamer_.makeRootArray();
-    array->addEntries({1.0, "two", 3.5, true, false, std::nan(""), absl::monostate{}});
+    Streamer::ArrayPtr array = streamer_.makeRootArray();
+    array->addEntries({1.0, "two", 3.5, true, false, std::nan("")});
   }
-  EXPECT_EQ(R"EOF([1,"two",3.5,true,false,null,null])EOF", this->buffer_.toString());
+  EXPECT_EQ(R"EOF([1,"two",3.5,true,false,null])EOF", buffer_.toString());
 }
 
-TYPED_TEST(JsonStreamerTest, SubMap) {
-  auto map = this->streamer_.makeRootMap();
+TEST_F(JsonStreamerTest, SubMap) {
+  Streamer::MapPtr map = streamer_.makeRootMap();
   map->addKey("a");
-  auto sub_map = map->addMap();
+  Streamer::MapPtr sub_map = map->addMap();
   sub_map->addEntries({{"one", 1.0}, {"three.5", 3.5}});
   sub_map.reset();
   map.reset();
-  EXPECT_EQ(R"EOF({"a":{"one":1,"three.5":3.5}})EOF", this->buffer_.toString());
-}
-
-TYPED_TEST(JsonStreamerTest, SimpleDirectCall) {
-  {
-    this->streamer_.addBool(true);
-    EXPECT_EQ("true", this->buffer_.toString());
-    this->buffer_.clear();
-  }
-
-  {
-    this->streamer_.addBool(false);
-    EXPECT_EQ("false", this->buffer_.toString());
-    this->buffer_.clear();
-  }
-
-  {
-    this->streamer_.addString("hello");
-    EXPECT_EQ(R"EOF("hello")EOF", this->buffer_.toString());
-    this->buffer_.clear();
-  }
-
-  {
-    uint64_t value = 1;
-    this->streamer_.addNumber(value);
-    EXPECT_EQ("1", this->buffer_.toString());
-    this->buffer_.clear();
-  }
-
-  {
-    this->streamer_.addNumber(1.5);
-    EXPECT_EQ("1.5", this->buffer_.toString());
-    this->buffer_.clear();
-  }
-
-  {
-    this->streamer_.addNull();
-    EXPECT_EQ("null", this->buffer_.toString());
-    this->buffer_.clear();
-  }
+  EXPECT_EQ(R"EOF({"a":{"one":1,"three.5":3.5}})EOF", buffer_.toString());
 }
 
 } // namespace

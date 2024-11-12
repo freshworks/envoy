@@ -1,5 +1,6 @@
 #pragma once
 
+#include "source/extensions/filters/udp/udp_proxy/session_filters/filter.h"
 #include "source/extensions/filters/udp/udp_proxy/udp_proxy_filter.h"
 
 #include "test/mocks/stream_info/mocks.h"
@@ -14,7 +15,7 @@ namespace UdpFilters {
 namespace UdpProxy {
 namespace SessionFilters {
 
-class MockReadFilterCallbacks : public Network::UdpSessionReadFilterCallbacks {
+class MockReadFilterCallbacks : public ReadFilterCallbacks {
 public:
   MockReadFilterCallbacks();
   ~MockReadFilterCallbacks() override;
@@ -28,7 +29,7 @@ public:
   NiceMock<StreamInfo::MockStreamInfo> stream_info_;
 };
 
-class MockWriteFilterCallbacks : public Network::UdpSessionWriteFilterCallbacks {
+class MockWriteFilterCallbacks : public WriteFilterCallbacks {
 public:
   MockWriteFilterCallbacks();
   ~MockWriteFilterCallbacks() override;

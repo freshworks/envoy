@@ -16,10 +16,6 @@ configure_make(
         "nocompdb",
         "skip_on_windows",
     ],
-    targets = [
-        "library",
-        "install",
-    ],
 )
 
 envoy_cc_library(
@@ -310,8 +306,8 @@ envoy_cmake(
     deps = [
         ":ares",
         ":nghttp2",
-        ":zlib",
         "//external:ssl",
+        "//external:zlib",
     ],
 )
 

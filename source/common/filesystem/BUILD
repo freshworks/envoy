@@ -106,6 +106,9 @@ envoy_cc_library(
             "inotify/watcher_impl.h",
         ],
     }),
+    external_deps = [
+        "event",
+    ],
     include_prefix = "source/common/filesystem",
     strip_include_prefix = select({
         "//bazel:apple": "kqueue",
@@ -113,7 +116,6 @@ envoy_cc_library(
         "//conditions:default": "inotify",
     }),
     deps = [
-        "//bazel/foreign_cc:event",
         "//envoy/api:api_interface",
         "//envoy/event:dispatcher_interface",
         "//source/common/buffer:buffer_lib",

@@ -78,6 +78,9 @@ public class BidirectionalStreamTest {
   @After
   public void tearDown() throws Exception {
     assertTrue(Http2TestServer.shutdownHttp2TestServer());
+    if (mCronetEngine != null) {
+      mCronetEngine.shutdown();
+    }
   }
 
   private static void checkResponseInfo(UrlResponseInfo responseInfo, String expectedUrl,

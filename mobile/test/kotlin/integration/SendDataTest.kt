@@ -36,7 +36,6 @@ class SendDataTest {
     httpTestServer =
       HttpTestServerFactory.start(
         HttpTestServerFactory.Type.HTTP2_WITH_TLS,
-        0,
         mapOf(),
         "data",
         mapOf()

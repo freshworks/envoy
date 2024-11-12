@@ -17,7 +17,6 @@ envoy_extension_cc_test(
     name = "grpc_access_log_impl_test",
     srcs = ["grpc_access_log_impl_test.cc"],
     extension_names = ["envoy.access_loggers.open_telemetry"],
-    rbe_pool = "2core",
     deps = [
         "//source/common/buffer:zero_copy_input_stream_lib",
         "//source/common/protobuf",
@@ -36,10 +35,8 @@ envoy_extension_cc_test(
     name = "access_log_impl_test",
     srcs = ["access_log_impl_test.cc"],
     extension_names = ["envoy.access_loggers.open_telemetry"],
-    rbe_pool = "2core",
     deps = [
         "//envoy/common:time_interface",
-        "//source/common/formatter:formatter_extension_lib",
         "//source/common/protobuf",
         "//source/common/router:string_accessor_lib",
         "//source/extensions/access_loggers/open_telemetry:access_log_lib",
@@ -61,9 +58,7 @@ envoy_extension_cc_test(
     name = "config_test",
     srcs = ["config_test.cc"],
     extension_names = ["envoy.access_loggers.open_telemetry"],
-    rbe_pool = "2core",
     deps = [
-        "//source/common/formatter:formatter_extension_lib",
         "//source/extensions/access_loggers/open_telemetry:access_log_lib",
         "//source/extensions/access_loggers/open_telemetry:config",
         "//test/mocks/server:factory_context_mocks",
@@ -77,10 +72,8 @@ envoy_extension_cc_test(
     size = "large",
     srcs = ["access_log_integration_test.cc"],
     extension_names = ["envoy.access_loggers.open_telemetry"],
-    rbe_pool = "2core",
     deps = [
         "//source/common/buffer:zero_copy_input_stream_lib",
-        "//source/common/formatter:formatter_extension_lib",
         "//source/common/grpc:codec_lib",
         "//source/common/grpc:common_lib",
         "//source/extensions/access_loggers/open_telemetry:config",
@@ -105,10 +98,8 @@ envoy_extension_cc_test(
         ],
     }),
     extension_names = ["envoy.access_loggers.open_telemetry"],
-    rbe_pool = "2core",
     tags = ["skip_on_windows"],
     deps = [
-        "//source/common/formatter:formatter_extension_lib",
         "//source/common/formatter:substitution_formatter_lib",
         "//source/common/http:exception_lib",
         "//source/common/http:header_map_lib",
@@ -135,15 +126,15 @@ envoy_extension_cc_test(
 envoy_cc_benchmark_binary(
     name = "substitution_formatter_speed_test",
     srcs = ["substitution_formatter_speed_test.cc"],
-    rbe_pool = "2core",
+    external_deps = [
+        "benchmark",
+    ],
     deps = [
-        "//source/common/formatter:formatter_extension_lib",
         "//source/common/http:header_map_lib",
         "//source/common/network:address_lib",
         "//source/extensions/access_loggers/open_telemetry:substitution_formatter_lib",
         "//test/common/stream_info:test_util",
         "//test/mocks/stream_info:stream_info_mocks",
-        "@com_github_google_benchmark//:benchmark",
         "@opentelemetry_proto//:common_cc_proto",
     ],
 )

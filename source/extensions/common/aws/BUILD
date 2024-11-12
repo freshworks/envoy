@@ -92,9 +92,7 @@ envoy_cc_library(
 envoy_cc_library(
     name = "credentials_provider_interface",
     hdrs = ["credentials_provider.h"],
-    deps = [
-        "@com_google_absl//absl/types:optional",
-    ],
+    external_deps = ["abseil_optional"],
 )
 
 envoy_cc_library(
@@ -113,6 +111,7 @@ envoy_cc_library(
     name = "credentials_provider_impl_lib",
     srcs = ["credentials_provider_impl.cc"],
     hdrs = ["credentials_provider_impl.h"],
+    external_deps = ["abseil_time"],
     deps = [
         ":credentials_provider_interface",
         ":metadata_fetcher_lib",
@@ -125,19 +124,13 @@ envoy_cc_library(
         "//source/common/json:json_loader_lib",
         "//source/common/runtime:runtime_features_lib",
         "//source/common/tracing:http_tracer_lib",
-        "@com_google_absl//absl/time",
     ],
 )
 
 envoy_cc_library(
     name = "utility_lib",
     srcs = ["utility.cc"],
-    hdrs = [
-        "credentials_provider.h",
-        "signer.h",
-        "signer_base_impl.h",
-        "utility.h",
-    ],
+    hdrs = ["utility.h"],
     copts = envoy_select_boringssl(
         [
             "-DENVOY_SSL_FIPS",
@@ -162,9 +155,7 @@ envoy_cc_library(
 envoy_cc_library(
     name = "region_provider_interface",
     hdrs = ["region_provider.h"],
-    deps = [
-        "@com_google_absl//absl/types:optional",
-    ],
+    external_deps = ["abseil_optional"],
 )
 
 envoy_cc_library(

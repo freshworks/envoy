@@ -36,6 +36,7 @@
 #include "source/common/listener_manager/connection_handler_impl.h"
 #endif
 
+#ifdef ENVOY_ENABLE_QUIC
 #ifdef ENVOY_MOBILE_ENABLE_LISTENER
 #include "source/common/quic/server_codec_impl.h"
 #include "source/extensions/quic/connection_id_generator/envoy_deterministic_connection_id_generator_config.h"
@@ -43,8 +44,9 @@
 #include "source/extensions/quic/proof_source/envoy_quic_proof_source_factory_impl.h"
 #include "source/extensions/udp_packet_writer/default/config.h"
 #endif
-
 #include "source/common/quic/quic_client_transport_socket_factory.h"
+#endif
+
 #include "extension_registry_platform_additions.h"
 #include "library/common/extensions/cert_validator/platform_bridge/config.h"
 #include "library/common/extensions/filters/http/local_error/config.h"
@@ -180,6 +182,8 @@ void ExtensionRegistry::registerFactories() {
   Server::FilterChain::forceRegisterFilterChainNameActionFactory();
 #endif
 
+#ifdef ENVOY_ENABLE_QUIC
+
 #ifdef ENVOY_MOBILE_ENABLE_LISTENER
   // These are QUIC downstream factories required if Envoy Mobile is compiled with
   // proxy functionality and QUIC support.
@@ -191,8 +195,8 @@ void ExtensionRegistry::registerFactories() {
   Quic::forceRegisterEnvoyQuicProofSourceFactoryImpl();
   Quic::forceRegisterEnvoyDeterministicConnectionIdGeneratorConfigFactory();
 #endif
-
   Quic::forceRegisterQuicClientTransportSocketConfigFactory();
+#endif
 }
 
 } // namespace Envoy

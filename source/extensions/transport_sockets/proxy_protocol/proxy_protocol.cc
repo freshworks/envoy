@@ -21,12 +21,17 @@ namespace Extensions {
 namespace TransportSockets {
 namespace ProxyProtocol {
 
+UpstreamProxyProtocolStats generateUpstreamProxyProtocolStats(Stats::Scope& stats_scope) {
+  const char prefix[]{"upstream.proxyprotocol."};
+  return {ALL_PROXY_PROTOCOL_TRANSPORT_SOCKET_STATS(POOL_COUNTER_PREFIX(stats_scope, prefix))};
+}
+
 UpstreamProxyProtocolSocket::UpstreamProxyProtocolSocket(
     Network::TransportSocketPtr&& transport_socket,
     Network::TransportSocketOptionsConstSharedPtr options, ProxyProtocolConfig config,
-    const UpstreamProxyProtocolStats& stats)
+    Stats::Scope& scope)
     : PassthroughSocket(std::move(transport_socket)), options_(options), version_(config.version()),
-      stats_(stats),
+      stats_(generateUpstreamProxyProtocolStats(scope)),
       pass_all_tlvs_(config.has_pass_through_tlvs() ? config.pass_through_tlvs().match_type() ==
                                                           ProxyProtocolPassThroughTLVs::INCLUDE_ALL
                                                     : false) {
@@ -137,8 +142,7 @@ void UpstreamProxyProtocolSocket::onConnected() {
 UpstreamProxyProtocolSocketFactory::UpstreamProxyProtocolSocketFactory(
     Network::UpstreamTransportSocketFactoryPtr transport_socket_factory, ProxyProtocolConfig config,
     Stats::Scope& scope)
-    : PassthroughFactory(std::move(transport_socket_factory)), config_(config),
-      stats_(generateUpstreamProxyProtocolStats(scope)) {}
+    : PassthroughFactory(std::move(transport_socket_factory)), config_(config), scope_(scope) {}
 
 Network::TransportSocketPtr UpstreamProxyProtocolSocketFactory::createTransportSocket(
     Network::TransportSocketOptionsConstSharedPtr options,
@@ -148,7 +152,7 @@ Network::TransportSocketPtr UpstreamProxyProtocolSocketFactory::createTransportS
     return nullptr;
   }
   return std::make_unique<UpstreamProxyProtocolSocket>(std::move(inner_socket), options, config_,
-                                                       stats_);
+                                                       scope_);
 }
 
 void UpstreamProxyProtocolSocketFactory::hashKey(

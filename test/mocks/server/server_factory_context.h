@@ -12,7 +12,6 @@
 #include "test/mocks/access_log/mocks.h"
 #include "test/mocks/api/mocks.h"
 #include "test/mocks/event/mocks.h"
-#include "test/mocks/http/http_server_properties_cache.h"
 #include "test/mocks/http/mocks.h"
 #include "test/mocks/init/mocks.h"
 #include "test/mocks/local_info/mocks.h"
@@ -57,7 +56,6 @@ public:
   ~MockServerFactoryContext() override;
 
   MOCK_METHOD(Upstream::ClusterManager&, clusterManager, ());
-  MOCK_METHOD(Http::HttpServerPropertiesCacheManager&, httpServerPropertiesCacheManager, ());
   MOCK_METHOD(Event::Dispatcher&, mainThreadDispatcher, ());
   MOCK_METHOD(const Server::Options&, options, ());
   MOCK_METHOD(const Network::DrainDecision&, drainDecision, ());
@@ -101,8 +99,6 @@ public:
   testing::NiceMock<AccessLog::MockAccessLogManager> access_log_manager_;
   testing::NiceMock<Init::MockManager> init_manager_;
   testing::NiceMock<MockServerLifecycleNotifier> lifecycle_notifier_;
-  testing::NiceMock<Http::MockHttpServerPropertiesCacheManager>
-      http_server_properties_cache_manager_;
 
   Singleton::ManagerPtr singleton_manager_;
   testing::NiceMock<MockAdmin> admin_;
@@ -141,7 +137,6 @@ public:
   ~StatelessMockServerFactoryContext() override = default;
 
   MOCK_METHOD(Upstream::ClusterManager&, clusterManager, ());
-  MOCK_METHOD(Http::HttpServerPropertiesCacheManager&, httpServerPropertiesCacheManager, ());
   MOCK_METHOD(Event::Dispatcher&, mainThreadDispatcher, ());
   MOCK_METHOD(const Server::Options&, options, ());
   MOCK_METHOD(const Network::DrainDecision&, drainDecision, ());

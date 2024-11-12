@@ -22,7 +22,6 @@ envoy_cc_test(
         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
         "@envoy_api//envoy/extensions/clusters/dynamic_forward_proxy/v3:pkg_cc_proto",
-        "@envoy_api//envoy/extensions/filters/http/buffer/v3:pkg_cc_proto",
         "@envoy_build_config//:extension_registry",
         "@envoy_build_config//:test_extensions",
     ],

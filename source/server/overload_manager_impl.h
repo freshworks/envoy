@@ -41,8 +41,8 @@ public:
 
 class OverloadAction {
 public:
-  static absl::StatusOr<std::unique_ptr<OverloadAction>>
-  create(const envoy::config::overload::v3::OverloadAction& config, Stats::Scope& stats_scope);
+  OverloadAction(const envoy::config::overload::v3::OverloadAction& config,
+                 Stats::Scope& stats_scope);
 
   // Updates the current pressure for the given resource and returns whether the action
   // has changed state.
@@ -52,9 +52,6 @@ public:
   OverloadActionState getState() const;
 
 private:
-  OverloadAction(const envoy::config::overload::v3::OverloadAction& config,
-                 Stats::Scope& stats_scope, absl::Status& creation_status);
-
   using TriggerPtr = std::unique_ptr<Trigger>;
   absl::node_hash_map<std::string, TriggerPtr> triggers_;
   OverloadActionState state_;
@@ -68,9 +65,8 @@ private:
  */
 class LoadShedPointImpl : public LoadShedPoint {
 public:
-  static absl::StatusOr<std::unique_ptr<LoadShedPointImpl>>
-  create(const envoy::config::overload::v3::LoadShedPoint& config, Stats::Scope& stats_scope,
-         Random::RandomGenerator& random_generator);
+  LoadShedPointImpl(const envoy::config::overload::v3::LoadShedPoint& config,
+                    Stats::Scope& stats_scope, Random::RandomGenerator& random_generator);
   LoadShedPointImpl(const LoadShedPointImpl&) = delete;
   LoadShedPointImpl& operator=(const LoadShedPointImpl&) = delete;
 
@@ -86,9 +82,6 @@ public:
   void updateResource(absl::string_view resource_name, double resource_utilization);
 
 private:
-  LoadShedPointImpl(const envoy::config::overload::v3::LoadShedPoint& config,
-                    Stats::Scope& stats_scope, Random::RandomGenerator& random_generator,
-                    absl::Status& creation_status);
   using TriggerPtr = std::unique_ptr<Trigger>;
 
   // Helper to handle updating the probability to shed load given the triggers.
@@ -152,12 +145,11 @@ class ThreadLocalOverloadStateImpl;
 
 class OverloadManagerImpl : Logger::Loggable<Logger::Id::main>, public OverloadManager {
 public:
-  static absl::StatusOr<std::unique_ptr<OverloadManagerImpl>>
-  create(Event::Dispatcher& dispatcher, Stats::Scope& stats_scope,
-         ThreadLocal::SlotAllocator& slot_allocator,
-         const envoy::config::overload::v3::OverloadManager& config,
-         ProtobufMessage::ValidationVisitor& validation_visitor, Api::Api& api,
-         const Server::Options& options);
+  OverloadManagerImpl(Event::Dispatcher& dispatcher, Stats::Scope& stats_scope,
+                      ThreadLocal::SlotAllocator& slot_allocator,
+                      const envoy::config::overload::v3::OverloadManager& config,
+                      ProtobufMessage::ValidationVisitor& validation_visitor, Api::Api& api,
+                      const Server::Options& options);
 
   // Server::OverloadManager
   void start() override;
@@ -169,12 +161,6 @@ public:
   void stop() override;
 
 protected:
-  OverloadManagerImpl(Event::Dispatcher& dispatcher, Stats::Scope& stats_scope,
-                      ThreadLocal::SlotAllocator& slot_allocator,
-                      const envoy::config::overload::v3::OverloadManager& config,
-                      ProtobufMessage::ValidationVisitor& validation_visitor, Api::Api& api,
-                      const Server::Options& options, absl::Status& creation_status);
-
   // Factory for timer managers. This allows test-only subclasses to inject a mock implementation.
   virtual Event::ScaledRangeTimerManagerPtr createScaledRangeTimerManager(
       Event::Dispatcher& dispatcher,
@@ -232,8 +218,7 @@ private:
   std::shared_ptr<absl::node_hash_map<OverloadProactiveResourceName, ProactiveResource>>
       proactive_resources_;
 
-  absl::node_hash_map<NamedOverloadActionSymbolTable::Symbol, std::unique_ptr<OverloadAction>>
-      actions_;
+  absl::node_hash_map<NamedOverloadActionSymbolTable::Symbol, OverloadAction> actions_;
 
   absl::flat_hash_map<std::string, std::unique_ptr<LoadShedPointImpl>> loadshed_points_;
 

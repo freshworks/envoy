@@ -75,8 +75,7 @@ template <> struct formatter<Envoy::Http::MetadataMap> {
   }
 
   template <typename FormatContext>
-  auto format(const Envoy::Http::MetadataMap& map, FormatContext& ctx) const
-      -> decltype(ctx.out()) {
+  auto format(const Envoy::Http::MetadataMap& map, FormatContext& ctx) -> decltype(ctx.out()) {
     std::ostringstream out;
     out << map;
     auto str = out.str();

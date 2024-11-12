@@ -24,9 +24,8 @@ public:
                                               Random::RandomGenerator& random,
                                               TimeSource& time_source) override;
 
-  Upstream::LoadBalancerConfigPtr
-  loadConfig(Upstream::LoadBalancerFactoryContext& lb_factory_context,
-             const Protobuf::Message& config, ProtobufMessage::ValidationVisitor& visitor) override;
+  Upstream::LoadBalancerConfigPtr loadConfig(const Protobuf::Message& config,
+                                             ProtobufMessage::ValidationVisitor& visitor) override;
 };
 
 } // namespace Subset

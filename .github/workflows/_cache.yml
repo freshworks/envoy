@@ -11,21 +11,12 @@ on:
       app-key:
         required: true
     inputs:
-      arch:
-        type: string
-        default: x64
-      cache-suffix:
-        type: string
-        default:
       image-tag:
         type: string
         required: true
       request:
         type: string
         required: true
-      runs-on:
-        type: string
-        default: ubuntu-24.04
       lock-repository:
         type: string
         default: envoyproxy/ci-mutex
@@ -46,34 +37,33 @@ on:
 
 jobs:
   docker:
-    runs-on: ${{ inputs.runs-on || 'ubuntu-24.04' }}
+    runs-on: ubuntu-22.04
     steps:
-    - uses: envoyproxy/toolshed/gh-actions/appauth@actions-v0.2.37
+    - uses: envoyproxy/toolshed/gh-actions/appauth@actions-v0.2.35
       id: appauth
       name: Appauth (mutex lock)
       with:
         app_id: ${{ secrets.app-id }}
         key: ${{ secrets.app-key }}
-    - uses: envoyproxy/toolshed/gh-actions/docker/cache/prime@actions-v0.2.37
+    - uses: envoyproxy/toolshed/gh-actions/docker/cache/prime@actions-v0.2.35
       id: docker
-      name: Prime Docker cache (${{ inputs.image-tag }}${{ inputs.cache-suffix }})
+      name: Prime Docker cache (${{ inputs.image-tag }})
       with:
         image-tag: ${{ inputs.image-tag }}
-        key-suffix: ${{ inputs.cache-suffix }}
         lock-token: ${{ steps.appauth.outputs.token }}
         lock-repository: ${{ inputs.lock-repository }}
-    - uses: envoyproxy/toolshed/gh-actions/jq@actions-v0.2.37
+    - uses: envoyproxy/toolshed/gh-actions/jq@actions-v0.2.35
       id: data
       name: Cache data
       with:
         input-format: yaml
         input: |
           cached: ${{ steps.docker.outputs.cached }}
-          key: ${{ inputs.image-tag }}${{ inputs.cache-suffix }}
-    - uses: envoyproxy/toolshed/gh-actions/json/table@actions-v0.2.37
+          key: ${{ inputs.image-tag }}
+    - uses: envoyproxy/toolshed/gh-actions/json/table@actions-v0.2.35
       name: Summary
       with:
         json: ${{ steps.data.outputs.value }}
         output-path: GITHUB_STEP_SUMMARY
         title: >-
-          Cache (Docker ${{ inputs.arch }})
+          Cache (Docker x64)

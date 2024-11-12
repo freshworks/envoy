@@ -15,11 +15,9 @@ namespace Network {
 
 Api::IoCallUint64Result TestIoSocketHandle::recvmsg(Buffer::RawSlice* slices,
                                                     const uint64_t num_slice, uint32_t self_port,
-                                                    const UdpSaveCmsgConfig& save_cmsg_config,
                                                     RecvMsgOutput& output) {
 
-  auto result = Test::IoSocketHandlePlatformImpl::recvmsg(slices, num_slice, self_port,
-                                                          save_cmsg_config, output);
+  auto result = Test::IoSocketHandlePlatformImpl::recvmsg(slices, num_slice, self_port, output);
   if (read_override_) {
     read_override_(output);
   }
@@ -52,7 +50,7 @@ Api::IoCallUint64Result TestIoSocketHandle::writev(const Buffer::RawSlice* slice
   Address::InstanceConstSharedPtr dnat_peer_address;
   if (write_override_) {
     auto result = write_override_(this, slices, num_slice, dnat_peer_address);
-    peer_address_override_.reset();
+    ENVOY_BUG(dnat_peer_address == nullptr, "Only works for sendmsg, not writev");
     if (result.has_value()) {
       return std::move(result).value();
     }
@@ -83,10 +81,9 @@ IoHandlePtr TestIoSocketHandle::duplicate() {
 
 Api::SysCallIntResult TestIoSocketHandle::connect(Address::InstanceConstSharedPtr address) {
   if (connect_override_) {
-    auto result = connect_override_(this, address);
-    if (result.has_value()) {
+    auto result = connect_override_(this);
+    if (result.has_value())
       return Api::SysCallIntResult{-1, EINPROGRESS};
-    }
   }
 
   return Test::IoSocketHandlePlatformImpl::connect(address);

@@ -178,7 +178,7 @@ protected:
 
   StreamInfo::BytesMeterSharedPtr& mutableBytesMeter() { return bytes_meter_; }
 
-  void encodeTrailersImpl(quiche::HttpHeaderBlock&& trailers);
+  void encodeTrailersImpl(spdy::Http2HeaderBlock&& trailers);
 
   // Converts `header_list` into a new `Http::MetadataMap`.
   std::unique_ptr<Http::MetadataMap>

@@ -180,7 +180,6 @@ public final class CronvoyUrlRequest extends CronvoyUrlRequestBase {
   private String mCurrentUrl;
   private volatile CronvoyUrlResponseInfoImpl mUrlResponseInfo;
   private String mPendingRedirectUrl;
-  private boolean mIdempotent;
 
   /**
    * @param executor The executor for orchestrating tasks between envoy-mobile callbacks
@@ -189,7 +188,7 @@ public final class CronvoyUrlRequest extends CronvoyUrlRequestBase {
                     Executor executor, String userAgent, boolean allowDirectExecutor,
                     Collection<Object> connectionAnnotations, boolean trafficStatsTagSet,
                     int trafficStatsTag, boolean trafficStatsUidSet, int trafficStatsUid,
-                    RequestFinishedInfo.Listener requestFinishedListener, boolean idempotent) {
+                    RequestFinishedInfo.Listener requestFinishedListener) {
     if (url == null) {
       throw new NullPointerException("URL is required");
     }
@@ -211,7 +210,6 @@ public final class CronvoyUrlRequest extends CronvoyUrlRequestBase {
     mCurrentUrl = url;
     mUserAgent = userAgent;
     mRequestAnnotations = connectionAnnotations;
-    mIdempotent = idempotent;
   }
 
   @Override
@@ -540,7 +538,7 @@ public final class CronvoyUrlRequest extends CronvoyUrlRequestBase {
     mCronvoyCallbacks = new CronvoyHttpCallbacks();
     mStream.set(mRequestContext.getEnvoyEngine().startStream(mCronvoyCallbacks,
                                                              /* explicitFlowControl= */ true));
-    mStream.get().sendHeaders(envoyRequestHeaders, mUploadDataStream == null, mIdempotent);
+    mStream.get().sendHeaders(envoyRequestHeaders, mUploadDataStream == null);
     if (mUploadDataStream != null && mUrlChain.size() == 1) {
       mUploadDataStream.initializeWithRequest();
     }

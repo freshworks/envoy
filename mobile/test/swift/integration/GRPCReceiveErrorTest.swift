@@ -11,13 +11,6 @@ final class GRPCReceiveErrorTests: XCTestCase {
     register_test_extensions()
   }
 
-  override static func tearDown() {
-    super.tearDown()
-    // Flush the stdout and stderror to show the print output.
-    fflush(stdout)
-    fflush(stderr)
-  }
-
   func testReceiveError() {
     let filterName = "error_validation_filter"
 
@@ -86,7 +79,7 @@ final class GRPCReceiveErrorTests: XCTestCase {
 
     let requestHeaders = GRPCRequestHeadersBuilder(
         scheme: "http",
-        authority: "localhost:" + String(EnvoyTestServer.getHttpPort()),
+        authority: "localhost:" + String(EnvoyTestServer.getEnvoyPort()),
         path: "/pb.api.v1.Foo/GetBar")
       .build()
     let message = Data([1, 2, 3, 4, 5])
@@ -114,6 +107,6 @@ final class GRPCReceiveErrorTests: XCTestCase {
     XCTAssertEqual(XCTWaiter.wait(for: expectations, timeout: 10), .completed)
 
     engine.terminate()
-    EnvoyTestServer.shutdownTestHttpServer()
+    EnvoyTestServer.shutdownTestServer()
   }
 }

@@ -4,6 +4,7 @@ load(
     "envoy_cc_library",
     "envoy_contrib_package",
 )
+load("//bazel:envoy_internal.bzl", "envoy_external_dep_path")
 
 licenses(["notice"])  # Apache 2
 
@@ -252,9 +253,9 @@ envoy_cc_library(
     ],
     tags = ["skip_on_windows"],
     deps = [
-        "//bazel/foreign_cc:librdkafka",
         "//envoy/common:pure_lib",
         "@com_google_absl//absl/strings",
+        envoy_external_dep_path("librdkafka"),
     ],
 )
 
@@ -269,7 +270,7 @@ envoy_cc_library(
     tags = ["skip_on_windows"],
     deps = [
         ":librdkafka_utils_lib",
-        "//bazel/foreign_cc:librdkafka",
+        envoy_external_dep_path("librdkafka"),
         "//source/common/common:macros",
     ],
 )

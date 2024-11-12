@@ -36,12 +36,7 @@ using AllMuxes = ThreadSafeSingleton<AllMuxesState>;
 } // namespace
 
 NewGrpcMuxImpl::NewGrpcMuxImpl(GrpcMuxContext& grpc_mux_context)
-    : dispatcher_(grpc_mux_context.dispatcher_),
-      grpc_stream_(createGrpcStreamObject(std::move(grpc_mux_context.async_client_),
-                                          std::move(grpc_mux_context.failover_async_client_),
-                                          grpc_mux_context.service_method_, grpc_mux_context.scope_,
-                                          std::move(grpc_mux_context.backoff_strategy_),
-                                          grpc_mux_context.rate_limit_settings_)),
+    : grpc_stream_(createGrpcStreamObject(grpc_mux_context)),
       local_info_(grpc_mux_context.local_info_),
       config_validators_(std::move(grpc_mux_context.config_validators_)),
       dynamic_update_callback_handle_(
@@ -50,6 +45,7 @@ NewGrpcMuxImpl::NewGrpcMuxImpl(GrpcMuxContext& grpc_mux_context)
                 onDynamicContextUpdate(resource_type_url);
                 return absl::OkStatus();
               })),
+      dispatcher_(grpc_mux_context.dispatcher_),
       xds_config_tracker_(grpc_mux_context.xds_config_tracker_),
       eds_resources_cache_(std::move(grpc_mux_context.eds_resources_cache_)) {
   AllMuxes::get().insert(this);
@@ -57,34 +53,27 @@ NewGrpcMuxImpl::NewGrpcMuxImpl(GrpcMuxContext& grpc_mux_context)
 
 std::unique_ptr<GrpcStreamInterface<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                     envoy::service::discovery::v3::DeltaDiscoveryResponse>>
-NewGrpcMuxImpl::createGrpcStreamObject(Grpc::RawAsyncClientPtr&& async_client,
-                                       Grpc::RawAsyncClientPtr&& failover_async_client,
-                                       const Protobuf::MethodDescriptor& service_method,
-                                       Stats::Scope& scope, BackOffStrategyPtr&& backoff_strategy,
-                                       const RateLimitSettings& rate_limit_settings) {
+NewGrpcMuxImpl::createGrpcStreamObject(GrpcMuxContext& grpc_mux_context) {
   if (Runtime::runtimeFeatureEnabled("envoy.restart_features.xds_failover_support")) {
     return std::make_unique<GrpcMuxFailover<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                             envoy::service::discovery::v3::DeltaDiscoveryResponse>>(
         /*primary_stream_creator=*/
-        [&async_client, &service_method, &dispatcher = dispatcher_, &scope, &backoff_strategy,
-         &rate_limit_settings](
+        [&grpc_mux_context](
             GrpcStreamCallbacks<envoy::service::discovery::v3::DeltaDiscoveryResponse>* callbacks)
             -> GrpcStreamInterfacePtr<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                       envoy::service::discovery::v3::DeltaDiscoveryResponse> {
           return std::make_unique<
               GrpcStream<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                          envoy::service::discovery::v3::DeltaDiscoveryResponse>>(
-              callbacks, std::move(async_client), service_method, dispatcher, scope,
-              std::move(backoff_strategy), rate_limit_settings,
-              GrpcStream<envoy::service::discovery::v3::DeltaDiscoveryRequest,
-                         envoy::service::discovery::v3::DeltaDiscoveryResponse>::
-                  ConnectedStateValue::FIRST_ENTRY);
+              callbacks, std::move(grpc_mux_context.async_client_),
+              grpc_mux_context.service_method_, grpc_mux_context.dispatcher_,
+              grpc_mux_context.scope_, std::move(grpc_mux_context.backoff_strategy_),
+              grpc_mux_context.rate_limit_settings_);
         },
         /*failover_stream_creator=*/
-        failover_async_client
+        grpc_mux_context.failover_async_client_
             ? absl::make_optional(
-                  [&failover_async_client, &service_method, &dispatcher = dispatcher_, &scope,
-                   &rate_limit_settings](
+                  [&grpc_mux_context](
                       GrpcStreamCallbacks<envoy::service::discovery::v3::DeltaDiscoveryResponse>*
                           callbacks)
                       -> GrpcStreamInterfacePtr<
@@ -93,30 +82,26 @@ NewGrpcMuxImpl::createGrpcStreamObject(Grpc::RawAsyncClientPtr&& async_client,
                     return std::make_unique<
                         GrpcStream<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                    envoy::service::discovery::v3::DeltaDiscoveryResponse>>(
-                        callbacks, std::move(failover_async_client), service_method, dispatcher,
-                        scope,
+                        callbacks, std::move(grpc_mux_context.failover_async_client_),
+                        grpc_mux_context.service_method_, grpc_mux_context.dispatcher_,
+                        grpc_mux_context.scope_,
                         // TODO(adisuissa): the backoff strategy for the failover should
                         // be the same as the primary source.
                         std::make_unique<FixedBackOffStrategy>(
                             GrpcMuxFailover<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                             envoy::service::discovery::v3::DeltaDiscoveryResponse>::
                                 DefaultFailoverBackoffMilliseconds),
-                        rate_limit_settings,
-                        GrpcStream<envoy::service::discovery::v3::DeltaDiscoveryRequest,
-                                   envoy::service::discovery::v3::DeltaDiscoveryResponse>::
-                            ConnectedStateValue::SECOND_ENTRY);
+                        grpc_mux_context.rate_limit_settings_);
                   })
             : absl::nullopt,
         /*grpc_mux_callbacks=*/*this,
-        /*dispatch=*/dispatcher_);
+        /*dispatch=*/grpc_mux_context.dispatcher_);
   }
   return std::make_unique<GrpcStream<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                      envoy::service::discovery::v3::DeltaDiscoveryResponse>>(
-      this, std::move(async_client), service_method, dispatcher_, scope,
-      std::move(backoff_strategy), rate_limit_settings,
-      GrpcStream<
-          envoy::service::discovery::v3::DeltaDiscoveryRequest,
-          envoy::service::discovery::v3::DeltaDiscoveryResponse>::ConnectedStateValue::FIRST_ENTRY);
+      this, std::move(grpc_mux_context.async_client_), grpc_mux_context.service_method_,
+      grpc_mux_context.dispatcher_, grpc_mux_context.scope_,
+      std::move(grpc_mux_context.backoff_strategy_), grpc_mux_context.rate_limit_settings_);
 }
 
 NewGrpcMuxImpl::~NewGrpcMuxImpl() { AllMuxes::get().erase(this); }
@@ -190,13 +175,13 @@ void NewGrpcMuxImpl::onDiscoveryResponse(
 void NewGrpcMuxImpl::onStreamEstablished() {
   for (auto& [type_url, subscription] : subscriptions_) {
     UNREFERENCED_PARAMETER(type_url);
-    subscription->sub_state_.markStreamFresh(should_send_initial_resource_versions_);
+    subscription->sub_state_.markStreamFresh();
   }
   pausable_ack_queue_.clear();
   trySendDiscoveryRequests();
 }
 
-void NewGrpcMuxImpl::onEstablishmentFailure(bool next_attempt_may_send_initial_resource_version) {
+void NewGrpcMuxImpl::onEstablishmentFailure() {
   // If this happens while Envoy is still initializing, the onConfigUpdateFailed() we ultimately
   // call on CDS will cause LDS to start up, which adds to subscriptions_ here. So, to avoid a
   // crash, the iteration needs to dance around a little: collect pointers to all
@@ -214,7 +199,6 @@ void NewGrpcMuxImpl::onEstablishmentFailure(bool next_attempt_may_send_initial_r
       }
     }
   } while (all_subscribed.size() != subscriptions_.size());
-  should_send_initial_resource_versions_ = next_attempt_may_send_initial_resource_version;
 }
 
 void NewGrpcMuxImpl::onWriteable() { trySendDiscoveryRequests(); }
@@ -252,41 +236,6 @@ GrpcMuxWatchPtr NewGrpcMuxImpl::addWatch(const std::string& type_url,
   return std::make_unique<WatchImpl>(type_url, watch, *this, options);
 }
 
-absl::Status
-NewGrpcMuxImpl::updateMuxSource(Grpc::RawAsyncClientPtr&& primary_async_client,
-                                Grpc::RawAsyncClientPtr&& failover_async_client,
-                                CustomConfigValidatorsPtr&& custom_config_validators,
-                                Stats::Scope& scope, BackOffStrategyPtr&& backoff_strategy,
-                                const envoy::config::core::v3::ApiConfigSource& ads_config_source) {
-  // Process the rate limit settings.
-  absl::StatusOr<RateLimitSettings> rate_limit_settings_or_error =
-      Utility::parseRateLimitSettings(ads_config_source);
-  RETURN_IF_NOT_OK_REF(rate_limit_settings_or_error.status());
-
-  const Protobuf::MethodDescriptor& service_method =
-      *Protobuf::DescriptorPool::generated_pool()->FindMethodByName(
-          "envoy.service.discovery.v3.AggregatedDiscoveryService.DeltaAggregatedResources");
-
-  // Disconnect from current xDS servers.
-  ENVOY_LOG_MISC(info, "Replacing the xDS gRPC mux source");
-  grpc_stream_->closeStream();
-  grpc_stream_ = createGrpcStreamObject(std::move(primary_async_client),
-                                        std::move(failover_async_client), service_method, scope,
-                                        std::move(backoff_strategy), *rate_limit_settings_or_error);
-
-  // Update the config validators.
-  config_validators_ = std::move(custom_config_validators);
-  // Update the watch map's config validators.
-  for (auto& [type_url, subscription] : subscriptions_) {
-    subscription->watch_map_.setConfigValidators(config_validators_.get());
-  }
-
-  // Start the subscriptions over the grpc_stream.
-  grpc_stream_->establishNewStream();
-
-  return absl::OkStatus();
-}
-
 // Updates the list of resource names watched by the given watch. If an added name is new across
 // the whole subscription, or if a removed name has no other watch interested in it, then the
 // subscription will enqueue and attempt to send an appropriate discovery request.
@@ -303,7 +252,7 @@ void NewGrpcMuxImpl::updateWatch(const std::string& type_url, Watch* watch,
   for (const auto& resource : resources) {
     if (XdsResourceIdentifier::hasXdsTpScheme(resource)) {
       auto xdstp_resource_or_error = XdsResourceIdentifier::decodeUrn(resource);
-      THROW_IF_NOT_OK_REF(xdstp_resource_or_error.status());
+      THROW_IF_STATUS_NOT_OK(xdstp_resource_or_error, throw);
       auto xdstp_resource = xdstp_resource_or_error.value();
       if (options.add_xdstp_node_context_params_) {
         const auto context = XdsContextParams::encodeResource(
@@ -361,7 +310,7 @@ void NewGrpcMuxImpl::addSubscription(const std::string& type_url,
   }
   subscriptions_.emplace(
       type_url, std::make_unique<SubscriptionStuff>(type_url, local_info_, use_namespace_matching,
-                                                    dispatcher_, config_validators_.get(),
+                                                    dispatcher_, *config_validators_.get(),
                                                     xds_config_tracker_, resources_cache));
   subscription_ordering_.emplace_back(type_url);
 }
@@ -461,7 +410,7 @@ public:
          OptRef<XdsResourcesDelegate>, bool use_eds_resources_cache) override {
     absl::StatusOr<RateLimitSettings> rate_limit_settings_or_error =
         Utility::parseRateLimitSettings(ads_config);
-    THROW_IF_NOT_OK_REF(rate_limit_settings_or_error.status());
+    THROW_IF_STATUS_NOT_OK(rate_limit_settings_or_error, throw);
     GrpcMuxContext grpc_mux_context{
         /*async_client_=*/std::move(async_client),
         /*failover_async_client_=*/std::move(failover_async_client),

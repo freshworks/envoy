@@ -37,9 +37,8 @@ public:
     case envoy::config::core::v3::SocketAddress::PortSpecifierCase::kNamedPort:
       break;
     }
-    return absl::InvalidArgumentError(
-        fmt::format("IP resolver can't handle port specifier type {}",
-                    static_cast<int>(socket_address.port_specifier_case())));
+    return absl::InvalidArgumentError(fmt::format("IP resolver can't handle port specifier type {}",
+                                                  socket_address.port_specifier_case()));
   }
 
   std::string name() const override { return Config::AddressResolverNames::get().IP; }
@@ -88,7 +87,7 @@ resolveProtoSocketAddress(const envoy::config::core::v3::SocketAddress& socket_a
     return absl::InvalidArgumentError(fmt::format("Unknown address resolver: {}", resolver_name));
   }
   auto instance_or_error = resolver->resolve(socket_address);
-  RETURN_IF_NOT_OK_REF(instance_or_error.status());
+  RETURN_IF_STATUS_NOT_OK(instance_or_error);
   return std::move(instance_or_error.value());
 }
 

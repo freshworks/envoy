@@ -18,14 +18,11 @@ createStreamAccessLogInstance(const Protobuf::Message& config, AccessLog::Filter
       MessageUtil::downcastAndValidate<const T&>(config, context.messageValidationVisitor());
   Formatter::FormatterPtr formatter;
   if (fal_config.access_log_format_case() == T::AccessLogFormatCase::kLogFormat) {
-    formatter = THROW_OR_RETURN_VALUE(
-        Formatter::SubstitutionFormatStringUtils::fromProtoConfig(fal_config.log_format(), context),
-        Formatter::FormatterBasePtr<Formatter::HttpFormatterContext>);
+    formatter =
+        Formatter::SubstitutionFormatStringUtils::fromProtoConfig(fal_config.log_format(), context);
   } else if (fal_config.access_log_format_case() ==
              T::AccessLogFormatCase::ACCESS_LOG_FORMAT_NOT_SET) {
-    formatter = THROW_OR_RETURN_VALUE(
-        Formatter::HttpSubstitutionFormatUtils::defaultSubstitutionFormatter(),
-        Formatter::FormatterPtr);
+    formatter = Formatter::HttpSubstitutionFormatUtils::defaultSubstitutionFormatter();
   }
   Filesystem::FilePathAndType file_info{destination_type, ""};
   return std::make_shared<AccessLoggers::File::FileAccessLog>(

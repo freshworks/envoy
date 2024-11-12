@@ -41,7 +41,6 @@ jobs:
     with:
       bazel-extra: ${{ matrix.bazel-extra }}
       target: ${{ matrix.target }}
-      target-suffix: ${{ matrix.arch }}
       cache-build-image: ${{ fromJSON(inputs.request).request.build-image.default }}
       cache-build-image-key-suffix: ${{ matrix.arch == 'arm64' && format('-{0}', matrix.arch) || '' }}
       concurrency-suffix: -${{ matrix.arch }}
@@ -60,7 +59,7 @@ jobs:
           name: Release (x64)
           arch: x64
           bazel-extra: >-
-            --config=remote-envoy-engflow
+            --config=rbe-envoy-engflow
           rbe: true
           runs-on: ubuntu-24.04
         - target: release.server_only
@@ -68,7 +67,6 @@ jobs:
           arch: arm64
           bazel-extra: >-
             --config=cache-envoy-engflow
-            --config=common-envoy-engflow
             --config=bes-envoy-engflow
           rbe: false
           runs-on: envoy-arm64-medium
@@ -87,12 +85,10 @@ jobs:
     with:
       bazel-extra: >-
         --config=cache-envoy-engflow
-        --config=common-envoy-engflow
         --config=bes-envoy-engflow
       downloads: |
         release.${{ matrix.arch }}: release/${{ matrix.arch }}/bin/
       target: ${{ matrix.target }}
-      target-suffix: ${{ matrix.arch }}
       cache-build-image: ${{ fromJSON(inputs.request).request.build-image.default }}
       cache-build-image-key-suffix: ${{ matrix.cache-build-image-key-suffix }}
       concurrency-suffix: -${{ matrix.arch }}

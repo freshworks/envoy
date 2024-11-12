@@ -1,6 +1,5 @@
 #include "engine.h"
 
-#include "library/common/engine_types.h"
 #include "library/common/internal_engine.h"
 #include "library/common/types/c_types.h"
 
@@ -26,10 +25,6 @@ StreamClientSharedPtr Engine::streamClient() {
 std::string Engine::dumpStats() { return engine_->dumpStats(); }
 
 envoy_status_t Engine::terminate() { return engine_->terminate(); }
-
-void Engine::onDefaultNetworkChanged(NetworkType network) {
-  engine_->onDefaultNetworkChanged(network);
-}
 
 } // namespace Platform
 } // namespace Envoy

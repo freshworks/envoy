@@ -31,9 +31,6 @@ public:
 
   Http::Code handlerHeapDump(Http::ResponseHeaderMap& response_headers, Buffer::Instance& response,
                              AdminStream&);
-
-  Http::Code handlerAllocationProfiler(Http::ResponseHeaderMap& response_headers,
-                                       Buffer::Instance& response, AdminStream&);
 };
 
 } // namespace Server

@@ -113,9 +113,10 @@ TEST(HeaderMutationFilterTest, HeaderMutationFilterTest) {
     filter.setDecoderFilterCallbacks(decoder_callbacks);
     filter.setEncoderFilterCallbacks(encoder_callbacks);
 
-    EXPECT_CALL(*decoder_callbacks.route_, perFilterConfigs(_))
-        .WillOnce(Invoke([&](absl::string_view) -> Router::RouteSpecificFilterConfigs {
-          return {config.get()};
+    EXPECT_CALL(*decoder_callbacks.route_, traversePerFilterConfig(_, _))
+        .WillOnce(Invoke([&](const std::string&,
+                             std::function<void(const Router::RouteSpecificFilterConfig&)> cb) {
+          cb(*config);
         }));
 
     {
@@ -237,9 +238,10 @@ TEST(HeaderMutationFilterTest, HeaderMutationFilterTest) {
     };
 
     // If the decoding phase is not performed then try to get the config from the encoding phase.
-    EXPECT_CALL(*encoder_callbacks.route_, perFilterConfigs(_))
-        .WillOnce(Invoke([&](absl::string_view) -> Router::RouteSpecificFilterConfigs {
-          return {config.get()};
+    EXPECT_CALL(*encoder_callbacks.route_, traversePerFilterConfig(_, _))
+        .WillOnce(Invoke([&](const std::string&,
+                             std::function<void(const Router::RouteSpecificFilterConfig&)> cb) {
+          cb(*config);
         }));
 
     EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter.encodeHeaders(headers, true));

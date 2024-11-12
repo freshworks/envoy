@@ -29,8 +29,7 @@ public:
   void setConnectionStats(const ConnectionStats& stats) override;
   void setDelayedCloseTimeout(std::chrono::milliseconds timeout) override;
 
-  // ScopeTrackedObject
-  OptRef<const StreamInfo::StreamInfo> trackedStream() const override;
+  ExecutionContext* executionContext() const override;
 
 protected:
   void initializeDelayedCloseTimer();

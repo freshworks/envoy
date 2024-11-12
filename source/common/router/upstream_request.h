@@ -256,6 +256,7 @@ private:
   bool had_upstream_ : 1;
   Http::ConnectionPool::Instance::StreamOptions stream_options_;
   bool grpc_rq_success_deferred_ : 1;
+  bool upstream_wait_for_response_headers_before_disabling_read_ : 1;
   bool enable_half_close_ : 1;
 };
 

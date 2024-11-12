@@ -11,7 +11,6 @@ envoy_package()
 envoy_cc_test(
     name = "passthrough_test",
     srcs = ["passthrough_test.cc"],
-    rbe_pool = "2core",
     deps = [
         "//source/extensions/transport_sockets/common:passthrough_lib",
         "//test/mocks/buffer:buffer_mocks",

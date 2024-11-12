@@ -89,7 +89,8 @@ protected:
     ON_CALL(listener_factory_, createNetworkFilterFactoryList(_, _))
         .WillByDefault(Invoke(
             [this](const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>& filters,
-                   Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context) {
+                   Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context)
+                -> Filter::NetworkFilterFactoriesList {
               return ProdListenerComponentFactory::createNetworkFilterFactoryListImpl(
                   filters, filter_chain_factory_context, network_config_provider_manager_);
             }));
@@ -103,10 +104,8 @@ protected:
                        filters,
                    Configuration::ListenerFactoryContext& context)
                 -> Filter::ListenerFilterFactoriesList {
-              return THROW_OR_RETURN_VALUE(
-                  ProdListenerComponentFactory::createListenerFilterFactoryListImpl(
-                      filters, context, *listener_factory_.getTcpListenerConfigProviderManager()),
-                  Filter::ListenerFilterFactoriesList);
+              return ProdListenerComponentFactory::createListenerFilterFactoryListImpl(
+                  filters, context, *listener_factory_.getTcpListenerConfigProviderManager());
             }));
     ON_CALL(listener_factory_, createUdpListenerFilterFactoryList(_, _))
         .WillByDefault(
@@ -114,10 +113,8 @@ protected:
                           filters,
                       Configuration::ListenerFactoryContext& context)
                        -> std::vector<Network::UdpListenerFilterFactoryCb> {
-              return THROW_OR_RETURN_VALUE(
-                  ProdListenerComponentFactory::createUdpListenerFilterFactoryListImpl(filters,
-                                                                                       context),
-                  std::vector<Network::UdpListenerFilterFactoryCb>);
+              return ProdListenerComponentFactory::createUdpListenerFilterFactoryListImpl(filters,
+                                                                                          context);
             }));
     ON_CALL(listener_factory_, createQuicListenerFilterFactoryList(_, _))
         .WillByDefault(Invoke(
@@ -125,10 +122,8 @@ protected:
                        filters,
                    Configuration::ListenerFactoryContext& context)
                 -> Filter::QuicListenerFilterFactoriesList {
-              return THROW_OR_RETURN_VALUE(
-                  ProdListenerComponentFactory::createQuicListenerFilterFactoryListImpl(
-                      filters, context, *listener_factory_.getQuicListenerConfigProviderManager()),
-                  Filter::QuicListenerFilterFactoriesList);
+              return ProdListenerComponentFactory::createQuicListenerFilterFactoryListImpl(
+                  filters, context, *listener_factory_.getQuicListenerConfigProviderManager());
             }));
     ON_CALL(listener_factory_, nextListenerTag()).WillByDefault(Invoke([this]() {
       return listener_tag_++;
@@ -173,7 +168,8 @@ protected:
         .WillOnce(Invoke(
             [raw_listener, need_init](
                 const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>&,
-                Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context) {
+                Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context)
+                -> Filter::NetworkFilterFactoriesList {
               std::shared_ptr<ListenerHandle> notifier(raw_listener);
               raw_listener->context_ = &filter_chain_factory_context;
               if (need_init) {
@@ -204,7 +200,8 @@ protected:
         .WillOnce(Invoke(
             [raw_listener, need_init](
                 const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>&,
-                Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context) {
+                Server::Configuration::FilterChainFactoryContext& filter_chain_factory_context)
+                -> Filter::NetworkFilterFactoriesList {
               std::shared_ptr<ListenerHandle> notifier(raw_listener);
               raw_listener->context_ = &filter_chain_factory_context;
               if (need_init) {
@@ -384,7 +381,7 @@ protected:
     InSequence s;
 
     EXPECT_CALL(*worker_, start(_, _));
-    ASSERT_TRUE(manager_->startWorkers(guard_dog_, callback_.AsStdFunction()).ok());
+    manager_->startWorkers(guard_dog_, callback_.AsStdFunction());
 
     auto socket = std::make_shared<testing::NiceMock<Network::MockListenSocket>>();
 
@@ -433,7 +430,7 @@ protected:
     InSequence s;
 
     EXPECT_CALL(*worker_, start(_, _));
-    ASSERT_TRUE(manager_->startWorkers(guard_dog_, callback_.AsStdFunction()).ok());
+    manager_->startWorkers(guard_dog_, callback_.AsStdFunction());
 
     auto socket = std::make_shared<testing::NiceMock<Network::MockListenSocket>>();
 

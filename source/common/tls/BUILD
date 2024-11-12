@@ -63,7 +63,13 @@ envoy_cc_library(
     name = "ssl_socket_base",
     srcs = ["ssl_socket.cc"],
     hdrs = ["ssl_socket.h"],
-    external_deps = ["ssl"],
+    external_deps = [
+        "abseil_hash",
+        "abseil_node_hash_map",
+        "abseil_optional",
+        "abseil_synchronization",
+        "ssl",
+    ],
     # TLS is core functionality.
     visibility = ["//visibility:public"],
     deps = [
@@ -85,10 +91,6 @@ envoy_cc_library(
         "//source/common/common:thread_annotations",
         "//source/common/http:headers_lib",
         "//source/common/network:transport_socket_options_lib",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -96,13 +98,15 @@ envoy_cc_library(
     name = "client_ssl_socket_lib",
     srcs = ["client_ssl_socket.cc"],
     hdrs = ["client_ssl_socket.h"],
-    external_deps = ["ssl"],
+    external_deps = [
+        "abseil_hash",
+        "abseil_node_hash_map",
+        "abseil_optional",
+        "abseil_synchronization",
+        "ssl",
+    ],
     deps = [
         ":ssl_socket_base",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -110,13 +114,15 @@ envoy_cc_library(
     name = "server_ssl_socket_lib",
     srcs = ["server_ssl_socket.cc"],
     hdrs = ["server_ssl_socket.h"],
-    external_deps = ["ssl"],
+    external_deps = [
+        "abseil_hash",
+        "abseil_node_hash_map",
+        "abseil_optional",
+        "abseil_synchronization",
+        "ssl",
+    ],
     deps = [
         ":ssl_socket_base",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -132,7 +138,9 @@ envoy_cc_library(
     name = "context_config_lib",
     srcs = ["context_config_impl.cc"],
     hdrs = ["context_config_impl.h"],
-    external_deps = ["ssl"],
+    external_deps = [
+        "ssl",
+    ],
     # TLS is core functionality.
     visibility = ["//visibility:public"],
     deps = [
@@ -160,7 +168,6 @@ envoy_cc_library(
     hdrs = ["server_context_config_impl.h"],
     deps = [
         ":context_config_lib",
-        ":server_context_lib",
         "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
     ],
 )
@@ -177,7 +184,11 @@ envoy_cc_library(
         "context_impl.h",
         "context_manager_impl.h",
     ],
-    external_deps = ["ssl"],
+    external_deps = [
+        "abseil_node_hash_set",
+        "abseil_synchronization",
+        "ssl",
+    ],
     # TLS is core functionality.
     visibility = ["//visibility:public"],
     deps = [
@@ -203,8 +214,6 @@ envoy_cc_library(
         "//source/common/tls/cert_validator:cert_validator_lib",
         "//source/common/tls/private_key:private_key_manager_lib",
         "@com_github_google_quiche//:quic_core_crypto_proof_source_lib",
-        "@com_google_absl//absl/container:node_hash_set",
-        "@com_google_absl//absl/synchronization",
         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
     ],
@@ -213,11 +222,9 @@ envoy_cc_library(
 envoy_cc_library(
     name = "server_context_lib",
     srcs = [
-        "default_tls_certificate_selector.cc",
         "server_context_impl.cc",
     ],
     hdrs = [
-        "default_tls_certificate_selector.h",
         "server_context_impl.h",
     ],
     deps = [
@@ -233,7 +240,9 @@ envoy_cc_library(
     name = "stats_lib",
     srcs = ["stats.cc"],
     hdrs = ["stats.h"],
-    external_deps = ["ssl"],
+    external_deps = [
+        "ssl",
+    ],
     deps = [
         "//envoy/stats:stats_interface",
         "//envoy/stats:stats_macros",
@@ -246,7 +255,9 @@ envoy_cc_library(
     name = "utility_lib",
     srcs = ["utility.cc"],
     hdrs = ["utility.h"],
-    external_deps = ["ssl"],
+    external_deps = [
+        "ssl",
+    ],
     deps = [
         "//source/common/common:assert_lib",
         "//source/common/common:empty_string",

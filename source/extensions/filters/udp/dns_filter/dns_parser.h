@@ -200,7 +200,7 @@ public:
   uint64_t retry_;
   uint16_t id_;
   Network::DnsResolver::ResolutionStatus resolution_status_ =
-      Network::DnsResolver::ResolutionStatus::Completed;
+      Network::DnsResolver::ResolutionStatus::Success;
   DnsHeader header_;
   DnsHeader response_header_;
   DnsQueryPtrVec queries_;

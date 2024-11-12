@@ -28,7 +28,6 @@ public:
   AsyncTcpClientImpl(Event::Dispatcher& dispatcher,
                      Upstream::ThreadLocalCluster& thread_local_cluster,
                      Upstream::LoadBalancerContext* context, bool enable_half_close);
-  ~AsyncTcpClientImpl();
 
   void close(Network::ConnectionCloseType type) override;
 
@@ -107,7 +106,6 @@ private:
   Event::TimerPtr connect_timer_;
   AsyncTcpClientCallbacks* callbacks_{};
   Network::DetectedCloseType detected_close_{Network::DetectedCloseType::Normal};
-  bool closing_{false};
   bool connected_{false};
   bool enable_half_close_{false};
 };

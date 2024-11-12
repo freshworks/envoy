@@ -361,7 +361,7 @@ bool AuthenticatorImpl::addJWTClaimToHeader(const std::string& claim_name,
     }
     default:
       ENVOY_LOG(debug, "[jwt_auth] claim : {} is of an unknown type '{}'", claim_name,
-                static_cast<int>(claim_value->kind_case()));
+                claim_value->kind_case());
       break;
     }
 

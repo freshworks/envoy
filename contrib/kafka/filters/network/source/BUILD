@@ -109,7 +109,6 @@ envoy_cc_library(
         "external/responses.h",
         "kafka_response_parser.h",
     ],
-    rbe_pool = "2core",
     deps = [
         ":kafka_response_lib",
         ":parser_lib",
@@ -247,8 +246,8 @@ envoy_cc_library(
     hdrs = [
         "kafka_types.h",
     ],
+    external_deps = ["abseil_optional"],
     deps = [
         "//source/common/common:macros",
-        "@com_google_absl//absl/types:optional",
     ],
 )

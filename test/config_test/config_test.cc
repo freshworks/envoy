@@ -133,7 +133,8 @@ public:
     ON_CALL(component_factory_, createNetworkFilterFactoryList(_, _))
         .WillByDefault(Invoke(
             [&](const Protobuf::RepeatedPtrField<envoy::config::listener::v3::Filter>& filters,
-                Server::Configuration::FilterChainFactoryContext& context) {
+                Server::Configuration::FilterChainFactoryContext& context)
+                -> Filter::NetworkFilterFactoriesList {
               return Server::ProdListenerComponentFactory::createNetworkFilterFactoryListImpl(
                   filters, context, network_config_provider_manager_);
             }));
@@ -143,7 +144,8 @@ public:
         .WillByDefault(Invoke(
             [&](const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>&
                     filters,
-                Server::Configuration::ListenerFactoryContext& context) {
+                Server::Configuration::ListenerFactoryContext& context)
+                -> Filter::ListenerFilterFactoriesList {
               return Server::ProdListenerComponentFactory::createListenerFilterFactoryListImpl(
                   filters, context, *component_factory_.getTcpListenerConfigProviderManager());
             }));
@@ -151,7 +153,8 @@ public:
         .WillByDefault(Invoke(
             [&](const Protobuf::RepeatedPtrField<envoy::config::listener::v3::ListenerFilter>&
                     filters,
-                Server::Configuration::ListenerFactoryContext& context) {
+                Server::Configuration::ListenerFactoryContext& context)
+                -> std::vector<Network::UdpListenerFilterFactoryCb> {
               return Server::ProdListenerComponentFactory::createUdpListenerFilterFactoryListImpl(
                   filters, context);
             }));

@@ -159,6 +159,7 @@ private:
   bool connection_allowed_;
   Common::Redis::Client::Transaction transaction_;
   bool connection_quit_;
+  bool request_cancelled_{false};
   std::string clientname_{};
 };
 

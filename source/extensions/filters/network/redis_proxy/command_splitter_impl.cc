@@ -1123,6 +1123,13 @@ void PubSubMessageHandler::handleChannelMessageCustom(Common::Redis::RespValuePt
 
   if (value->type() != Common::Redis::RespType::Array ||
       value->asArray()[0].type() != Common::Redis::RespType::BulkString) {        
+        // In pubsub flow, commands like subscribe or unsubscribe are dealt with private client and during creation of new private client, Envoy
+        // sends auth requests along with the actual command, This was verified in packet capture and that is the reason for this check and thereby 
+        // ignoring the OK response in this flow. 
+        // Sample packet capture:
+        // Command was subscribe a but below is the request and response captured in packet capture
+        // Request: 55	15.416512	127.0.0.1	127.0.0.1	RESP	122	Request: auth default pwd@123 subscribe a
+        // Response: 57	15.416650	127.0.0.1	127.0.0.1	RESP	91	Response: OK Array(3)
         if (value->type() == Common::Redis::RespType::SimpleString && value->asString() == "OK") {
           ENVOY_LOG(debug, "This is a private client creation auth command response - '{}'", value->toString());
           return;

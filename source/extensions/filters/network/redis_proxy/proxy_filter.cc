@@ -118,8 +118,11 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
     while (!pending_requests_.empty()) {
       if (pending_requests_.front().request_handle_ != nullptr) {
         pending_requests_.front().request_handle_->cancel();
+      }else{
+        ENVOY_LOG(error,"pending request handle is null");
       }
       pending_requests_.pop_front();
+      request_cancelled_=true;
     }
     if (event == Network::ConnectionEvent::RemoteClose){
        ENVOY_LOG(debug,"dereferencing pubsub callback and transaction on exit from proxy filter");
@@ -246,7 +249,16 @@ void ProxyFilter::onPubsubConnClose(){
 }
 
 void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePtr&& value) {
-  ASSERT(!pending_requests_.empty());
+  //Commenting this out for Trackign an issue in freshchat where the pending_requests_ is empty but we get a response
+  //ASSERT(!pending_requests_.empty());
+  if (pending_requests_.empty()) {
+    ENVOY_LOG(error, "Received response:'{}' with no pending requests - discarding response",value->toString());
+    ENVOY_LOG(error, "cancel request '{}' when no pending requests",request_cancelled_?"true":"false");
+    if (request.request_handle_ != nullptr) {
+      request.request_handle_=nullptr;
+    }
+    return;
+  }
   request.pending_response_ = std::move(value);
   request.request_handle_ = nullptr;
 

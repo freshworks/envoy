@@ -269,6 +269,10 @@ void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePt
     return;
   }
 
+  if (request.pending_response_.get()->type() != Common::Redis::RespType::Null && transaction_.isSubscribedMode()){
+    ENVOY_LOG(error,"Non null response received for pubsub command: : '{}' ",request.pending_response_->toString());
+  }
+
   if (request.pending_response_) {
     if (request.pending_response_->type() != Common::Redis::RespType::Null &&request.pending_response_->type() == Common::Redis::RespType::Error) {
       ENVOY_LOG(info, "error response: '{}'", request.pending_response_->toString());

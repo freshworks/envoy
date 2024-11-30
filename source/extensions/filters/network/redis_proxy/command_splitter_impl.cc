@@ -1385,7 +1385,7 @@ SplitRequestPtr ScanRequest::create(Router& router, Common::Redis::RespValuePtr&
 
   // Iterate over the arguments and validate
   for (size_t i = 2; i < incoming_request->asArray().size(); i++) {
-    std::string arg = incoming_request->asArray()[i].asString();
+    std::string arg = absl::AsciiStrToLower(incoming_request->asArray()[i].asString());
     std::string value = incoming_request->asArray()[++i].asString();
 
     if (!validateArgument(arg, value)) {

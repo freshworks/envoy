@@ -937,7 +937,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
 
   if (Common::Redis::SupportedCommands::subscriptionCommands().contains(command_name) && incoming_request->asArray().size() < 2) {
     if (!Common::Redis::SupportedCommands::subcrStateNoArgallowedCommands().contains(command_name)) {
-      ENVOY_LOG(debug, "Invalid request: '{}'", incoming_request->toString());
+      ENVOY_LOG(error, " PubSubRequest::create - Invalid request: '{}'", incoming_request->toString());
       callbacks.onResponse(Common::Redis::Utility::makeError(Response::get().InvalidRequest));
       return nullptr;
     } else {
@@ -1000,6 +1000,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
   if (transaction.active_) {
     if (transaction.isSubscribedMode()) {
         if (!Common::Redis::SupportedCommands::subcrStateallowedCommands().contains(command_name)) {
+            ENVOY_LOG(error, "Not supported command in subscribe state: '{}'", command_name);
             callbacks.onResponse(Common::Redis::Utility::makeError("Not supported command in subscribe state"));
             return nullptr;
         } else if (command_name == "quit") {
@@ -1010,6 +1011,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
             return nullptr;
         }
     } else if (transaction.isTransactionMode()) {
+        ENVOY_LOG(error, "PUBUSB Not supported when in transaction mode: '{}'", command_name);
         callbacks.onResponse(
             Common::Redis::Utility::makeError("Not supported when in transaction mode"));
         transaction.should_close_ = true;
@@ -1025,7 +1027,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
       transaction.enterSubscribedMode();
       transaction.start();
     }else{
-      ENVOY_LOG(info, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);
+      ENVOY_LOG(error, "not yet in subscription mode, must be in subscr mode first: '{}'", command_name);
       callbacks.onResponse(Common::Redis::Utility::makeError(fmt::format("not yet in subcribe mode")));
       return nullptr;
     }
@@ -1066,7 +1068,7 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     
     for (int32_t i = 0; i < redisShardsCount; i++) {
         if (!makeRequest(i, base_request)){
-          ENVOY_LOG(info,"makerequest failed for allShardsRequest for shardIndex'{}'",i);
+          ENVOY_LOG(error,"makerequest failed for allShardsRequest for shardIndex'{}'",i);
           transaction.setPubSubCallback(nullptr);
           return nullptr;
         }
@@ -1093,14 +1095,14 @@ SplitRequestPtr PubSubRequest::create(Router& router, Common::Redis::RespValuePt
     for (int32_t i = 0; i < redisShardsCount; i++) {
       if (i == transaction.subscribed_client_shard_index_){
         if (!makeRequest(i, base_request)){
-          ENVOY_LOG(info,"makerequest failed for allShardwithSingleShardRequest for base request at shardIndex'{}'",i);
+          ENVOY_LOG(error,"makerequest failed for allShardwithSingleShardRequest for base request at shardIndex'{}'",i);
           transaction.setPubSubCallback(nullptr);
           return nullptr;
         }
             
       }else{
         if (!makeRequest(i, keyspaceRequest)){
-          ENVOY_LOG(info,"makerequest failed for allShardwithSingleShardRequest for keyspaceRequest at shardIndex'{}'",i);
+          ENVOY_LOG(error,"makerequest failed for allShardwithSingleShardRequest for keyspaceRequest at shardIndex'{}'",i);
           transaction.setPubSubCallback(nullptr);
           return nullptr;
         }

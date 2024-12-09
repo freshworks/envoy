@@ -1,3 +1,4 @@
 This is a sample file to check if this triggers the Jenkins Job.
-Made Commit 1 on December 9th 2024
-Made Commit 2 on December 9th 2024
+Made Commit 1 on December 4th 2024 - For checking if the webhooks are configured properly
+Made Commit 2 on December 9th 2024 - Integrate Slack Notification
+Made Commit 3 on December 9th 2024 - For checking environment variables

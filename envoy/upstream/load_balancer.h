@@ -167,6 +167,20 @@ public:
   virtual HostConstSharedPtr peekAnotherHost(LoadBalancerContext* context) PURE;
 
   /**
+ * Returns all currently available hosts that this load balancer can use for distribution.
+ * Load balancers that don't track host availability may return nullopt.
+ * 
+ * @param context supplies the load balancer context. Not all load balancers make use of all
+ *        context information.
+ * @return optional vector of available hosts, or nullopt if the load balancer doesn't 
+ *         track host availability
+ */
+virtual OptRef<HostConstVectorSharedPtr> getAvailableHosts(LoadBalancerContext* context) {
+    (void)context;
+    return std::nullopt;
+}
+
+  /**
    * Returns connection lifetime callbacks that may be used to inform the load balancer of
    * connection events. Load balancers which do not intend to track connection lifetime events
    * will return nullopt.

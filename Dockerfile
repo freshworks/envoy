@@ -17,5 +17,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 # Copy the Envoy binary
 COPY envoy-preprod-image /usr/bin/envoy
-# Create volumes
+# Create volume
 VOLUME ["/etc/envoy", "/var/log"]

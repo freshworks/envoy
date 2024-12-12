@@ -5,7 +5,7 @@
 This page lists all active maintainers and their areas of expertise. This can be used for
 routing PRs, questions, etc. to the right place.
 
-# Senior maintainer
+# Senior maintaine
 
 * Matt Klein ([mattklein123](https://github.com/mattklein123)) (mattklein123@gmail.com)
   * Catch-all, "all the things", and generally trying to make himself obsolete as fast as

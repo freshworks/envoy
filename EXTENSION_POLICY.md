@@ -5,7 +5,7 @@
 All extensions contained in the main Envoy repository will be held to the same quality bar as the
 core Envoy code. This includes coding style, code reviews, test coverage, etc. In the future we
 may consider creating a sandbox repository for extensions that are not compiled/tested by default
-and held to a lower quality standard, but that is out of scope currently.
+and held to a lower quality standard, but that is out of scope currently
 
 ## Adding new extensions
 

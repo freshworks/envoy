@@ -9,7 +9,7 @@ detail the policy as it currently applies.
 The list of external dependencies in Envoy with their current version is available at
 https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/security/external_deps
 
-## Declaring external dependenciess
+## Declaring external dependencie
 
 In general, all external dependencies for the Envoy proxy binary build and test should be declared
 in either [bazel/repository_locations.bzl](bazel/repository_locations.bzl) or

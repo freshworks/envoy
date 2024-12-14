@@ -4,7 +4,7 @@ Envoy has an evolving policy on external dependencies, tracked at
 https://github.com/envoyproxy/envoy/issues/10471. This will become stricter over time, below we
 detail the policy as it currently applies.
 
-## External dependencies dashboards
+## External dependencies dashoards
 
 The list of external dependencies in Envoy with their current version is available at
 https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/security/external_deps

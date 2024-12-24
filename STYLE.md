@@ -14,7 +14,7 @@
 
 # Repository files layout
 
-* Please see [REPO_LAYOUT.md](REPO_LAYOUT.md).
+* Please see [REPO_LAYOUT.md](REPO_LAYOUT.md)
 
 # Documentation
 

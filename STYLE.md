@@ -1,4 +1,4 @@
-# C++ coding style
+# C++ coding styles
 
 * The Envoy source code is formatted using clang-format. Thus all white spaces, etc.
   issues are taken care of automatically. The Azure Pipelines will automatically check

@@ -16,7 +16,7 @@
 
 * Please see [REPO_LAYOUT.md](REPO_LAYOUT.md)
 
-# Documentation
+# Documentations
 
 * If you are modifying the data plane structurally, please keep the [Life of a
   Request](https://www.envoyproxy.io/docs/envoy/latest/intro/life_of_a_request) documentation up-to-date.

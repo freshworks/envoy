@@ -12,7 +12,7 @@
   The following section covers the major areas where we deviate from the Google
   guidelines.
 
-# Repository file layout
+# Repository files layout
 
 * Please see [REPO_LAYOUT.md](REPO_LAYOUT.md).
 

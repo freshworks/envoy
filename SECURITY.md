@@ -1,4 +1,4 @@
-# Security Reporting Process
+# Security Reporting Processes
 
 Please report any security issue or Envoy crash report to
 envoy-security@googlegroups.com where the issue will be triaged appropriately.

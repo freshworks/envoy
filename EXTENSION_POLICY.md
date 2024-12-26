@@ -1,6 +1,6 @@
 # Envoy Extension Policy
 
-## Quality requirements
+## Quality requirement
 
 All extensions contained in the main Envoy repository will be held to the same quality bar as the
 core Envoy code. This includes coding style, code reviews, test coverage, etc. In the future we

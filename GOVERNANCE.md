@@ -1,6 +1,6 @@
 # Process for becoming a maintainer
 
-## Your organization is not yet a maintainer
+## Your organization is not yet a maintainers
 
 * Express interest to the senior maintainers that your organization is interested in becoming a
   maintainer. Becoming a maintainer generally means that you are going to be spending substantial

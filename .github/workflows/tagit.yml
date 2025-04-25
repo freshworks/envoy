@@ -1,0 +1,33 @@
+name: Bump version
+
+on:
+  push:
+    branches:
+      - v1.28.0-dbaas 
+
+jobs:
+  build:
+    runs-on: [fw-inc-shared]
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: '0'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_ACTIONS_SECRET }}
+
+    - name: Check out github tag action
+      uses: actions/checkout@v2
+      with:
+        repository: freshactions/github-tag-action
+        ref: v1.36.0
+        token: ${{ secrets.GH_ACTIONS_SECRET }}
+        path: ./.github/actions/github-tag-action
+
+    - name: Bump version and push tag
+      uses: ./.github/actions/github-tag-action
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_ACTIONS_SECRET }}
+        WITH_V: true
+        DEFAULT_BUMP: patch
+        RELEASE_BRANCHES: v1.28.0-dbaas  

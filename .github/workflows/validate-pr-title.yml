@@ -1,0 +1,24 @@
+name: Validate PR title
+
+on:
+  pull_request:
+    branches:
+    - v1.28.0-dbaas
+
+jobs:
+  validate-title:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check PR title for valid task ID
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const prTitle = context.payload.pull_request.title;
+          const regex = /^DR-\d{4}/;
+
+          if (!regex.test(prTitle)) {
+            core.setFailed(`❌ PR title must start with a valid task ID`);
+          } else {
+            console.log(`✅ PR title valid: ${prTitle}`);
+          }

@@ -7,6 +7,7 @@
 
 #include "envoy/config/bootstrap/v3/bootstrap.pb.h"
 #include "envoy/config/core/v3/base.pb.h"
+#include "envoy/config/core/v3/socket_option.pb.h"
 
 #include "source/common/protobuf/protobuf.h"
 
@@ -19,100 +20,6 @@
 
 namespace Envoy {
 namespace Platform {
-
-constexpr int DefaultXdsTimeout = 5;
-
-// Forward declaration so it can be referenced by XdsBuilder.
-class EngineBuilder;
-
-// Represents the locality information in the Bootstrap's node, as defined in:
-// https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/core/v3/base.proto#envoy-v3-api-msg-config-core-v3-locality
-struct NodeLocality {
-  std::string region;
-  std::string zone;
-  std::string sub_zone;
-};
-
-#ifdef ENVOY_MOBILE_XDS
-// A class for building the xDS configuration for the Envoy Mobile engine.
-// xDS is a protocol for dynamic configuration of Envoy instances, more information can be found in:
-// https://www.envoyproxy.io/docs/envoy/latest/api-docs/xds_protocol.
-//
-// This class is typically used as input to the EngineBuilder's setXds() method.
-class XdsBuilder final {
-public:
-  // `xds_server_address`: the host name or IP address of the xDS management server. The xDS server
-  //                       must support the ADS protocol
-  //                       (https://www.envoyproxy.io/docs/envoy/latest/intro/arch_overview/operations/dynamic_configuration#aggregated-xds-ads).
-  // `xds_server_port`: the port on which the xDS management server listens for ADS discovery
-  //                    requests.
-  XdsBuilder(std::string xds_server_address, const uint32_t xds_server_port);
-
-  // Adds a header to the initial HTTP metadata headers sent on the gRPC stream.
-  //
-  // A common use for the initial metadata headers is for authentication to the xDS management
-  // server.
-  //
-  // For example, if using API keys to authenticate to Traffic Director on GCP (see
-  // https://cloud.google.com/docs/authentication/api-keys for details), invoke:
-  //   builder.addInitialStreamHeader("x-goog-api-key", api_key_token)
-  //          .addInitialStreamHeader("X-Android-Package", app_package_name)
-  //          .addInitialStreamHeader("X-Android-Cert", sha1_key_fingerprint);
-  XdsBuilder& addInitialStreamHeader(std::string header, std::string value);
-
-  // Sets the PEM-encoded server root certificates used to negotiate the TLS handshake for the gRPC
-  // connection. If no root certs are specified, the operating system defaults are used.
-  XdsBuilder& setSslRootCerts(std::string root_certs);
-
-  // Adds Runtime Discovery Service (RTDS) to the Runtime layers of the Bootstrap configuration,
-  // to retrieve dynamic runtime configuration via the xDS management server.
-  //
-  // `resource_name`: The runtime config resource to subscribe to.
-  // `timeout_in_seconds`: <optional> specifies the `initial_fetch_timeout` field on the
-  //    api.v3.core.ConfigSource. Unlike the ConfigSource default of 15s, we set a default fetch
-  //    timeout value of 5s, to prevent mobile app initialization from stalling. The default
-  //    parameter value may change through the course of experimentation and no assumptions should
-  //    be made of its exact value.
-  XdsBuilder& addRuntimeDiscoveryService(std::string resource_name,
-                                         int timeout_in_seconds = DefaultXdsTimeout);
-
-  // Adds the Cluster Discovery Service (CDS) configuration for retrieving dynamic cluster resources
-  // via the xDS management server.
-  //
-  // `cds_resources_locator`: <optional> the xdstp:// URI for subscribing to the cluster resources.
-  //    If not using xdstp, then `cds_resources_locator` should be set to the empty string.
-  // `timeout_in_seconds`: <optional> specifies the `initial_fetch_timeout` field on the
-  //    api.v3.core.ConfigSource. Unlike the ConfigSource default of 15s, we set a default fetch
-  //    timeout value of 5s, to prevent mobile app initialization from stalling. The default
-  //    parameter value may change through the course of experimentation and no assumptions should
-  //    be made of its exact value.
-  XdsBuilder& addClusterDiscoveryService(std::string cds_resources_locator = "",
-                                         int timeout_in_seconds = DefaultXdsTimeout);
-
-protected:
-  // Sets the xDS configuration specified on this XdsBuilder instance on the Bootstrap proto
-  // provided as an input parameter.
-  //
-  // This method takes in a modifiable Bootstrap proto pointer because returning a new Bootstrap
-  // proto would rely on proto's MergeFrom behavior, which can lead to unexpected results in the
-  // Bootstrap config.
-  void build(envoy::config::bootstrap::v3::Bootstrap& bootstrap) const;
-
-private:
-  // Required so that EngineBuilder can call the XdsBuilder's protected build() method.
-  friend class EngineBuilder;
-
-  std::string xds_server_address_;
-  uint32_t xds_server_port_;
-  std::vector<envoy::config::core::v3::HeaderValue> xds_initial_grpc_metadata_;
-  std::string ssl_root_certs_;
-  std::string rtds_resource_name_;
-  int rtds_timeout_in_seconds_ = DefaultXdsTimeout;
-  bool enable_cds_ = false;
-  std::string cds_resources_locator_;
-  int cds_timeout_in_seconds_ = DefaultXdsTimeout;
-};
-#endif
 
 // The C++ Engine builder creates a structured bootstrap proto and modifies it through parameters
 // set through the EngineBuilder API calls to produce the Bootstrap config that the Engine is
@@ -134,7 +41,11 @@ public:
   EngineBuilder& addDnsRefreshSeconds(int dns_refresh_seconds);
   EngineBuilder& addDnsFailureRefreshSeconds(int base, int max);
   EngineBuilder& addDnsQueryTimeoutSeconds(int dns_query_timeout_seconds);
+  EngineBuilder& setDisableDnsRefreshOnFailure(bool disable_dns_refresh_on_failure);
+  EngineBuilder& setDisableDnsRefreshOnNetworkChange(bool disable_dns_refresh_on_network_change);
   EngineBuilder& addDnsMinRefreshSeconds(int dns_min_refresh_seconds);
+  EngineBuilder& setDnsNumRetries(uint32_t dns_num_retries);
+  EngineBuilder& setGetaddrinfoNumThreads(uint32_t num_threads);
   EngineBuilder& addMaxConnectionsPerHost(int max_connections_per_host);
   EngineBuilder& addH2ConnectionKeepaliveIdleIntervalMilliseconds(
       int h2_connection_keepalive_idle_interval_milliseconds);
@@ -150,36 +61,25 @@ public:
   EngineBuilder& enableGzipDecompression(bool gzip_decompression_on);
   EngineBuilder& enableBrotliDecompression(bool brotli_decompression_on);
   EngineBuilder& enableSocketTagging(bool socket_tagging_on);
-#ifdef ENVOY_ENABLE_QUIC
   EngineBuilder& enableHttp3(bool http3_on);
   EngineBuilder& setHttp3ConnectionOptions(std::string options);
   EngineBuilder& setHttp3ClientConnectionOptions(std::string options);
   EngineBuilder& addQuicHint(std::string host, int port);
   EngineBuilder& addQuicCanonicalSuffix(std::string suffix);
-  EngineBuilder& enablePortMigration(bool enable_port_migration);
-#endif
+  // 0 means port migration is disabled.
+  EngineBuilder& setNumTimeoutsToTriggerPortMigration(int num_timeouts);
   EngineBuilder& enableInterfaceBinding(bool interface_binding_on);
   EngineBuilder& enableDrainPostDnsRefresh(bool drain_post_dns_refresh_on);
-  // Sets whether to use GRO for upstream UDP sockets (QUIC/HTTP3).
-  EngineBuilder& setUseGroIfAvailable(bool use_gro_if_available);
-  EngineBuilder& setSocketReceiveBufferSize(int32_t size);
+  EngineBuilder& setUdpSocketReceiveBufferSize(int32_t size);
+  EngineBuilder& setUdpSocketSendBufferSize(int32_t size);
   EngineBuilder& enforceTrustChainVerification(bool trust_chain_verification_on);
   EngineBuilder& setUpstreamTlsSni(std::string sni);
   EngineBuilder& enablePlatformCertificatesValidation(bool platform_certificates_validation_on);
-  // Sets the node.id field in the Bootstrap configuration.
-  EngineBuilder& setNodeId(std::string node_id);
-  // Sets the node.locality field in the Bootstrap configuration.
-  EngineBuilder& setNodeLocality(std::string region, std::string zone, std::string sub_zone);
-  // Sets the node.metadata field in the Bootstrap configuration.
-  EngineBuilder& setNodeMetadata(ProtobufWkt::Struct node_metadata);
-#ifdef ENVOY_MOBILE_XDS
-  // Sets the xDS configuration for the Envoy Mobile engine.
-  //
-  // `xds_builder`: the XdsBuilder instance used to specify the xDS configuration options.
-  EngineBuilder& setXds(XdsBuilder xds_builder);
-#endif
+
   EngineBuilder& enableDnsCache(bool dns_cache_on, int save_interval_seconds = 1);
-  EngineBuilder& setForceAlwaysUsev6(bool value);
+  // Set additional socket options on the upstream cluster outbound sockets.
+  EngineBuilder& setAdditionalSocketOptions(
+      const std::vector<envoy::config::core::v3::SocketOption>& socket_options);
   // Adds the hostnames that should be pre-resolved by DNS prior to the first request issued for
   // that host. When invoked, any previous preresolve hostname entries get cleared and only the ones
   // provided in the hostnames argument get set.
@@ -187,12 +87,18 @@ public:
   // E.g. addDnsPreresolveHost(std::string host, uint32_t port);
   EngineBuilder& addDnsPreresolveHostnames(const std::vector<std::string>& hostnames);
   EngineBuilder& addNativeFilter(std::string name, std::string typed_config);
+  EngineBuilder& addNativeFilter(const std::string& name, const ProtobufWkt::Any& typed_config);
 
   EngineBuilder& addPlatformFilter(const std::string& name);
   // Adds a runtime guard for the `envoy.reloadable_features.<guard>`.
   // For example if the runtime guard is `envoy.reloadable_features.use_foo`, the guard name is
   // `use_foo`.
   EngineBuilder& addRuntimeGuard(std::string guard, bool value);
+  // Adds a runtime guard for the `envoy.restart_features.<guard>`. Restart features cannot be
+  // changed after the Envoy applicable has started and initialized.
+  // For example if the runtime guard is `envoy.restart_features.use_foo`, the guard name is
+  // `use_foo`.
+  EngineBuilder& addRestartRuntimeGuard(std::string guard, bool value);
 
   // These functions don't affect the Bootstrap configuration but instead perform registrations.
   EngineBuilder& addKeyValueStore(std::string name, KeyValueStoreSharedPtr key_value_store);
@@ -203,15 +109,22 @@ public:
   // outside of this range will be ignored.
   EngineBuilder& setNetworkThreadPriority(int thread_priority);
 
+  // Sets the QUIC connection idle timeout in seconds.
+  EngineBuilder& setQuicConnectionIdleTimeoutSeconds(int quic_connection_idle_timeout_seconds);
+
+  // Sets the QUIC connection keepalive initial interval in nanoseconds
+  EngineBuilder& setKeepAliveInitialIntervalMilliseconds(int keepalive_initial_interval_ms);
+
 #if defined(__APPLE__)
   // Right now, this API is only used by Apple (iOS) to register the Apple proxy resolver API for
   // use in reading and using the system proxy settings.
   // If/when we move Android system proxy registration to the C++ Engine Builder, we will make this
   // API available on all platforms.
-  EngineBuilder& respectSystemProxySettings(bool value);
-#else
-  // Only android supports c_ares
-  EngineBuilder& setUseCares(bool use_cares);
+  // The optional `refresh_interval_secs` parameter determines how often the system proxy settings
+  // are polled by the operating system; defaults to 10 seconds. If the value is <= 0, the default
+  // value will be used.
+  EngineBuilder& respectSystemProxySettings(bool value, int refresh_interval_secs = 10);
+  EngineBuilder& setIosNetworkServiceType(int ios_network_service_type);
 #endif
 
   // This is separated from build() for the sake of testability
@@ -222,10 +135,14 @@ public:
 private:
   struct NativeFilterConfig {
     NativeFilterConfig(std::string name, std::string typed_config)
-        : name_(std::move(name)), typed_config_(std::move(typed_config)) {}
+        : name_(std::move(name)), textproto_typed_config_(std::move(typed_config)) {}
+
+    NativeFilterConfig(const std::string& name, const ProtobufWkt::Any& typed_config)
+        : name_(name), typed_config_(typed_config) {}
 
     std::string name_;
-    std::string typed_config_;
+    std::string textproto_typed_config_{};
+    ProtobufWkt::Any typed_config_{};
   };
 
   Logger::Logger::Levels log_level_ = Logger::Logger::Levels::info;
@@ -233,13 +150,17 @@ private:
   std::unique_ptr<EngineCallbacks> callbacks_;
   std::unique_ptr<EnvoyEventTracker> event_tracker_{nullptr};
 
-  int connect_timeout_seconds_ = 30;
+  int connect_timeout_seconds_ = 10;
   int dns_refresh_seconds_ = 60;
   int dns_failure_refresh_seconds_base_ = 2;
   int dns_failure_refresh_seconds_max_ = 10;
-  int dns_query_timeout_seconds_ = 5;
+  int dns_query_timeout_seconds_ = 120;
+  bool disable_dns_refresh_on_failure_{false};
+  bool disable_dns_refresh_on_network_change_{false};
+  absl::optional<uint32_t> dns_num_retries_ = 3;
+  uint32_t getaddrinfo_num_threads_ = 1;
   int h2_connection_keepalive_idle_interval_milliseconds_ = 100000000;
-  int h2_connection_keepalive_timeout_seconds_ = 10;
+  int h2_connection_keepalive_timeout_seconds_ = 15;
   std::string app_version_ = "unspecified";
   std::string app_id_ = "unspecified";
   std::string device_os_ = "unspecified";
@@ -249,9 +170,6 @@ private:
   bool brotli_decompression_filter_ = false;
   bool socket_tagging_filter_ = false;
   bool platform_certificates_validation_on_ = false;
-  std::string node_id_;
-  absl::optional<NodeLocality> node_locality_ = absl::nullopt;
-  absl::optional<ProtobufWkt::Struct> node_metadata_ = absl::nullopt;
   bool dns_cache_on_ = false;
   int dns_cache_save_interval_seconds_ = 1;
   absl::optional<int> network_thread_priority_ = absl::nullopt;
@@ -263,36 +181,41 @@ private:
   bool enforce_trust_chain_verification_ = true;
   std::string upstream_tls_sni_;
   bool enable_http3_ = true;
-#if !defined(__APPLE__)
-  bool use_cares_ = false;
-#endif
   std::string http3_connection_options_ = "";
   std::string http3_client_connection_options_ = "";
   std::vector<std::pair<std::string, int>> quic_hints_;
   std::vector<std::string> quic_suffixes_;
-  bool enable_port_migration_ = false;
-  bool always_use_v6_ = false;
+  int num_timeouts_to_trigger_port_migration_ = 0;
 #if defined(__APPLE__)
-  // TODO(abeyad): once stable, consider setting the default to true.
-  bool respect_system_proxy_settings_ = false;
+  bool respect_system_proxy_settings_ = true;
+  int proxy_settings_refresh_interval_secs_ = 10;
+  int ios_network_service_type_ = 0;
 #endif
   int dns_min_refresh_seconds_ = 60;
   int max_connections_per_host_ = 7;
 
   std::vector<NativeFilterConfig> native_filter_chain_;
   std::vector<std::pair<std::string /* host */, uint32_t /* port */>> dns_preresolve_hostnames_;
+  std::vector<envoy::config::core::v3::SocketOption> socket_options_;
 
   std::vector<std::pair<std::string, bool>> runtime_guards_;
+  std::vector<std::pair<std::string, bool>> restart_runtime_guards_;
   absl::flat_hash_map<std::string, StringAccessorSharedPtr> string_accessors_;
-  bool use_gro_if_available_ = false;
 
   // This is the same value Cronet uses for QUIC:
   // https://source.chromium.org/chromium/chromium/src/+/main:net/quic/quic_context.h;drc=ccfe61524368c94b138ddf96ae8121d7eb7096cf;l=87
-  int32_t socket_receive_buffer_size_ = 1024 * 1024; // 1MB
+  int32_t udp_socket_receive_buffer_size_ = 1024 * 1024; // 1MB
+  // This is the same value Cronet uses for QUIC:
+  // https://source.chromium.org/chromium/chromium/src/+/main:net/quic/quic_session_pool.cc;l=790-793;drc=7f04a8e033c23dede6beae129cd212e6d4473d72
+  // https://source.chromium.org/chromium/chromium/src/+/main:net/third_party/quiche/src/quiche/quic/core/quic_constants.h;l=43-47;drc=34ad7f3844f882baf3d31a6bc6e300acaa0e3fc8
+  int32_t udp_socket_send_buffer_size_ = 1452 * 20;
+  // These are the same values Cronet uses for QUIC:
+  // https://source.chromium.org/chromium/chromium/src/+/main:net/quic/quic_context.cc;l=21-22;drc=6849bf6b37e96bd1c38a5f77f7deaa28b53779c4;bpv=1;bpt=1
+  const uint32_t initial_stream_window_size_ = 6 * 1024 * 1024;      // 6MB
+  const uint32_t initial_connection_window_size_ = 15 * 1024 * 1024; // 15MB
+  int quic_connection_idle_timeout_seconds_ = 60;
 
-#ifdef ENVOY_MOBILE_XDS
-  absl::optional<XdsBuilder> xds_builder_ = absl::nullopt;
-#endif
+  int keepalive_initial_interval_ms_ = 0;
 };
 
 using EngineBuilderSharedPtr = std::shared_ptr<EngineBuilder>;

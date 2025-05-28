@@ -11,11 +11,6 @@ routing PRs, questions, etc. to the right place.
 * Matt Klein ([mattklein123](https://github.com/mattklein123)) (mattklein123@gmail.com)
   * Catch-all, "all the things", and generally trying to make himself obsolete as fast as
     possible.
-* Harvey Tuch ([htuch](https://github.com/htuch)) (htuch@google.com)
-  * xDS APIs, configuration and control plane.
-* Alyssa Wilk ([alyssawilk](https://github.com/alyssawilk)) (alyssar@google.com)
-  * HTTP, flow control, cluster manager, load balancing, and core networking (listeners,
-    connections, etc.), Envoy Mobile.
 * Stephan Zuercher ([zuercher](https://github.com/zuercher)) (zuercher@gmail.com)
   * Load balancing, upstream clusters and cluster manager, logging, complex HTTP routing
     (metadata, etc.), and macOS build.
@@ -33,8 +28,6 @@ routing PRs, questions, etc. to the right place.
 # Maintainers
 <!--- If you modify maintainers list, please update the core-maintainers section of SECURITY-INSIGHTS.yml -->
 
-* Joshua Marantz ([jmarantz](https://github.com/jmarantz)) (jmarantz@google.com)
-  * Stats, abseil, scalability, and performance.
 * Adi Peleg ([adisuissa](https://github.com/adisuissa)) (adip@google.com)
   * xDS APIs, configuration, control plane, fuzzing.
 * Kevin Baichoo ([KBaichoo](https://github.com/KBaichoo)) (envoy@kevinbaichoo.com)
@@ -45,12 +38,20 @@ routing PRs, questions, etc. to the right place.
   * Listeners, RBAC, CEL, matching, Istio.
 * Raven Black ([ravenblackx](https://github.com/ravenblackx)) (ravenblack@dropbox.com)
   * Caches, file filters, and file I/O.
-* Alex Xu ([soulxu](https://github.com/soulxu)) (hejie.xu@intel.com)
-  * Listeners, iouring, data plane.
 * Kateryna Nezdolii ([nezdolik](https://github.com/nezdolik)) (kateryna.nezdolii@gmail.com)
   * Load balancing, GeoIP, overload manager, security.
 * Tianyu Xia ([tyxia](https://github.com/tyxia)) (tyxia@google.com)
   * ext_proc, data plane, flow control, CEL.
+* Boteng Yao ([botengyao](https://github.com/botengyao)) (boteng@google.com)
+  * Overload manager, security, logging, wasm, data plane.
+* Tony Allen ([tonya11en](https://github.com/tonya11en)) (tony@allen.gg)
+  * Load balancing, data plane.
+* Takeshi Yoneda ([mathetake](https://github.com/mathetake)) (takeshi@tetrate.io)
+  * Dynamic modules, API gateway, WASM, Istio.
+* Rohit Agrawal ([agrawroh](https://github.com/agrawroh)) (rohit.agrawal@databricks.com)
+  * Lua, ExtAuthZ, Matchers, CI, Dependencies, Docs.
+* Paul Ogilby ([paul-r-gall](https://github.com/paul-r-gall)) (pgal@google.com)
+  * Request mirroring, data plane
 
 # Envoy mobile maintainers
 
@@ -78,7 +79,6 @@ without further review.
 
 * All senior maintainers
 * Tony Allen ([tonya11en](https://github.com/tonya11en)) (tony@allen.gg)
-* Otto van der Schaaf ([oschaaf](https://github.com/oschaaf)) (oschaaf@redhat.com)
 * Tim Walsh ([twghu](https://github.com/twghu)) (twalsh@redhat.com)
 * Pradeep Rao ([pradeepcrao](https://github.com/pradeepcrao)) (pcrao@google.com)
 * Kateryna Nezdolii ([nezdolik](https://github.com/nezdolik)) (kateryna.nezdolii@gmail.com)
@@ -86,6 +86,8 @@ without further review.
 * Kevin Baichoo ([KBaichoo](https://github.com/KBaichoo)) (envoy@kevinbaichoo.com)
 * Tianyu Xia ([tyxia](https://github.com/tyxia)) (tyxia@google.com)
 * Kirtimaan Rajshiva ([krajshiva](https://github.com/krajshiva))
+* Yanjun Xiang ([yanjunxiang-google](https://github.com/yanjunxiang-google)) (yanjunxiang@google.com)
+* Raven Black ([ravenblackx](https://github.com/ravenblackx)) (ravenblack@dropbox.com)
 
 # Emeritus maintainers
 
@@ -107,6 +109,10 @@ without further review.
 * Rafal Augustyniak ([Augustyniak](https://github.com/Augustyniak)) (raugustyniak@lyft.com)
 * Snow Pettersen ([snowp](https://github.com/snowp)) (aickck@gmail.com)
 * Lizan Zhou ([lizan](https://github.com/lizan)) (lizan.j@gmail.com)
+* Harvey Tuch ([htuch](https://github.com/htuch)) (htuch@google.com)
+* Alex Xu ([soulxu](https://github.com/soulxu)) (hejie.xu@intel.com)
+* Alyssa Wilk ([alyssawilk](https://github.com/alyssawilk)) (alyssar@google.com)
+* Joshua Marantz ([jmarantz](https://github.com/jmarantz)) (jmarantz@google.com)
 
 # Friends of Envoy
 

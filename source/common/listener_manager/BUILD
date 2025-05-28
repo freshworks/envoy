@@ -19,6 +19,7 @@ envoy_cc_library(
         "listener_impl.h",
         "listener_manager_impl.h",
     ],
+    rbe_pool = "6gig",
     deps = [
         ":active_raw_udp_listener_config",
         ":connection_handler_lib",
@@ -52,10 +53,8 @@ envoy_cc_library(
         "//source/common/protobuf:utility_lib",
         "//source/common/quic:quic_stat_names_lib",
         "//source/common/stream_info:stream_info_lib",
-        "//source/extensions/filters/network/http_connection_manager:config",
         "//source/extensions/udp_packet_writer/default:config",
         "//source/extensions/upstreams/http/generic:config",
-        "//source/server:api_listener_lib",
         "//source/server:configuration_lib",
         "//source/server:drain_manager_lib",
         "//source/server:factory_context_lib",

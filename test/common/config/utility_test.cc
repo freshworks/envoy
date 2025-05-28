@@ -20,6 +20,8 @@
 #include "test/mocks/upstream/thread_local_cluster.h"
 #include "test/test_common/environment.h"
 #include "test/test_common/logging.h"
+#include "test/test_common/status_utility.h"
+#include "test/test_common/test_runtime.h"
 #include "test/test_common/utility.h"
 
 #include "absl/types/optional.h"
@@ -28,6 +30,7 @@
 #include "udpa/type/v1/typed_struct.pb.h"
 #include "xds/type/v3/typed_struct.pb.h"
 
+using Envoy::StatusHelpers::HasStatusMessage;
 using testing::ContainsRegex;
 using testing::Eq;
 using testing::HasSubstr;
@@ -137,7 +140,7 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     envoy::config::core::v3::ApiConfigSource api_config_source;
     api_config_source.set_api_type(envoy::config::core::v3::ApiConfigSource::GRPC);
     EXPECT_THAT(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
-                                                       scope, false)
+                                                       scope, false, 0)
                     .status()
                     .message(),
                 HasSubstr("API configs must have either a gRPC service or a cluster name defined"));
@@ -149,12 +152,12 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     api_config_source.add_grpc_services();
     api_config_source.add_grpc_services();
     EXPECT_THAT(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
-                                                       scope, false)
+                                                       scope, false, 0)
                     .status()
                     .message(),
-                ContainsRegex(fmt::format("{}::.DELTA_.GRPC must have a single gRPC service "
-                                          "specified:",
-                                          api_config_source.GetTypeName())));
+                ContainsRegex(fmt::format(
+                    "{}::.DELTA_.GRPC must have no more than 1 gRPC services specified:",
+                    api_config_source.GetTypeName())));
   }
 
   {
@@ -163,7 +166,7 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     api_config_source.add_cluster_names();
     // this also logs a warning for setting REST cluster names for a gRPC API config.
     EXPECT_THAT(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
-                                                       scope, false)
+                                                       scope, false, 0)
                     .status()
                     .message(),
                 ContainsRegex(fmt::format("{}::.DELTA_.GRPC must not have a cluster name "
@@ -177,7 +180,7 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     api_config_source.add_cluster_names();
     api_config_source.add_cluster_names();
     EXPECT_THAT(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
-                                                       scope, false)
+                                                       scope, false, 0)
                     .status()
                     .message(),
                 ContainsRegex(fmt::format("{}::.DELTA_.GRPC must not have a cluster name "
@@ -191,7 +194,7 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     api_config_source.add_grpc_services()->mutable_envoy_grpc()->set_cluster_name("foo");
     // this also logs a warning for configuring gRPC clusters for a REST API config.
     EXPECT_THAT(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
-                                                       scope, false)
+                                                       scope, false, 0)
                     .status()
                     .message(),
                 ContainsRegex(fmt::format("{}, if not a gRPC type, must not have a gRPC service "
@@ -205,7 +208,7 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     api_config_source.add_cluster_names("foo");
     EXPECT_THAT(
         Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source, scope,
-                                               false)
+                                               false, 0)
             .status()
             .message(),
         ContainsRegex(fmt::format("{} type must be gRPC:", api_config_source.GetTypeName())));
@@ -220,7 +223,7 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     EXPECT_CALL(async_client_manager,
                 factoryForGrpcService(ProtoEq(expected_grpc_service), Ref(scope), false));
     EXPECT_TRUE(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
-                                                       scope, false)
+                                                       scope, false, 0)
                     .ok());
   }
 
@@ -231,9 +234,76 @@ TEST(UtilityTest, FactoryForGrpcApiConfigSource) {
     EXPECT_CALL(
         async_client_manager,
         factoryForGrpcService(ProtoEq(api_config_source.grpc_services(0)), Ref(scope), true));
-    EXPECT_TRUE(
-        Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source, scope, true)
-            .ok());
+    EXPECT_TRUE(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
+                                                       scope, true, 0)
+                    .ok());
+  }
+}
+
+// Validates that when failover is supported, the validation works as expected.
+TEST(UtilityTest, FactoryForGrpcApiConfigSourceWithFailover) {
+  // When envoy.restart_features.xds_failover_support is deprecated, the
+  // following tests will need to be merged with the tests in
+  // FactoryForGrpcApiConfigSource.
+  TestScopedRuntime scoped_runtime;
+  scoped_runtime.mergeValues({{"envoy.restart_features.xds_failover_support", "true"}});
+
+  NiceMock<Grpc::MockAsyncClientManager> async_client_manager;
+  Stats::MockStore store;
+  Stats::Scope& scope = *store.rootScope();
+
+  // No more than 2 config sources.
+  {
+    envoy::config::core::v3::ApiConfigSource api_config_source;
+    api_config_source.set_api_type(envoy::config::core::v3::ApiConfigSource::GRPC);
+    api_config_source.add_grpc_services();
+    api_config_source.add_grpc_services();
+    api_config_source.add_grpc_services();
+    EXPECT_THAT(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
+                                                       scope, false, 0)
+                    .status()
+                    .message(),
+                ContainsRegex(fmt::format(
+                    "{}::.DELTA_.GRPC must have no more than 2 gRPC services specified:",
+                    api_config_source.GetTypeName())));
+  }
+
+  // A single gRPC service is valid.
+  {
+    envoy::config::core::v3::ApiConfigSource api_config_source;
+    api_config_source.set_api_type(envoy::config::core::v3::ApiConfigSource::GRPC);
+    api_config_source.add_grpc_services()->mutable_envoy_grpc()->set_cluster_name("foo");
+    envoy::config::core::v3::GrpcService expected_grpc_service;
+    expected_grpc_service.mutable_envoy_grpc()->set_cluster_name("foo");
+    EXPECT_CALL(async_client_manager,
+                factoryForGrpcService(ProtoEq(expected_grpc_service), Ref(scope), false));
+    EXPECT_TRUE(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
+                                                       scope, false, 0)
+                    .ok());
+  }
+
+  // 2 gRPC services is valid.
+  {
+    envoy::config::core::v3::ApiConfigSource api_config_source;
+    api_config_source.set_api_type(envoy::config::core::v3::ApiConfigSource::GRPC);
+    api_config_source.add_grpc_services()->mutable_envoy_grpc()->set_cluster_name("foo");
+    api_config_source.add_grpc_services()->mutable_envoy_grpc()->set_cluster_name("bar");
+
+    envoy::config::core::v3::GrpcService expected_grpc_service_foo;
+    expected_grpc_service_foo.mutable_envoy_grpc()->set_cluster_name("foo");
+    EXPECT_CALL(async_client_manager,
+                factoryForGrpcService(ProtoEq(expected_grpc_service_foo), Ref(scope), false));
+    EXPECT_TRUE(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
+                                                       scope, false, 0)
+                    .ok());
+
+    envoy::config::core::v3::GrpcService expected_grpc_service_bar;
+    expected_grpc_service_bar.mutable_envoy_grpc()->set_cluster_name("bar");
+    EXPECT_CALL(async_client_manager,
+                factoryForGrpcService(ProtoEq(expected_grpc_service_bar), Ref(scope), false));
+    EXPECT_TRUE(Utility::factoryForGrpcApiConfigSource(async_client_manager, api_config_source,
+                                                       scope, false, 1)
+                    .ok());
   }
 }
 
@@ -520,11 +590,12 @@ TEST(UtilityTest, AnyWrongType) {
   ProtobufWkt::Any typed_config;
   typed_config.PackFrom(source_duration);
   ProtobufWkt::Timestamp out;
-  EXPECT_THROW_WITH_REGEX(
+  EXPECT_THAT(
       Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(),
-                                     out),
-      EnvoyException,
-      R"(Unable to unpack as google.protobuf.Timestamp:.*[\n]*\[type.googleapis.com/google.protobuf.Duration\] .*)");
+                                     out)
+          .message(),
+      ContainsRegex(
+          R"(Unable to unpack as google.protobuf.Timestamp:.*[\n]*\[type.googleapis.com/google.protobuf.Duration\] .*)"));
 }
 
 TEST(UtilityTest, TranslateAnyWrongToFactoryConfig) {
@@ -585,7 +656,9 @@ TYPED_TEST(UtilityTypedStructTest, TypedStructToStruct) {
   this->packTypedStructIntoAny(typed_config, untyped_struct);
 
   ProtobufWkt::Struct out;
-  Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(), out);
+  EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                             ProtobufMessage::getStrictValidationVisitor(), out)
+                  .ok());
 
   EXPECT_THAT(out, ProtoEq(untyped_struct));
 }
@@ -603,13 +676,16 @@ TYPED_TEST(UtilityTypedStructTest, TypedStructToClusterV2) {
 
   {
     API_NO_BOOST(envoy::api::v2::Cluster) out;
-    Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getNullValidationVisitor(), out);
+    EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                               ProtobufMessage::getNullValidationVisitor(), out)
+                    .ok());
     EXPECT_THAT(out, ProtoEq(cluster));
   }
   {
     API_NO_BOOST(envoy::api::v2::Cluster) out;
-    Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(),
-                                   out);
+    EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                               ProtobufMessage::getStrictValidationVisitor(), out)
+                    .ok());
     EXPECT_THAT(out, ProtoEq(cluster));
   }
 }
@@ -627,13 +703,16 @@ TYPED_TEST(UtilityTypedStructTest, TypedStructToClusterV3) {
 
   {
     API_NO_BOOST(envoy::config::cluster::v3::Cluster) out;
-    Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getNullValidationVisitor(), out);
+    EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                               ProtobufMessage::getNullValidationVisitor(), out)
+                    .ok());
     EXPECT_THAT(out, ProtoEq(cluster));
   }
   {
     API_NO_BOOST(envoy::config::cluster::v3::Cluster) out;
-    Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(),
-                                   out);
+    EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                               ProtobufMessage::getStrictValidationVisitor(), out)
+                    .ok());
     EXPECT_THAT(out, ProtoEq(cluster));
   }
 }
@@ -658,7 +737,8 @@ TYPED_TEST(UtilityTypedStructTest, TypedStructToInvalidType) {
 
   ProtobufWkt::Any out;
   EXPECT_THROW_WITH_REGEX(Utility::translateOpaqueConfig(
-                              typed_config, ProtobufMessage::getStrictValidationVisitor(), out),
+                              typed_config, ProtobufMessage::getStrictValidationVisitor(), out)
+                              .IgnoreError(),
                           EnvoyException, "Unable to parse JSON as proto");
 }
 
@@ -674,7 +754,9 @@ TEST(UtilityTest, AnyToClusterV2) {
   typed_config.PackFrom(cluster);
 
   API_NO_BOOST(envoy::api::v2::Cluster) out;
-  Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(), out);
+  EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                             ProtobufMessage::getStrictValidationVisitor(), out)
+                  .ok());
   EXPECT_THAT(out, ProtoEq(cluster));
 }
 
@@ -690,7 +772,9 @@ TEST(UtilityTest, AnyToClusterV3) {
   typed_config.PackFrom(cluster);
 
   API_NO_BOOST(envoy::config::cluster::v3::Cluster) out;
-  Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(), out);
+  EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                             ProtobufMessage::getStrictValidationVisitor(), out)
+                  .ok());
   EXPECT_THAT(out, ProtoEq(cluster));
 }
 
@@ -701,7 +785,9 @@ TEST(UtilityTest, EmptyToEmptyConfig) {
   typed_config.PackFrom(empty_config);
 
   envoy::extensions::filters::http::cors::v3::Cors out;
-  Utility::translateOpaqueConfig(typed_config, ProtobufMessage::getStrictValidationVisitor(), out);
+  EXPECT_TRUE(Utility::translateOpaqueConfig(typed_config,
+                                             ProtobufMessage::getStrictValidationVisitor(), out)
+                  .ok());
   EXPECT_THAT(out, ProtoEq(envoy::extensions::filters::http::cors::v3::Cors()));
 }
 
@@ -824,6 +910,43 @@ TEST(UtilityTest, GetGrpcControlPlane) {
     TestUtility::loadFromYaml(config_yaml, api_config_source);
     EXPECT_EQ(absl::nullopt, Utility::getGrpcControlPlane(api_config_source));
   }
+}
+
+TEST(UtilityTest, ValidateTerminalFiltersSucceeds) {
+  EXPECT_OK(Utility::validateTerminalFilters("filter_name", "filter_type", "chain_type",
+                                             /*is_terminal_filter=*/true,
+                                             /*last_filter_in_current_config=*/true));
+  EXPECT_OK(Utility::validateTerminalFilters("filter_name", "filter_type", "chain_type",
+                                             /*is_terminal_filter=*/false,
+                                             /*last_filter_in_current_config=*/false));
+}
+
+TEST(UtilityTest, ValidateTerminalFilterFailsWithMisplacedTerminalFilter) {
+  EXPECT_THAT(
+      Utility::validateTerminalFilters("filter_name", "filter_type", "chain_type",
+                                       /*is_terminal_filter=*/true,
+                                       /*last_filter_in_current_config=*/false),
+      HasStatusMessage("Error: terminal filter named filter_name of type filter_type must be the "
+                       "last filter in a chain_type filter chain."));
+}
+
+TEST(UtilityTest, ValidateTerminalFilterFailsWithMissingTerminalFilter) {
+  EXPECT_THAT(Utility::validateTerminalFilters("filter_name", "filter_type", "chain_type",
+                                               /*is_terminal_filter=*/false,
+                                               /*last_filter_in_current_config=*/true),
+              HasStatusMessage("Error: non-terminal filter named filter_name of type "
+                               "filter_type is the last filter in a chain_type filter chain."));
+}
+
+TEST(UtilityTest, ValidateTerminalFilterFailsWithMissingUpstreamTerminalFilter) {
+  EXPECT_THAT(
+      Utility::validateTerminalFilters("filter_name", "filter_type", "router upstream http",
+                                       /*is_terminal_filter=*/false,
+                                       /*last_filter_in_current_config=*/true),
+      HasStatusMessage("Error: non-terminal filter named filter_name of type "
+                       "filter_type is the last filter in a router upstream http filter chain. "
+                       "When upstream_http_filters are specified, they must explicitly end with an "
+                       "UpstreamCodec filter."));
 }
 
 } // namespace

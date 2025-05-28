@@ -14,6 +14,7 @@ envoy_cc_library(
     ],
     repository = "@envoy",
     deps = [
+        ":network_type_socket_option_lib",
         ":proxy_settings_lib",
         "//library/common:engine_types_lib",
         "//library/common/network:src_addr_socket_option_lib",
@@ -48,6 +49,18 @@ envoy_cc_library(
     deps = [
         "//library/jni:android_jni_utility_lib",
         "@envoy//envoy/network:address_interface",
+        "@envoy//source/common/common:scalar_to_byte_vector_lib",
+        "@envoy//source/common/network:socket_option_lib",
+        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_library(
+    name = "network_type_socket_option_lib",
+    srcs = ["network_type_socket_option_impl.cc"],
+    hdrs = ["network_type_socket_option_impl.h"],
+    repository = "@envoy",
+    deps = [
         "@envoy//source/common/common:scalar_to_byte_vector_lib",
         "@envoy//source/common/network:socket_option_lib",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
@@ -108,6 +121,7 @@ envoy_cc_library(
     repository = "@envoy",
     deps = [
         ":proxy_settings_lib",
+        "@envoy//envoy/event:dispatcher_interface",
     ],
 )
 
@@ -150,6 +164,9 @@ envoy_cc_library(
             "//library/common/apple:utility_lib",
             "//library/common/extensions/cert_validator/platform_bridge:c_types_lib",
             "//library/common/types:c_types_lib",
+            "@envoy//envoy/event:dispatcher_interface",
+            "@envoy//source/common/common:thread_impl_lib_posix",
+            "@envoy//source/common/common:thread_lib",
         ],
         "//conditions:default": [],
     }),

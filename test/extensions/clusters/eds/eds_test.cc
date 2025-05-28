@@ -133,7 +133,7 @@ public:
     Envoy::Upstream::ClusterFactoryContextImpl factory_context(
         server_context_, server_context_.cluster_manager_, nullptr, ssl_context_manager_, nullptr,
         false);
-    cluster_ = std::make_shared<EdsClusterImpl>(eds_cluster_, factory_context);
+    cluster_ = *EdsClusterImpl::create(eds_cluster_, factory_context);
     EXPECT_EQ(initialize_phase, cluster_->initializePhase());
     eds_callbacks_ = server_context_.cluster_manager_.subscription_factory_.callbacks_;
   }
@@ -141,7 +141,10 @@ public:
   void initialize() {
     EXPECT_CALL(server_context_, timeSource()).WillRepeatedly(testing::ReturnRef(simTime()));
     EXPECT_CALL(*server_context_.cluster_manager_.subscription_factory_.subscription_, start(_));
-    cluster_->initialize([this] { initialized_ = true; });
+    cluster_->initialize([this] {
+      initialized_ = true;
+      return absl::OkStatus();
+    });
   }
 
   void doOnConfigUpdateVerifyNoThrow(
@@ -434,6 +437,78 @@ TEST_F(EdsTest, DualStackEndpoint) {
       hosts[0]->createConnection(dispatcher, options, transport_socket_options);
   // The created connection will be wrapped in a HappyEyeballsConnectionImpl.
   EXPECT_NE(connection, connection_data.connection_.get());
+}
+
+// Verify that non-IP additional addresses are rejected.
+TEST_F(EdsTest, RejectNonIpAdditionalAddresses) {
+  envoy::config::endpoint::v3::ClusterLoadAssignment cluster_load_assignment;
+  cluster_load_assignment.set_cluster_name("fare");
+
+  // Add dual stack endpoint
+  auto* endpoints = cluster_load_assignment.add_endpoints();
+  auto* endpoint = endpoints->add_lb_endpoints();
+  endpoint->mutable_endpoint()->mutable_address()->mutable_socket_address()->set_address("::1");
+  endpoint->mutable_endpoint()->mutable_address()->mutable_socket_address()->set_port_value(80);
+  endpoint->mutable_endpoint()
+      ->mutable_additional_addresses()
+      ->Add()
+      ->mutable_address()
+      ->mutable_envoy_internal_address()
+      ->set_server_listener_name("internal_address");
+
+  endpoint->mutable_load_balancing_weight()->set_value(30);
+
+  initialize();
+  const auto decoded_resources =
+      TestUtility::decodeResources({cluster_load_assignment}, "cluster_name");
+  try {
+    (void)eds_callbacks_->onConfigUpdate(decoded_resources.refvec_, "");
+    FAIL() << "Invalid address was not rejected";
+  } catch (const EnvoyException& e) {
+    EXPECT_STREQ("additional_addresses must be IP addresses.", e.what());
+  }
+}
+
+// Verify that failure to initialize the base class results in an error not a crash.
+// Note that this test is depending on the current implementation of how EDS inherits from
+// `BaseDynamicClusterImpl` and how `BaseDynamicClusterImpl` does error handling to have a
+// failure occur in the base class constructor.
+// This is a regression https://github.com/envoyproxy/envoy/pull/39083.
+TEST_F(EdsTest, RejectBaseClassConstructorFailure) {
+  // Configure an invalid transport socket.
+  eds_cluster_ = parseClusterFromV3Yaml(R"EOF(
+      name: name
+      connect_timeout: 0.25s
+      type: EDS
+      lb_policy: ROUND_ROBIN
+      eds_cluster_config:
+        service_name: fare
+        eds_config:
+          api_config_source:
+            api_type: REST
+            cluster_names:
+            - eds
+            refresh_delay: 1s
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          common_tls_context:
+            tls_certificates:
+            # Multiple certs are not allowed in a client context.
+            - certificate_chain: { filename: "invalid-path" }
+              private_key: { filename: "invalid-path" }
+            - certificate_chain: { filename: "invalid-path2" }
+              private_key: { filename: "invalid-path2" }
+ )EOF");
+  Envoy::Upstream::ClusterFactoryContextImpl factory_context(
+      server_context_, server_context_.cluster_manager_, nullptr, ssl_context_manager_, nullptr,
+      false);
+  auto cluster_or_status = EdsClusterImpl::create(eds_cluster_, factory_context);
+
+  // The most important passing criteria is that the above didn't crash.
+
+  EXPECT_FALSE(cluster_or_status.ok());
 }
 
 // Validate that onConfigUpdate() updates the endpoint metadata.
@@ -1402,6 +1477,80 @@ TEST_F(EdsTest, EndpointMovedToNewPriority) {
     EXPECT_FALSE(hosts[0]->healthFlagGet(Host::HealthFlag::PENDING_DYNAMIC_REMOVAL));
     EXPECT_FALSE(hosts[1]->healthFlagGet(Host::HealthFlag::FAILED_ACTIVE_HC));
     EXPECT_FALSE(hosts[1]->healthFlagGet(Host::HealthFlag::PENDING_DYNAMIC_REMOVAL));
+  }
+}
+
+// Verifies that if a endpoint is moved to a new priority multiple times, the health
+// check value is preserved.
+TEST_F(EdsTest, EndpointMovedToNewPriorityRepeated) {
+  envoy::config::endpoint::v3::ClusterLoadAssignment cluster_load_assignment;
+  cluster_load_assignment.set_cluster_name("fare");
+  resetCluster();
+
+  auto health_checker = std::make_shared<MockHealthChecker>();
+  EXPECT_CALL(*health_checker, start());
+  EXPECT_CALL(*health_checker, addHostCheckCompleteCb(_)).Times(2);
+  cluster_->setHealthChecker(health_checker);
+
+  auto add_endpoint = [&cluster_load_assignment](int port, int priority) {
+    auto* endpoints = cluster_load_assignment.add_endpoints();
+    endpoints->set_priority(priority);
+
+    auto* socket_address = endpoints->add_lb_endpoints()
+                               ->mutable_endpoint()
+                               ->mutable_address()
+                               ->mutable_socket_address();
+    socket_address->set_address("1.2.3.4");
+    socket_address->set_port_value(port);
+  };
+
+  add_endpoint(80, 0);
+  add_endpoint(81, 0);
+
+  doOnConfigUpdateVerifyNoThrow(cluster_load_assignment);
+
+  {
+    auto& hosts = cluster_->prioritySet().hostSetsPerPriority()[0]->hosts();
+    EXPECT_EQ(hosts.size(), 2);
+
+    // Mark the hosts as healthy
+    for (auto& host : hosts) {
+      EXPECT_TRUE(host->healthFlagGet(Host::HealthFlag::FAILED_ACTIVE_HC));
+      host->healthFlagClear(Host::HealthFlag::FAILED_ACTIVE_HC);
+      host->healthFlagClear(Host::HealthFlag::PENDING_ACTIVE_HC);
+    }
+  }
+
+  std::vector<uint32_t> priority_levels = {1, 2, 3, 2, 1};
+  for (uint32_t priority : priority_levels) {
+    cluster_load_assignment.clear_endpoints();
+    add_endpoint(80, priority);
+    add_endpoint(81, priority);
+
+    doOnConfigUpdateVerifyNoThrow(cluster_load_assignment);
+
+    {
+      for (uint32_t i = 0; i < cluster_->prioritySet().hostSetsPerPriority().size(); i++) {
+        auto& hosts = cluster_->prioritySet().hostSetsPerPriority()[i]->hosts();
+        if (i == priority) {
+          // Priorities equal to this one should have the endpoints with port 80 and 81
+          EXPECT_EQ(hosts.size(), 2);
+        } else {
+          // Priorities not equal to this one should now be empty.
+          EXPECT_EQ(hosts.size(), 0);
+        }
+      }
+    }
+
+    {
+      auto& hosts = cluster_->prioritySet().hostSetsPerPriority()[priority]->hosts();
+
+      // The endpoints were healthy, so moving them around should preserve that.
+      EXPECT_FALSE(hosts[0]->healthFlagGet(Host::HealthFlag::FAILED_ACTIVE_HC));
+      EXPECT_FALSE(hosts[0]->healthFlagGet(Host::HealthFlag::PENDING_DYNAMIC_REMOVAL));
+      EXPECT_FALSE(hosts[1]->healthFlagGet(Host::HealthFlag::FAILED_ACTIVE_HC));
+      EXPECT_FALSE(hosts[1]->healthFlagGet(Host::HealthFlag::PENDING_DYNAMIC_REMOVAL));
+    }
   }
 }
 
@@ -2857,14 +3006,17 @@ public:
     ON_CALL(server_context_.cluster_manager_, edsResourcesCache())
         .WillByDefault(
             Invoke([this]() -> Config::EdsResourcesCacheOptRef { return eds_resources_cache_; }));
-    cluster_pre_ = std::make_shared<EdsClusterImpl>(eds_cluster_, factory_context);
+    cluster_pre_ = *EdsClusterImpl::create(eds_cluster_, factory_context);
     EXPECT_EQ(initialize_phase, cluster_pre_->initializePhase());
     eds_callbacks_pre_ = server_context_.cluster_manager_.subscription_factory_.callbacks_;
   }
 
   void initialize() {
     EXPECT_CALL(*server_context_.cluster_manager_.subscription_factory_.subscription_, start(_));
-    cluster_pre_->initialize([this] { initialized_ = true; });
+    cluster_pre_->initialize([this] {
+      initialized_ = true;
+      return absl::OkStatus();
+    });
   }
 
   void doOnConfigUpdateVerifyNoThrowPre(
@@ -2895,12 +3047,15 @@ public:
     Envoy::Upstream::ClusterFactoryContextImpl factory_context(
         server_context_, server_context_.cluster_manager_, nullptr, ssl_context_manager_, nullptr,
         false);
-    cluster_post_ = std::make_shared<EdsClusterImpl>(eds_cluster_, factory_context);
+    cluster_post_ = *EdsClusterImpl::create(eds_cluster_, factory_context);
     // EXPECT_EQ(initialize_phase, cluster_post_->initializePhase());
     eds_callbacks_post_ = server_context_.cluster_manager_.subscription_factory_.callbacks_;
 
     EXPECT_CALL(*server_context_.cluster_manager_.subscription_factory_.subscription_, start(_));
-    cluster_post_->initialize([this] { initialized_post_ = true; });
+    cluster_post_->initialize([this] {
+      initialized_post_ = true;
+      return absl::OkStatus();
+    });
   }
 
   // Used for timeout emulation.

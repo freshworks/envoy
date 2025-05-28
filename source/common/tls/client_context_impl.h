@@ -22,7 +22,6 @@
 #include "source/common/tls/cert_validator/cert_validator.h"
 #include "source/common/tls/context_impl.h"
 #include "source/common/tls/context_manager_impl.h"
-#include "source/common/tls/ocsp/ocsp.h"
 #include "source/common/tls/stats.h"
 
 #include "absl/synchronization/mutex.h"
@@ -45,7 +44,8 @@ public:
          Server::Configuration::CommonFactoryContext& factory_context);
 
   absl::StatusOr<bssl::UniquePtr<SSL>>
-  newSsl(const Network::TransportSocketOptionsConstSharedPtr& options) override;
+  newSsl(const Network::TransportSocketOptionsConstSharedPtr& options,
+         Upstream::HostDescriptionConstSharedPtr host) override;
 
 private:
   ClientContextImpl(Stats::Scope& scope, const Envoy::Ssl::ClientContextConfig& config,
@@ -55,6 +55,7 @@ private:
   int newSessionKey(SSL_SESSION* session);
 
   const std::string server_name_indication_;
+  const bool auto_host_sni_;
   const bool allow_renegotiation_;
   const bool enforce_rsa_key_usage_;
   const size_t max_session_keys_;

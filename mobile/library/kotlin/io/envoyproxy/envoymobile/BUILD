@@ -1,7 +1,7 @@
 load("@envoy//bazel:envoy_build_system.bzl", "envoy_mobile_package")
 load("@envoy_mobile//bazel:android_artifacts.bzl", "android_artifacts")
-load("@io_bazel_rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_detekt//detekt:defs.bzl", "detekt")
+load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 
 licenses(["notice"])  # Apache 2
 
@@ -20,28 +20,6 @@ android_artifacts(
     substitutions = {
         "{pom_artifact_id}": "envoy",
         "{pom_extra_dependencies}": "",
-    },
-    visibility = ["//visibility:public"],
-)
-
-android_artifacts(
-    name = "envoy_xds_aar",
-    android_library = ":envoy_lib",
-    archive_name = "envoy_xds",
-    manifest = "EnvoyManifest.xml",
-    native_deps = select({
-        "@envoy//bazel:opt_build": ["//library/jni:libenvoy_jni.so.debug_info"],
-        "//conditions:default": ["//library/jni:libenvoy_jni.so"],
-    }),
-    proguard_rules = "//library:proguard_rules",
-    substitutions = {
-        "{pom_artifact_id}": "envoy-xds",
-        "{pom_extra_dependencies}": """
-        <dependency>
-            <groupId>com.google.protobuf</groupId>
-            <artifactId>protobuf-javalite</artifactId>
-            <version>3.24.4</version>
-        </dependency>""",
     },
     visibility = ["//visibility:public"],
 )

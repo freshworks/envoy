@@ -27,21 +27,30 @@ BACKTRACE
 BEL
 BBR
 BIDIRECTIONAL
+CCL
+CGROUP
+CROSSSLOT
 ECN
 ECS
 EKS
+Millicores
 NID
 NIST
+NORMALISATION
 bm
 BSON
 BPF
 Bdecoded
 Bencoded
 CIO
+cbegin
+cend
+constness
 deadcode
 DFP
 Dynatrace
 DOM
+DONTFRAG
 Gasd
 GiB
 IPTOS
@@ -93,6 +102,7 @@ OWS
 Preconnecting
 RCVBUF
 RTCP
+RTLD
 RTP
 SOH
 SPC
@@ -231,6 +241,7 @@ IANA
 IDL
 IETF
 IFADDRS
+IMUsed
 INADDR
 INET
 INVAL
@@ -306,8 +317,12 @@ NOAUTH
 NOCHECKRESP
 NODATA
 NODELAY
+NODELETE
 NOLINT
+NOLINTBEGIN
+NOLINTEND
 NOLINTNEXTLINE
+NOLOAD
 NONAME
 NONBLOCK
 NONCES
@@ -323,7 +338,11 @@ ODCDS
 middlewildcard
 monostate
 mpd
+msan
 mutators
+mybucket
+myobject
+myproject
 na
 oghttp
 OID
@@ -348,6 +367,7 @@ PEM
 PERF
 PGV
 PID
+PKCE
 PKCS12
 PKTINFO
 PNG
@@ -374,6 +394,7 @@ RDS
 README
 RECVDSTADDR
 RECVPKTINFO
+RECVTOS
 REFNIL
 REQ
 REUSEADDR
@@ -422,7 +443,9 @@ SPD
 SPDY
 SPIFFE
 SPKI
+SQE
 SQL
+SQPOLL
 SR
 SRCDIR
 SRDS
@@ -464,6 +487,7 @@ UDP
 UDS
 UHV
 UNC
+UPN
 URI
 URL
 USEVC
@@ -599,6 +623,7 @@ cacert
 cacheable
 cacheability
 callee
+callout
 callsite
 callsites
 callstack
@@ -622,6 +647,7 @@ chunked
 ci
 ciphersuite
 ciphersuites
+ciphertext
 circllhist
 clientcert
 cloneable
@@ -720,6 +746,9 @@ dgst
 dir
 dirname
 djb
+dlclose
+dlopen
+dlsym
 downcalls
 downcasted
 downcased
@@ -746,6 +775,8 @@ enqueues
 enum
 enums
 environ
+eu
+euprod
 epoll
 errno
 etag
@@ -875,6 +906,7 @@ inotify
 inserter
 instantiation
 instantiations
+interop
 interpretable
 intra
 ints
@@ -925,6 +957,8 @@ lightstep
 linearization
 linearize
 linearized
+linkability
+linkable
 linux
 livelock
 llvm
@@ -1036,7 +1070,6 @@ oneof
 oneway
 oob
 opcode
-opencensus
 openssl
 opentracing
 optimizations
@@ -1073,6 +1106,7 @@ pcall
 pcap
 pchar
 pclose
+pdf
 performant
 pfctl
 pipelined
@@ -1082,6 +1116,7 @@ plaintext
 pluggable
 pointee
 poller
+polymorphism
 popen
 pos
 posix
@@ -1177,12 +1212,17 @@ refcount
 referencee
 referer
 refetch
+reframed
 refvec
 regex
 regexes
 reified
 reify
 reimplements
+reinitialization
+reinitializations
+reinitialize
+reinitializes
 rele
 releasor
 reloadable
@@ -1207,6 +1247,7 @@ resolv
 resolvers
 responder
 restarter
+resumable
 resync
 ret
 retransmissions
@@ -1226,6 +1267,7 @@ rollout
 roundtrip
 rpcs
 rq
+rtest
 rtrim
 rtt
 ruleset
@@ -1256,6 +1298,7 @@ servercert
 setenv
 setsockopt
 sfixed
+sidestream
 sig
 sigaction
 sigactions
@@ -1429,6 +1472,7 @@ upvalue
 uring
 urlencoded
 urls
+useragent
 userdata
 userinfo
 username
@@ -1459,6 +1503,7 @@ virtualize
 virtualized
 vptr
 vtable
+vtest
 vtt
 wakeup
 wakeups
@@ -1517,3 +1562,5 @@ CNAME
 NAT
 NXDOMAIN
 DNAT
+RSP
+EWMA

@@ -90,12 +90,12 @@ namespace Redis {
 
 class RedisCluster : public Upstream::BaseDynamicClusterImpl {
 public:
-  RedisCluster(const envoy::config::cluster::v3::Cluster& cluster,
-               const envoy::extensions::clusters::redis::v3::RedisClusterConfig& redis_cluster,
-               Upstream::ClusterFactoryContext& context,
-               NetworkFilters::Common::Redis::Client::ClientFactory& client_factory,
-               Network::DnsResolverSharedPtr dns_resolver,
-               ClusterSlotUpdateCallBackSharedPtr factory);
+  static absl::StatusOr<std::unique_ptr<RedisCluster>>
+  create(const envoy::config::cluster::v3::Cluster& cluster,
+         const envoy::extensions::clusters::redis::v3::RedisClusterConfig& redis_cluster,
+         Upstream::ClusterFactoryContext& context,
+         NetworkFilters::Common::Redis::Client::ClientFactory& client_factory,
+         Network::DnsResolverSharedPtr dns_resolver, ClusterSlotUpdateCallBackSharedPtr factory);
 
   struct ClusterSlotsRequest : public Extensions::NetworkFilters::Common::Redis::RespValue {
   public:
@@ -116,7 +116,16 @@ public:
 
   TimeSource& timeSource() const { return time_source_; }
 
+protected:
+  RedisCluster(const envoy::config::cluster::v3::Cluster& cluster,
+               const envoy::extensions::clusters::redis::v3::RedisClusterConfig& redis_cluster,
+               Upstream::ClusterFactoryContext& context,
+               NetworkFilters::Common::Redis::Client::ClientFactory& client_factory,
+               Network::DnsResolverSharedPtr dns_resolver,
+               ClusterSlotUpdateCallBackSharedPtr factory, absl::Status& creation_status);
+
 private:
+  friend class RedisClusterFactory;
   friend class RedisClusterTest;
 
   void startPreInit() override;
@@ -141,13 +150,21 @@ private:
   // A redis node in the Redis cluster.
   class RedisHost : public Upstream::HostImpl {
   public:
+    static absl::StatusOr<std::unique_ptr<RedisHost>>
+    create(Upstream::ClusterInfoConstSharedPtr cluster, const std::string& hostname,
+           Network::Address::InstanceConstSharedPtr address, RedisCluster& parent, bool primary,
+           TimeSource& time_source);
+
+  protected:
     RedisHost(Upstream::ClusterInfoConstSharedPtr cluster, const std::string& hostname,
               Network::Address::InstanceConstSharedPtr address, RedisCluster& parent, bool primary,
-              TimeSource& time_source)
+              TimeSource& time_source, absl::Status& creation_status)
         : Upstream::HostImpl(
-              cluster, hostname, address,
+              creation_status, cluster, hostname, address,
               // TODO(zyfjeff): Created through metadata shared pool
               std::make_shared<envoy::config::core::v3::Metadata>(parent.lbEndpoint().metadata()),
+              std::make_shared<envoy::config::core::v3::Metadata>(
+                  parent.localityLbEndpoint().metadata()),
               parent.lbEndpoint().load_balancing_weight().value(),
               parent.localityLbEndpoint().locality(),
               parent.lbEndpoint().endpoint().health_check_config(),

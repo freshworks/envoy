@@ -61,6 +61,10 @@ public:
   const std::string Wasm = "envoy.filters.network.wasm";
   // SMTP proxy filter
   const std::string SmtpProxy = "envoy.filters.network.smtp_proxy";
+  // Network external processor filter
+  const std::string NetworkExternalProcessor = "envoy.filters.network.ext_proc";
+  // Network match delegate filter
+  const std::string NetworkMatchDelegate = "envoy.filters.network.match_delegate";
 };
 
 using NetworkFilterNames = ConstSingleton<NetworkFilterNameValues>;

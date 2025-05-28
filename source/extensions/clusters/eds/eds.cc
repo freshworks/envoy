@@ -14,9 +14,20 @@
 namespace Envoy {
 namespace Upstream {
 
+absl::StatusOr<std::unique_ptr<EdsClusterImpl>>
+EdsClusterImpl::create(const envoy::config::cluster::v3::Cluster& cluster,
+                       ClusterFactoryContext& cluster_context) {
+  absl::Status creation_status = absl::OkStatus();
+  std::unique_ptr<EdsClusterImpl> ret =
+      absl::WrapUnique(new EdsClusterImpl(cluster, cluster_context, creation_status));
+  RETURN_IF_NOT_OK(creation_status);
+  return ret;
+}
+
 EdsClusterImpl::EdsClusterImpl(const envoy::config::cluster::v3::Cluster& cluster,
-                               ClusterFactoryContext& cluster_context)
-    : BaseDynamicClusterImpl(cluster, cluster_context),
+                               ClusterFactoryContext& cluster_context,
+                               absl::Status& creation_status)
+    : BaseDynamicClusterImpl(cluster, cluster_context, creation_status),
       Envoy::Config::SubscriptionBase<envoy::config::endpoint::v3::ClusterLoadAssignment>(
           cluster_context.messageValidationVisitor(), "cluster_name"),
       local_info_(cluster_context.serverFactoryContext().localInfo()),
@@ -24,6 +35,7 @@ EdsClusterImpl::EdsClusterImpl(const envoy::config::cluster::v3::Cluster& cluste
           Runtime::runtimeFeatureEnabled("envoy.restart_features.use_eds_cache_for_ads")
               ? cluster_context.clusterManager().edsResourcesCache()
               : absl::nullopt) {
+  RETURN_ONLY_IF_NOT_OK_REF(creation_status);
   Event::Dispatcher& dispatcher = cluster_context.serverFactoryContext().mainThreadDispatcher();
   assignment_timeout_ = dispatcher.createTimer([this]() -> void { onAssignmentTimeout(); });
   const auto& eds_config = cluster.eds_cluster_config().eds_config();
@@ -149,9 +161,15 @@ void EdsClusterImpl::BatchUpdateHelper::updateLocalityEndpoints(
   if (!lb_endpoint.endpoint().additional_addresses().empty()) {
     address_list.push_back(address);
     for (const auto& additional_address : lb_endpoint.endpoint().additional_addresses()) {
-      address_list.emplace_back(
-          THROW_OR_RETURN_VALUE(parent_.resolveProtoAddress(additional_address.address()),
-                                const Network::Address::InstanceConstSharedPtr));
+      Network::Address::InstanceConstSharedPtr address =
+          returnOrThrow(parent_.resolveProtoAddress(additional_address.address()));
+      address_list.emplace_back(address);
+    }
+    for (const Network::Address::InstanceConstSharedPtr& address : address_list) {
+      // All addresses must by IP addresses.
+      if (!address->ip()) {
+        throwEnvoyExceptionOrPanic("additional_addresses must be IP addresses.");
+      }
     }
   }
 
@@ -229,9 +247,11 @@ EdsClusterImpl::onConfigUpdate(const std::vector<Config::DecodedResourceRef>& re
 
   // Pause LEDS messages until the EDS config is finished processing.
   Config::ScopedResume maybe_resume_leds;
-  if (transport_factory_context_->clusterManager().adsMux()) {
+  if (transport_factory_context_->serverFactoryContext().clusterManager().adsMux()) {
     const auto type_url = Config::getTypeUrl<envoy::config::endpoint::v3::LbEndpoint>();
-    maybe_resume_leds = transport_factory_context_->clusterManager().adsMux()->pause(type_url);
+    maybe_resume_leds =
+        transport_factory_context_->serverFactoryContext().clusterManager().adsMux()->pause(
+            type_url);
   }
 
   update(cluster_load_assignment);
@@ -462,7 +482,10 @@ EdsClusterFactory::createClusterImpl(const envoy::config::cluster::v3::Cluster& 
     return absl::InvalidArgumentError("cannot create an EDS cluster without an EDS config");
   }
 
-  return std::make_pair(std::make_unique<EdsClusterImpl>(cluster, context), nullptr);
+  absl::StatusOr<std::unique_ptr<EdsClusterImpl>> cluster_or_error =
+      EdsClusterImpl::create(cluster, context);
+  RETURN_IF_NOT_OK(cluster_or_error.status());
+  return std::make_pair(std::move(*cluster_or_error), nullptr);
 }
 
 bool EdsClusterImpl::validateAllLedsUpdated() const {

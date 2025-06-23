@@ -1901,7 +1901,8 @@ SplitRequestPtr InstanceImpl::makeRequest(Common::Redis::RespValuePtr&& request,
       return nullptr;
     }
   }
-  ENVOY_LOG(warn, "command to process '{}'- sent from remote client ip '{}'", request->toString(),stream_info.downstreamAddressProvider().remoteAddress()->asString());
+  ENVOY_LOG(info, "command to process '{}'- sent from remote client ip '{}'", request->toString(),stream_info.downstreamAddressProvider().remoteAddress()->asString());
+  ENVOY_LOG(warn, "command to process '{}'", request->toString());
   // Extract command name
   std::string command_name = absl::AsciiStrToLower(request->asArray()[0].asString());
 

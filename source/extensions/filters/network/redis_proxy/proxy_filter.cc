@@ -138,6 +138,9 @@ void ProxyFilter::onEvent(Network::ConnectionEvent event) {
         transaction_.setPubSubCallback(nullptr);
 
       }
+      if (transaction_.isTransactionMode()){
+        this->closeDownstreamConnection();
+      }
 
     }
     ENVOY_LOG(debug,"closing downstream connection with transaction_.close()");

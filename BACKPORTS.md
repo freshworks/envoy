@@ -1,4 +1,4 @@
-As documented in [RELEASES.md](RELEASES.md), the individual(s) on backports rotation are responsible for doing backports for security releases, and other qualifying backports
+As documented in [RELEASES.md](RELEASES.md), the individual(s) on backports rotation are responsible for doing backports for security releases, and other qualifying backports.
 
 Backports rotation folks should make sure they have [triage](https://github.com/orgs/envoyproxy/teams/envoy-triage) rights (ask one of the [admins](https://github.com/orgs/envoyproxy/teams/admins) to give you access if you do not otherwise have it), and regularly triage [backports-review](https://github.com/pulls?q=+label%3Abackport%2Freview+) issues, either removing the backports-review tag and adding backports-approved, or pushing back in comments for why the issue does not qualify based on [RELEASES.md](RELEASES.md)
 

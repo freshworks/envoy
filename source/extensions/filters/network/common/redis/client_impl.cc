@@ -174,7 +174,11 @@ PoolRequest* ClientImpl::makeRequest(const RespValue& request, ClientCallbacks& 
 
 
 bool ClientImpl::makePubSubRequest(const RespValue& request) {
-  ASSERT(connection_->state() == Network::Connection::State::Open);
+  //ASSERT(connection_->state() == Network::Connection::State::Open);
+  if (connection_->state() != Network::Connection::State::Open) {
+    ENVOY_LOG(error, "Pubsub Client Connection not open yet for makePubSubRequest");
+    return false;
+  }
 
   const bool empty_buffer = encoder_buffer_.length() == 0;
 

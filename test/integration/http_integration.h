@@ -4,8 +4,13 @@
 #include <memory>
 #include <string>
 
+#include "envoy/extensions/early_data/v3/default_early_data_policy_descriptor.pb.h"
+#include "envoy/extensions/filters/http/router/v3/router.pb.h"
+#include "envoy/extensions/filters/http/upstream_codec/v3/upstream_codec.pb.h"
+
 #include "source/common/http/codec_client.h"
 #include "source/common/network/filter_impl.h"
+#include "source/extensions/early_data/default_early_data_policy.h"
 
 #include "test/common/http/http2/http2_frame.h"
 #include "test/integration/integration.h"
@@ -140,7 +145,6 @@ public:
   ~HttpIntegrationTest() override;
 
   void initialize() override;
-  void setupHttp1ImplOverrides(Http1ParserImpl http1_implementation);
   void setupHttp2ImplOverrides(Http2Impl http2_implementation);
 
 protected:
@@ -196,7 +200,12 @@ protected:
       const Http::TestResponseHeaderMapImpl& response_headers, uint32_t response_body_size,
       uint64_t upstream_index = 0, std::chrono::milliseconds timeout = TestUtility::DefaultTimeout);
 
-  IntegrationStreamDecoderPtr sendRequestAndWaitForResponse(
+  struct Result {
+    IntegrationStreamDecoderPtr response;
+    absl::optional<uint64_t> upstream_index;
+  };
+
+  Result sendRequestAndWaitForResponse(
       const Http::TestRequestHeaderMapImpl& request_headers, uint32_t request_body_size,
       const Http::TestResponseHeaderMapImpl& response_headers, uint32_t response_body_size,
       const std::vector<uint64_t>& upstream_indices,
@@ -366,11 +375,10 @@ protected:
   testing::NiceMock<Random::MockRandomGenerator> random_;
   Quic::QuicStatNames quic_stat_names_;
   std::string san_to_match_{"spiffe://lyft.com/backend-team"};
-  bool enable_quic_early_data_{true};
-  std::vector<absl::string_view> custom_alpns_;
   // Set this to true when sending malformed requests to avoid test client codec rejecting it.
   // This flag is only valid when UHV build flag is enabled.
   bool disable_client_header_validation_{false};
+
 #ifdef ENVOY_ENABLE_QUIC
   quic::DeterministicConnectionIdGenerator connection_id_generator_{
       quic::kQuicDefaultConnectionIdLength};

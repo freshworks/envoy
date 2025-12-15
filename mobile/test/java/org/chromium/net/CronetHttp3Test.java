@@ -2,6 +2,9 @@ package org.chromium.net;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
+
+import android.Manifest;
 
 import io.envoyproxy.envoymobile.engine.types.EnvoyNetworkType;
 import org.chromium.net.impl.CronvoyUrlRequestContext;
@@ -10,6 +13,7 @@ import org.chromium.net.impl.CronvoyLogger;
 import androidx.test.core.app.ApplicationProvider;
 import org.chromium.net.testing.TestUploadDataProvider;
 import androidx.test.filters.SmallTest;
+import androidx.test.rule.GrantPermissionRule;
 
 import org.chromium.net.impl.NativeCronvoyEngineBuilderImpl;
 import org.chromium.net.testing.CronetTestRule;
@@ -32,6 +36,10 @@ import java.util.Collections;
  */
 @RunWith(RobolectricTestRunner.class)
 public class CronetHttp3Test {
+  @Rule
+  public GrantPermissionRule grantPermissionRule =
+      GrantPermissionRule.grant(Manifest.permission.ACCESS_NETWORK_STATE);
+
   @Rule public final CronetTestRule mTestRule = new CronetTestRule();
 
   private static final String TAG = CronetHttp3Test.class.getSimpleName();
@@ -51,6 +59,10 @@ public class CronetHttp3Test {
   private CronvoyUrlRequestContext cronvoyEngine;
   // A URL which will point to the IP and port of the test servers.
   private String testServerUrl;
+  // Optional reloadable flags to set.
+  private boolean drainOnNetworkChange = false;
+  private boolean resetBrokennessOnNetworkChange = false;
+  private boolean disableDnsRefreshOnNetworkChange = false;
 
   @BeforeClass
   public static void loadJniLibrary() {
@@ -88,7 +100,10 @@ public class CronetHttp3Test {
     // Set up the Envoy engine.
     NativeCronvoyEngineBuilderImpl nativeCronetEngineBuilder =
         new NativeCronvoyEngineBuilderImpl(ApplicationProvider.getApplicationContext());
-    nativeCronetEngineBuilder.addRuntimeGuard("reset_brokenness_on_nework_change", true);
+    nativeCronetEngineBuilder.addRuntimeGuard("drain_pools_on_network_change",
+                                              drainOnNetworkChange);
+    nativeCronetEngineBuilder.setDisableDnsRefreshOnNetworkChange(disableDnsRefreshOnNetworkChange);
+
     if (setUpLogging) {
       nativeCronetEngineBuilder.setLogger(logger);
       nativeCronetEngineBuilder.setLogLevel(EnvoyEngine.LogLevel.TRACE);
@@ -96,6 +111,8 @@ public class CronetHttp3Test {
     // Make sure the handshake will work despite lack of real certs.
     nativeCronetEngineBuilder.setMockCertVerifierForTesting();
     cronvoyEngine = new CronvoyUrlRequestContext(nativeCronetEngineBuilder);
+    // Clear network states in ConnectivityManager.
+    cronvoyEngine.getEnvoyEngine().resetConnectivityState();
   }
 
   @After
@@ -194,7 +211,7 @@ public class CronetHttp3Test {
   @Test
   @SmallTest
   @Feature({"Cronet"})
-  public void testNoRetryPostAfterHandshake() throws Exception {
+  public void testRetryPostAfterHandshake() throws Exception {
     setUp(printEnvoyLogs);
 
     // Do the initial HTTP/2 request to get the alt-svc response.
@@ -219,10 +236,10 @@ public class CronetHttp3Test {
 
     // Both HTTP/3 and HTTP/2 servers will reset after the request.
     assertTrue(callback.mOnErrorCalled);
-    // There are 2 requests - the initial HTTP/2 alt-svc request and the HTTP/3 request.
-    // By default, POST requests will not retry.
+    // There are 3 requests - the initial HTTP/2 alt-svc request and the HTTP/3 request.
+    // By default, POST requests will now retry.
     String stats = cronvoyEngine.getEnvoyEngine().dumpStats();
-    assertTrue(stats.contains("cluster.base.upstream_rq_total: 2"));
+    assertTrue(stats.contains("cluster.base.upstream_rq_total: 3"));
   }
 
   // Set up to use HTTP/3, then force HTTP/3 to fail post-handshake. The request should
@@ -273,7 +290,87 @@ public class CronetHttp3Test {
   @Test
   @SmallTest
   @Feature({"Cronet"})
+  public void networkChangeNoDrains() throws Exception {
+    // Disable dns refreshment so that the engine will attempt immediate draining.
+    disableDnsRefreshOnNetworkChange = true;
+    drainOnNetworkChange = false;
+    setUp(printEnvoyLogs);
+
+    // Do the initial handshake dance
+    doInitialHttp2Request();
+
+    // Do an HTTP/3 request
+    TestUrlRequestCallback get1Callback = doBasicGetRequest();
+    assertEquals(200, get1Callback.mResponseInfo.getHttpStatusCode());
+    assertEquals("h3", get1Callback.mResponseInfo.getNegotiatedProtocol());
+
+    // There should be one HTTP/3 connection
+    String postStats = cronvoyEngine.getEnvoyEngine().dumpStats();
+    assertTrue(postStats, postStats.contains("cluster.base.upstream_cx_http3_total: 1"));
+
+    // Force a network change
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkUnavailable();
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkChanged(2);
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkAvailable();
+
+    // Do another HTTP/3 request
+    TestUrlRequestCallback get2Callback = doBasicGetRequest();
+    assertEquals(200, get2Callback.mResponseInfo.getHttpStatusCode());
+    assertEquals("h3", get2Callback.mResponseInfo.getNegotiatedProtocol());
+
+    // There should be 2 HTTP/3 connections because the 2nd request was hashed to a different
+    // connection pool. But the 1st HTTP/3 connection which is idle now shouldn't have been drained
+    // or closed.
+    postStats = cronvoyEngine.getEnvoyEngine().dumpStats();
+    assertTrue(postStats, postStats.contains("cluster.base.upstream_cx_http3_total: 2"));
+    assertFalse(postStats, postStats.contains("cluster.base.upstream_cx_destroy"));
+  }
+
+  @Test
+  @SmallTest
+  @Feature({"Cronet"})
+  public void networkChangeWithDrains() throws Exception {
+    // Disable dns refreshment so that the engine will attempt immediate draining.
+    disableDnsRefreshOnNetworkChange = true;
+    drainOnNetworkChange = true;
+    setUp(printEnvoyLogs);
+
+    // Do the initial handshake dance
+    doInitialHttp2Request();
+
+    // Do an HTTP/3 request
+    TestUrlRequestCallback get1Callback = doBasicGetRequest();
+    assertEquals(200, get1Callback.mResponseInfo.getHttpStatusCode());
+    assertEquals("h3", get1Callback.mResponseInfo.getNegotiatedProtocol());
+
+    // There should be one HTTP/3 connection
+    String postStats = cronvoyEngine.getEnvoyEngine().dumpStats();
+    assertTrue(postStats.contains("cluster.base.upstream_cx_http3_total: 1"));
+
+    // Force a network change
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkUnavailable();
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkChanged(2);
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkAvailable();
+
+    // Do another HTTP/3 request
+    TestUrlRequestCallback get2Callback = doBasicGetRequest();
+    assertEquals(200, get2Callback.mResponseInfo.getHttpStatusCode());
+    assertEquals("h3", get2Callback.mResponseInfo.getNegotiatedProtocol());
+
+    // There should be 2 HTTP/3 connections because the 1st HTTP/3 connection which is idle now
+    // should have been drained and closed.
+    postStats = cronvoyEngine.getEnvoyEngine().dumpStats();
+    assertTrue(postStats, postStats.contains("cluster.base.upstream_cx_http3_total: 2"));
+    // The 1st HTTP/3 connection and the TCP connection are both idle now, so they should have been
+    // closed during draining.
+    assertTrue(postStats, postStats.contains("cluster.base.upstream_cx_destroy: 2"));
+  }
+
+  @Test
+  @SmallTest
+  @Feature({"Cronet"})
   public void networkChangeAffectsBrokenness() throws Exception {
+    resetBrokennessOnNetworkChange = true;
     setUp(printEnvoyLogs);
 
     // Set HTTP/3 to be marked as broken.
@@ -285,7 +382,7 @@ public class CronetHttp3Test {
 
     // This should change QUIC brokenness to "failed recently".
     cronvoyEngine.getEnvoyEngine().onDefaultNetworkUnavailable();
-    cronvoyEngine.getEnvoyEngine().onDefaultNetworkChanged(EnvoyNetworkType.WLAN);
+    cronvoyEngine.getEnvoyEngine().onDefaultNetworkChanged(2);
     cronvoyEngine.getEnvoyEngine().onDefaultNetworkAvailable();
 
     // The next request may go out over HTTP/2 or HTTP/3 (depends on who wins the race)

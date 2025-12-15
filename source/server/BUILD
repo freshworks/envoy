@@ -237,6 +237,7 @@ envoy_cc_library(
         "//bazel:linux_x86_64": ["options_impl_platform_linux.cc"],
         "//bazel:linux_aarch64": ["options_impl_platform_linux.cc"],
         "//bazel:linux_ppc": ["options_impl_platform_linux.cc"],
+        "//bazel:linux_s390x": ["options_impl_platform_linux.cc"],
         "//bazel:linux_mips64": ["options_impl_platform_linux.cc"],
         "//conditions:default": ["options_impl_platform_default.cc"],
     }),
@@ -247,6 +248,7 @@ envoy_cc_library(
         "//bazel:linux_x86_64": ["options_impl_platform_linux.h"],
         "//bazel:linux_aarch64": ["options_impl_platform_linux.h"],
         "//bazel:linux_ppc": ["options_impl_platform_linux.h"],
+        "//bazel:linux_s390x": ["options_impl_platform_linux.h"],
         "//bazel:linux_mips64": ["options_impl_platform_linux.h"],
         "//conditions:default": [],
     }),
@@ -318,42 +320,6 @@ envoy_cc_library(
 )
 
 envoy_cc_library(
-    name = "api_listener_lib",
-    srcs = [
-        "api_listener_impl.cc",
-    ],
-    hdrs = [
-        "api_listener_impl.h",
-    ],
-    deps = [
-        ":configuration_lib",
-        ":factory_context_lib",
-        ":transport_socket_config_lib",
-        "//envoy/network:connection_interface",
-        "//envoy/network:listener_interface",
-        "//envoy/server:filter_config_interface",
-        "//envoy/server:instance_interface",
-        "//envoy/server:listener_manager_interface",
-        "//envoy/server:transport_socket_config_interface",
-        "//source/common/common:basic_resource_lib",
-        "//source/common/common:empty_string",
-        "//source/common/config:metadata_lib",
-        "//source/common/config:utility_lib",
-        "//source/common/init:manager_lib",
-        "//source/common/init:target_lib",
-        "//source/common/listener_manager:listener_info_lib",
-        "//source/common/network:utility_lib",
-        "//source/common/stream_info:stream_info_lib",
-        "//source/extensions/filters/network/http_connection_manager:config",
-        "//source/extensions/udp_packet_writer/default:config",
-        "//source/extensions/upstreams/http/generic:config",
-        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
-        "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
-    ],
-    alwayslink = True,
-)
-
-envoy_cc_library(
     name = "factory_context_lib",
     srcs = ["factory_context_impl.cc"],
     hdrs = ["factory_context_impl.h"],
@@ -406,9 +372,8 @@ envoy_cc_library(
     name = "server_base_lib",
     srcs = ["server.cc"],
     hdrs = ["server.h"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
-        ":api_listener_lib",
         ":configuration_lib",
         ":listener_hooks_lib",
         ":listener_manager_factory_lib",
@@ -438,6 +403,7 @@ envoy_cc_library(
         "//source/common/common:perf_tracing_lib",
         "//source/common/common:utility_lib",
         "//source/common/config:utility_lib",
+        "//source/common/config:xds_manager_lib",
         "//source/common/config:xds_resource_lib",
         "//source/common/grpc:async_client_manager_lib",
         "//source/common/grpc:context_lib",
@@ -458,7 +424,6 @@ envoy_cc_library(
         "//source/common/stats:thread_local_store_lib",
         "//source/common/tls:context_lib",
         "//source/common/upstream:cluster_manager_lib",
-        "//source/common/upstream:health_discovery_service_lib",
         "//source/common/version:version_lib",
         "//source/server/admin:admin_lib",
         "@com_google_absl//absl/container:node_hash_map",
@@ -476,6 +441,8 @@ envoy_cc_library(
         ":guarddog_lib",
         ":server_base_lib",
         "//source/common/memory:heap_shrinker_lib",
+        "//source/common/upstream:health_discovery_service_lib",
+        "//source/common/upstream:prod_cluster_info_factory_lib",
         "//source/server:null_overload_manager_lib",
         "//source/server:overload_manager_lib",
     ],
@@ -521,6 +488,7 @@ envoy_cc_library(
     name = "transport_socket_config_lib",
     hdrs = ["transport_socket_config_impl.h"],
     deps = [
+        ":generic_factory_context_lib",
         "//envoy/server:transport_socket_config_interface",
     ],
 )

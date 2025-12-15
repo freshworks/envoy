@@ -83,6 +83,11 @@ public:
                Stats::Scope& scope, SubscriptionCallbacks& callbacks,
                OpaqueResourceDecoderSharedPtr resource_decoder,
                const SubscriptionOptions& options));
+  MOCK_METHOD(absl::StatusOr<SubscriptionPtr>, subscriptionOverAdsGrpcMux,
+              (GrpcMuxSharedPtr & ads_grpc_mux, const envoy::config::core::v3::ConfigSource& config,
+               absl::string_view type_url, Stats::Scope& scope, SubscriptionCallbacks& callbacks,
+               OpaqueResourceDecoderSharedPtr resource_decoder,
+               const SubscriptionOptions& options));
   MOCK_METHOD(absl::StatusOr<SubscriptionPtr>, collectionSubscriptionFromUrl,
               (const xds::core::v3::ResourceLocator& collection_locator,
                const envoy::config::core::v3::ConfigSource& config, absl::string_view type_url,
@@ -133,8 +138,7 @@ public:
 
   MOCK_METHOD(absl::Status, updateMuxSource,
               (Grpc::RawAsyncClientPtr && primary_async_client,
-               Grpc::RawAsyncClientPtr&& failover_async_client,
-               CustomConfigValidatorsPtr&& custom_config_validators, Stats::Scope& scope,
+               Grpc::RawAsyncClientPtr&& failover_async_client, Stats::Scope& scope,
                BackOffStrategyPtr&& backoff_strategy,
                const envoy::config::core::v3::ApiConfigSource& ads_config_source));
 };
@@ -187,10 +191,10 @@ public:
   MOCK_METHOD(const xds::core::v3::ContextParams&, nodeContext, (), (const));
   MOCK_METHOD(const xds::core::v3::ContextParams&, dynamicContext,
               (absl::string_view resource_type_url), (const));
-  MOCK_METHOD(void, setDynamicContextParam,
+  MOCK_METHOD(absl::Status, setDynamicContextParam,
               (absl::string_view resource_type_url, absl::string_view key,
                absl::string_view value));
-  MOCK_METHOD(void, unsetDynamicContextParam,
+  MOCK_METHOD(absl::Status, unsetDynamicContextParam,
               (absl::string_view resource_type_url, absl::string_view key));
   MOCK_METHOD(Common::CallbackHandlePtr, addDynamicContextUpdateCallback,
               (UpdateNotificationCb callback), (const));

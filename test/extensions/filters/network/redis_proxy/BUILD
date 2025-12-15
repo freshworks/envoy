@@ -18,7 +18,7 @@ envoy_extension_cc_test(
     name = "command_splitter_impl_test",
     srcs = ["command_splitter_impl_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "4core",
     deps = [
         ":redis_mocks",
         "//source/common/stats:isolated_store_lib",
@@ -40,7 +40,7 @@ envoy_extension_cc_test(
     name = "conn_pool_impl_test",
     srcs = ["conn_pool_impl_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         ":redis_mocks",
         "//source/common/event:dispatcher_lib",
@@ -75,7 +75,7 @@ envoy_extension_cc_test(
     name = "proxy_filter_test",
     srcs = ["proxy_filter_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         ":redis_mocks",
         "//source/common/event:dispatcher_lib",
@@ -95,13 +95,32 @@ envoy_extension_cc_test(
     name = "external_auth_test",
     srcs = ["external_auth_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         ":redis_mocks",
         "//source/extensions/filters/network/redis_proxy:external_auth_lib",
         "//test/mocks/grpc:grpc_mocks",
         "//test/mocks/tracing:tracing_mocks",
         "@envoy_api//envoy/service/redis_auth/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_extension_cc_test(
+    name = "aws_iam_auth_test",
+    srcs = ["aws_iam_auth_test.cc"],
+    extension_names = ["envoy.filters.network.redis_proxy"],
+    rbe_pool = "6gig",
+    deps = [
+        ":redis_mocks",
+        "//source/extensions/filters/network/common/redis:aws_iam_authenticator_lib",
+        "//source/extensions/filters/network/common/redis:client_interface",
+        "//source/extensions/filters/network/common/redis:client_lib",
+        "//source/extensions/filters/network/common/redis:redis_command_stats_lib",
+        "//test/extensions/common/aws:aws_mocks",
+        "//test/extensions/filters/network/common/redis:redis_mocks",
+        "//test/extensions/filters/network/common/redis:test_utils_lib",
+        "//test/mocks/server:server_factory_context_mocks",
+        "@envoy_api//envoy/extensions/filters/network/redis_proxy/v3:pkg_cc_proto",
     ],
 )
 
@@ -128,7 +147,7 @@ envoy_extension_cc_test(
     name = "config_test",
     srcs = ["config_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         "//source/common/protobuf:utility_lib",
         "//source/extensions/filters/network/redis_proxy:config",
@@ -141,7 +160,7 @@ envoy_extension_cc_benchmark_binary(
     name = "command_lookup_speed_test",
     srcs = ["command_lookup_speed_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         ":redis_mocks",
         "//source/common/stats:isolated_store_lib",
@@ -165,7 +184,7 @@ envoy_extension_cc_test(
     name = "router_impl_test",
     srcs = ["router_impl_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         ":redis_mocks",
         "//source/common/formatter:formatter_extension_lib",
@@ -186,7 +205,7 @@ envoy_extension_cc_test(
     size = "large",
     srcs = ["redis_proxy_integration_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         "//source/extensions/filters/network/common/redis:fault_lib",
         "//source/extensions/filters/network/redis_proxy:config",
@@ -199,7 +218,7 @@ envoy_extension_cc_benchmark_binary(
     name = "command_split_speed_test",
     srcs = ["command_split_speed_test.cc"],
     extension_names = ["envoy.filters.network.redis_proxy"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         ":redis_mocks",
         "//source/common/stats:isolated_store_lib",

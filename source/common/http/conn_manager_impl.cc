@@ -11,6 +11,7 @@
 
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/time.h"
+#include "envoy/config/core/v3/base.pb.h"
 #include "envoy/event/dispatcher.h"
 #include "envoy/event/scaled_range_timer_manager.h"
 #include "envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.pb.h"
@@ -98,14 +99,12 @@ ConnectionManagerImpl::generateListenerStats(const std::string& prefix, Stats::S
   return {CONN_MAN_LISTENER_STATS(POOL_COUNTER_PREFIX(scope, prefix))};
 }
 
-ConnectionManagerImpl::ConnectionManagerImpl(ConnectionManagerConfigSharedPtr config,
-                                             const Network::DrainDecision& drain_close,
-                                             Random::RandomGenerator& random_generator,
-                                             Http::Context& http_context, Runtime::Loader& runtime,
-                                             const LocalInfo::LocalInfo& local_info,
-                                             Upstream::ClusterManager& cluster_manager,
-                                             Server::OverloadManager& overload_manager,
-                                             TimeSource& time_source)
+ConnectionManagerImpl::ConnectionManagerImpl(
+    ConnectionManagerConfigSharedPtr config, const Network::DrainDecision& drain_close,
+    Random::RandomGenerator& random_generator, Http::Context& http_context,
+    Runtime::Loader& runtime, const LocalInfo::LocalInfo& local_info,
+    Upstream::ClusterManager& cluster_manager, Server::OverloadManager& overload_manager,
+    TimeSource& time_source, envoy::config::core::v3::TrafficDirection direction)
     : config_(std::move(config)), stats_(config_->stats()),
       conn_length_(new Stats::HistogramCompletableTimespanImpl(
           stats_.named_.downstream_cx_length_ms_, time_source)),
@@ -128,6 +127,7 @@ ConnectionManagerImpl::ConnectionManagerImpl(ConnectionManagerConfigSharedPtr co
                                      /*proxy_status_config=*/config_->proxyStatusConfig())),
       max_requests_during_dispatch_(
           runtime_.snapshot().getInteger(ConnectionManagerImpl::MaxRequestsPerIoCycle, UINT32_MAX)),
+      direction_(direction),
       allow_upstream_half_close_(Runtime::runtimeFeatureEnabled(
           "envoy.reloadable_features.allow_multiplexed_upstream_half_close")) {
   ENVOY_LOG_ONCE_IF(
@@ -185,7 +185,8 @@ void ConnectionManagerImpl::initializeReadFilterCallbacks(Network::ReadFilterCal
 
   if (config_->maxConnectionDuration()) {
     connection_duration_timer_ =
-        dispatcher_->createTimer([this]() -> void { onConnectionDurationTimeout(); });
+        dispatcher_->createScaledTimer(Event::ScaledTimerType::HttpDownstreamMaxConnectionTimeout,
+                                       [this]() -> void { onConnectionDurationTimeout(); });
     connection_duration_timer_->enableTimer(config_->maxConnectionDuration().value());
   }
 
@@ -756,6 +757,18 @@ void ConnectionManagerImpl::onDrainTimeout() {
   checkForDeferredClose(false);
 }
 
+void ConnectionManagerImpl::sendGoAwayAndClose() {
+  ENVOY_CONN_LOG(trace, "connection manager sendGoAwayAndClose was triggerred from filters.",
+                 read_callbacks_->connection());
+  if (go_away_sent_) {
+    return;
+  }
+  codec_->goAway();
+  go_away_sent_ = true;
+  doConnectionClose(Network::ConnectionCloseType::FlushWriteAndDelay, absl::nullopt,
+                    "forced_goaway");
+}
+
 void ConnectionManagerImpl::chargeTracingStats(const Tracing::Reason& tracing_reason,
                                                ConnectionManagerTracingStats& tracing_stats) {
   switch (tracing_reason) {
@@ -920,21 +933,10 @@ void ConnectionManagerImpl::ActiveStream::log(AccessLog::AccessLogType type) {
       request_headers_.get(), response_headers_.get(), response_trailers_.get(), {}, type,
       active_span_.get()};
 
-  const bool filter_access_loggers_first =
-      Runtime::runtimeFeatureEnabled("envoy.reloadable_features.filter_access_loggers_first");
-
-  if (!filter_access_loggers_first) {
-    for (const auto& access_logger : connection_manager_.config_->accessLogs()) {
-      access_logger->log(log_context, filter_manager_.streamInfo());
-    }
-  }
-
   filter_manager_.log(log_context);
 
-  if (filter_access_loggers_first) {
-    for (const auto& access_logger : connection_manager_.config_->accessLogs()) {
-      access_logger->log(log_context, filter_manager_.streamInfo());
-    }
+  for (const auto& access_logger : connection_manager_.config_->accessLogs()) {
+    access_logger->log(log_context, filter_manager_.streamInfo());
   }
 }
 
@@ -1004,7 +1006,7 @@ void ConnectionManagerImpl::ActiveStream::chargeStats(const ResponseHeaderMap& h
   uint64_t response_code = Utility::getResponseStatus(headers);
   filter_manager_.streamInfo().setResponseCode(response_code);
 
-  if (filter_manager_.streamInfo().health_check_request_) {
+  if (filter_manager_.streamInfo().healthCheck()) {
     return;
   }
 
@@ -1386,8 +1388,13 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapSharedPt
   }
 
   filter_manager_.streamInfo().setRequestHeaders(*request_headers_);
-
-  const bool upgrade_rejected = filter_manager_.createFilterChain() == false;
+  const FilterManager::CreateChainResult create_chain_result =
+      filter_manager_.createDownstreamFilterChain();
+  if (create_chain_result.upgradeAccepted()) {
+    connection_manager_.stats_.named_.downstream_cx_upgrades_total_.inc();
+    connection_manager_.stats_.named_.downstream_cx_upgrades_active_.inc();
+    state_.successful_upgrade_ = true;
+  }
 
   if (connection_manager_.config_->flushAccessLogOnNewRequest()) {
     log(AccessLog::AccessLogType::DownstreamStart);
@@ -1397,7 +1404,7 @@ void ConnectionManagerImpl::ActiveStream::decodeHeaders(RequestHeaderMapSharedPt
   // should return 404. The current returns no response if there is no router filter.
   if (hasCachedRoute()) {
     // Do not allow upgrades if the route does not support it.
-    if (upgrade_rejected) {
+    if (create_chain_result.upgradeRejected()) {
       // While downstream servers should not send upgrade payload without the upgrade being
       // accepted, err on the side of caution and refuse to process any further requests on this
       // connection, to avoid a class of HTTP/1.1 smuggling bugs where Upgrade or CONNECT payload
@@ -1570,12 +1577,13 @@ void ConnectionManagerImpl::ActiveStream::snapScopedRouteConfig() {
 void ConnectionManagerImpl::ActiveStream::refreshCachedRoute() { refreshCachedRoute(nullptr); }
 
 void ConnectionManagerImpl::ActiveStream::refreshDurationTimeout() {
-  if (!filter_manager_.streamInfo().route() ||
-      !filter_manager_.streamInfo().route()->routeEntry() || !request_headers_) {
+  if (!hasCachedRoute() || !request_headers_) {
     return;
   }
-  const auto& route = filter_manager_.streamInfo().route()->routeEntry();
-
+  const Router::RouteEntry* route = cached_route_.value()->routeEntry();
+  if (route == nullptr) {
+    return;
+  }
   auto grpc_timeout = Grpc::Common::getGrpcTimeout(*request_headers_);
   std::chrono::milliseconds timeout;
   bool disable_timer = false;
@@ -1663,7 +1671,7 @@ void ConnectionManagerImpl::ActiveStream::refreshCachedRoute(const Router::Route
     return;
   }
 
-  Router::RouteConstSharedPtr route;
+  Router::VirtualHostRoute route_result;
   if (request_headers_ != nullptr) {
     if (connection_manager_.config_->isRoutable() &&
         connection_manager_.config_->scopedRouteConfigProvider() != nullptr &&
@@ -1672,12 +1680,12 @@ void ConnectionManagerImpl::ActiveStream::refreshCachedRoute(const Router::Route
       snapScopedRouteConfig();
     }
     if (snapped_route_config_ != nullptr) {
-      route = snapped_route_config_->route(cb, *request_headers_, filter_manager_.streamInfo(),
-                                           stream_id_);
+      route_result = snapped_route_config_->route(cb, *request_headers_,
+                                                  filter_manager_.streamInfo(), stream_id_);
     }
   }
 
-  setRoute(route);
+  setVirtualHostRoute(std::move(route_result));
 }
 
 void ConnectionManagerImpl::ActiveStream::refreshCachedTracingCustomTags() {
@@ -1781,10 +1789,19 @@ void ConnectionManagerImpl::ActiveStream::encodeHeaders(ResponseHeaderMap& heade
     connection_manager_.stats_.named_.downstream_cx_overload_disable_keepalive_.inc();
   }
 
+  // If we're an inbound listener, then we should drain even if the drain direction is inbound only.
+  // If not, then we only drain if the drain direction is all.
+  Network::DrainDirection drain_scope =
+      connection_manager_.direction_ == envoy::config::core::v3::TrafficDirection::INBOUND
+          ? Network::DrainDirection::InboundOnly
+          : Network::DrainDirection::All;
+
   // See if we want to drain/close the connection. Send the go away frame prior to encoding the
-  // header block.
+  // header block. Only drain if the drain direction is not inbound only or the connection is
+  // inbound.
   if (connection_manager_.drain_state_ == DrainState::NotDraining &&
-      (connection_manager_.drain_close_.drainClose() || drain_connection_due_to_overload)) {
+      (connection_manager_.drain_close_.drainClose(drain_scope) ||
+       drain_connection_due_to_overload)) {
 
     // This doesn't really do anything for HTTP/1.1 other then give the connection another boost
     // of time to race with incoming requests. For HTTP/2 connections, send a GOAWAY frame to
@@ -2086,6 +2103,15 @@ ConnectionManagerImpl::ActiveStream::route(const Router::RouteCallback& cb) {
   return cached_route_.value();
 }
 
+void ConnectionManagerImpl::ActiveStream::setRoute(Router::RouteConstSharedPtr route) {
+  Router::VirtualHostRoute vhost_route;
+  if (route != nullptr) {
+    vhost_route.vhost = route->virtualHost();
+    vhost_route.route = std::move(route);
+  }
+  setVirtualHostRoute(std::move(vhost_route));
+}
+
 /**
  * Sets the cached route to the RouteConstSharedPtr argument passed in. Handles setting the
  * cached_route_/cached_cluster_info_ ActiveStream attributes, the FilterManager streamInfo, tracing
@@ -2094,14 +2120,15 @@ ConnectionManagerImpl::ActiveStream::route(const Router::RouteCallback& cb) {
  * Declared as a StreamFilterCallbacks member function for filters to call directly, but also
  * functions as a helper to refreshCachedRoute(const Router::RouteCallback& cb).
  */
-void ConnectionManagerImpl::ActiveStream::setRoute(Router::RouteConstSharedPtr route) {
+void ConnectionManagerImpl::ActiveStream::setVirtualHostRoute(
+    Router::VirtualHostRoute vhost_route) {
   // If the cached route is blocked then any attempt to clear it or refresh it
   // will be ignored.
-  // setRoute() may be called directly by the interface of DownstreamStreamFilterCallbacks,
-  // so check for routeCacheBlocked() here again.
   if (routeCacheBlocked()) {
     return;
   }
+
+  Router::RouteConstSharedPtr route = std::move(vhost_route.route);
 
   // Update the cached route.
   setCachedRoute({route});
@@ -2114,8 +2141,10 @@ void ConnectionManagerImpl::ActiveStream::setRoute(Router::RouteConstSharedPtr r
     cached_cluster_info_ = (nullptr == cluster) ? nullptr : cluster->info();
   }
 
-  // Update route and cluster info in the filter manager's stream info.
-  filter_manager_.streamInfo().route_ = std::move(route); // Now can move route here safely.
+  // Update route, vhost and cluster info in the filter manager's stream info.
+  // Now can move route here safely.
+  filter_manager_.streamInfo().route_ = std::move(route);
+  filter_manager_.streamInfo().vhost_ = std::move(vhost_route.vhost);
   filter_manager_.streamInfo().setUpstreamClusterInfo(cached_cluster_info_.value());
 
   refreshCachedTracingCustomTags();
@@ -2165,6 +2194,27 @@ void ConnectionManagerImpl::ActiveStream::clearRouteCache() {
   cached_cluster_info_ = absl::optional<Upstream::ClusterInfoConstSharedPtr>();
   if (tracing_custom_tags_) {
     tracing_custom_tags_->clear();
+  }
+}
+
+void ConnectionManagerImpl::ActiveStream::refreshRouteCluster() {
+  // If there is no cached route, or route cache is frozen, or the request headers are not
+  // available, then do not refresh the route cluster.
+  if (!hasCachedRoute() || routeCacheBlocked() || request_headers_ == nullptr) {
+    return;
+  }
+  if (const auto* entry = (*cached_route_)->routeEntry(); entry != nullptr) {
+    // Refresh the cluster if possible.
+    entry->refreshRouteCluster(*request_headers_, filter_manager_.streamInfo());
+
+    // Refresh the cached cluster info is necessary.
+    if (!cached_cluster_info_.has_value() || cached_cluster_info_.value() == nullptr ||
+        (*cached_cluster_info_)->name() != entry->clusterName()) {
+      auto* cluster =
+          connection_manager_.cluster_manager_.getThreadLocalCluster(entry->clusterName());
+      cached_cluster_info_ = (nullptr == cluster) ? nullptr : cluster->info();
+      filter_manager_.streamInfo().setUpstreamClusterInfo(cached_cluster_info_.value());
+    }
   }
 }
 

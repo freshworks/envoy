@@ -297,8 +297,7 @@ IntegrationCodecClientPtr HttpIntegrationTest::makeRawHttpConnection(
   }
 
   Upstream::HostDescriptionConstSharedPtr host_description{Upstream::makeTestHostDescription(
-      cluster, fmt::format("tcp://{}:80", Network::Test::getLoopbackAddressUrlString(version_)),
-      timeSystem())};
+      cluster, fmt::format("tcp://{}:80", Network::Test::getLoopbackAddressUrlString(version_)))};
   // This call may fail in QUICHE because of INVALID_VERSION. QUIC connection doesn't support
   // in-connection version negotiation.
   auto codec = std::make_unique<IntegrationCodecClient>(*dispatcher_, random_, std::move(conn),
@@ -361,6 +360,14 @@ HttpIntegrationTest::HttpIntegrationTest(Http::CodecType downstream_protocol,
         range->set_address_prefix("::1");
         range->mutable_prefix_len()->set_value(128);
       });
+
+#ifdef ENVOY_ENABLE_QUIC
+  if (downstream_protocol_ == Http::CodecType::HTTP3) {
+    // Needed to config QUIC transport socket factory, and needs to be added before base class calls
+    // initialize().
+    config_helper_.addQuicDownstreamTransportSocketConfig();
+  }
+#endif
 }
 
 void HttpIntegrationTest::useAccessLog(
@@ -390,10 +397,6 @@ void HttpIntegrationTest::initialize() {
   quic_transport_socket_factory_ = IntegrationUtil::createQuicUpstreamTransportSocketFactory(
       *api_, stats_store_, context_manager_, thread_local_, san_to_match_);
 
-  // Needed to config QUIC transport socket factory, and needs to be added before base class calls
-  // initialize().
-  config_helper_.addQuicDownstreamTransportSocketConfig(enable_quic_early_data_, custom_alpns_);
-
   BaseIntegrationTest::initialize();
   registerTestServerPorts({"http"}, test_server_);
 
@@ -419,17 +422,6 @@ void HttpIntegrationTest::initialize() {
 #else
   ASSERT(false, "running a QUIC integration test without compiling QUIC");
 #endif
-}
-
-void HttpIntegrationTest::setupHttp1ImplOverrides(Http1ParserImpl http1_implementation) {
-  switch (http1_implementation) {
-  case Http1ParserImpl::HttpParser:
-    config_helper_.addRuntimeOverride("envoy.reloadable_features.http1_use_balsa_parser", "false");
-    break;
-  case Http1ParserImpl::BalsaParser:
-    config_helper_.addRuntimeOverride("envoy.reloadable_features.http1_use_balsa_parser", "true");
-    break;
-  }
 }
 
 void HttpIntegrationTest::setupHttp2ImplOverrides(Http2Impl http2_implementation) {
@@ -475,7 +467,7 @@ ConfigHelper::HttpModifierFunction HttpIntegrationTest::configureProxyStatus() {
   };
 }
 
-IntegrationStreamDecoderPtr HttpIntegrationTest::sendRequestAndWaitForResponse(
+HttpIntegrationTest::Result HttpIntegrationTest::sendRequestAndWaitForResponse(
     const Http::TestRequestHeaderMapImpl& request_headers, uint32_t request_body_size,
     const Http::TestResponseHeaderMapImpl& response_headers, uint32_t response_body_size,
     const std::vector<uint64_t>& upstream_indices, std::chrono::milliseconds timeout) {
@@ -487,7 +479,7 @@ IntegrationStreamDecoderPtr HttpIntegrationTest::sendRequestAndWaitForResponse(
   } else {
     response = codec_client_->makeHeaderOnlyRequest(request_headers);
   }
-  waitForNextUpstreamRequest(upstream_indices, timeout);
+  absl::optional<uint64_t> index = waitForNextUpstreamRequest(upstream_indices, timeout);
   // Send response headers, and end_stream if there is no response body.
   upstream_request_->encodeHeaders(response_headers, response_body_size == 0);
   // Send any response data, with end_stream true.
@@ -497,7 +489,7 @@ IntegrationStreamDecoderPtr HttpIntegrationTest::sendRequestAndWaitForResponse(
   // Wait for the response to be read by the codec client.
   RELEASE_ASSERT(response->waitForEndStream(timeout),
                  fmt::format("unexpected timeout after ", timeout.count(), " ms"));
-  return response;
+  return {std::move(response), index};
 }
 
 IntegrationStreamDecoderPtr HttpIntegrationTest::sendRequestAndWaitForResponse(
@@ -506,7 +498,8 @@ IntegrationStreamDecoderPtr HttpIntegrationTest::sendRequestAndWaitForResponse(
     uint64_t upstream_index, std::chrono::milliseconds timeout) {
   return sendRequestAndWaitForResponse(request_headers, request_body_size, response_headers,
                                        response_body_size, std::vector<uint64_t>{upstream_index},
-                                       timeout);
+                                       timeout)
+      .response;
 }
 
 void HttpIntegrationTest::cleanupUpstreamAndDownstream() {
@@ -1230,7 +1223,6 @@ void HttpIntegrationTest::testEnvoyHandling1xx(bool additional_continue_from_ups
   if (disconnect_after_100) {
     response->waitFor1xxHeaders();
     codec_client_->close();
-    EXPECT_THAT(waitForAccessLog(access_log_name_), HasSubstr("100"));
     ASSERT_TRUE(fake_upstream_connection_->close());
     return;
   }

@@ -12,7 +12,7 @@
 
 #include "test/config/utility.h"
 #include "test/integration/server.h"
-#include "test/mocks/server/transport_socket_factory_context.h"
+#include "test/mocks/server/server_factory_context.h"
 #include "test/test_common/environment.h"
 #include "test/test_common/network_utility.h"
 
@@ -92,6 +92,9 @@ void initializeUpstreamTlsContextConfig(
   for (const std::string& algorithm : options.sigalgs_) {
     common_context->mutable_tls_params()->add_signature_algorithms(algorithm);
   }
+  for (const std::string& curve : options.curves_) {
+    common_context->mutable_tls_params()->add_ecdh_curves(curve);
+  }
   if (!options.sni_.empty()) {
     tls_context.set_sni(options.sni_);
   }
@@ -141,7 +144,8 @@ createUpstreamSslContext(ContextManager& context_manager, Api::Api& api, bool us
   quic_config.mutable_downstream_tls_context()->MergeFrom(tls_context);
   ON_CALL(mock_factory_ctx, statsScope())
       .WillByDefault(ReturnRef(*upstream_stats_store->rootScope()));
-  ON_CALL(mock_factory_ctx, sslContextManager()).WillByDefault(ReturnRef(context_manager));
+  ON_CALL(mock_factory_ctx.server_context_, sslContextManager())
+      .WillByDefault(ReturnRef(context_manager));
 
   std::vector<std::string> server_names;
   auto& config_factory = Config::Utility::getAndCheckFactoryByName<

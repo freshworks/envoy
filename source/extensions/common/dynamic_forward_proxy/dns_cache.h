@@ -50,8 +50,13 @@ public:
   /**
    * Returns the host's currently resolved address. These addresses may change periodically due to
    * async re-resolution.
+   *
+   * If `filtered` is true and the runtime guard
+   * `envoy.reloadable_features.dns_cache_filter_unusable_ip_version` is true, return a filtered
+   * list where the IP addresses of IP families unsupported on the current network are removed.
    */
-  virtual std::vector<Network::Address::InstanceConstSharedPtr> addressList() const PURE;
+  virtual std::vector<Network::Address::InstanceConstSharedPtr>
+  addressList(bool filtered) const PURE;
 
   /**
    * Returns the host that was actually resolved via DNS. If port was originally specified it will
@@ -75,6 +80,11 @@ public:
    * This includes both success and failure details.
    */
   virtual std::string details() PURE;
+
+  /**
+   * Returns the resolution status.
+   */
+  virtual Network::DnsResolver::ResolutionStatus resolutionStatus() const PURE;
 };
 
 using DnsHostInfoSharedPtr = std::shared_ptr<DnsHostInfo>;
@@ -148,9 +158,10 @@ public:
      * Called when a host has been added or has had its address updated.
      * @param host supplies the added/updated host.
      * @param host_info supplies the associated host info.
+     * @param return supplies if the host was successfully added
      */
-    virtual void onDnsHostAddOrUpdate(const std::string& host,
-                                      const DnsHostInfoSharedPtr& host_info) PURE;
+    virtual absl::Status onDnsHostAddOrUpdate(const std::string& host,
+                                              const DnsHostInfoSharedPtr& host_info) PURE;
 
     /**
      * Called when a host has been removed.
@@ -275,6 +286,11 @@ public:
    * addresses.
    */
   virtual void setIpVersionToRemove(absl::optional<Network::Address::IpVersion> ip_version) PURE;
+
+  /**
+   * Gets the `IpVersion` addresses to be removed from the DNS response.
+   */
+  virtual absl::optional<Network::Address::IpVersion> getIpVersionToRemove() PURE;
 
   /**
    * Stops the DNS cache background tasks by canceling the pending queries and stopping the timeout

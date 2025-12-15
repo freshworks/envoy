@@ -1,6 +1,5 @@
 package io.envoyproxy.envoymobile
 
-import android.util.Pair
 import io.envoyproxy.envoymobile.engine.EnvoyConfiguration
 import io.envoyproxy.envoymobile.engine.EnvoyConfiguration.TrustChainVerification
 import io.envoyproxy.envoymobile.engine.EnvoyEngine
@@ -22,11 +21,14 @@ open class EngineBuilder() {
     EnvoyEngineImpl(
       onEngineRunning,
       { level, msg -> logger?.let { it(LogLevel.from(level), msg) } },
-      eventTracker
+      eventTracker,
+      disableDnsRefreshOnNetworkChange
     )
   }
   private var logLevel = LogLevel.INFO
-  private var connectTimeoutSeconds = 30
+  private var connectTimeoutSeconds = 10
+  private var disableDnsRefreshOnFailure = false
+  private var disableDnsRefreshOnNetworkChange = false
   private var dnsRefreshSeconds = 60
   private var dnsFailureRefreshSecondsBase = 2
   private var dnsFailureRefreshSecondsMax = 10
@@ -39,10 +41,6 @@ open class EngineBuilder() {
   private var dnsNumRetries: Int? = null
   private var enableDrainPostDnsRefresh = false
   internal var enableHttp3 = true
-  internal var useCares = false
-  internal var caresFallbackResolvers = mutableListOf<Pair<String, Int>>()
-  internal var forceV6 = true
-  private var useGro = false
   private var http3ConnectionOptions = ""
   private var http3ClientConnectionOptions = ""
   private var quicHints = mutableMapOf<String, Int>()
@@ -66,6 +64,7 @@ open class EngineBuilder() {
   private var keyValueStores = mutableMapOf<String, EnvoyKeyValueStore>()
   private var enablePlatformCertificatesValidation = false
   private var upstreamTlsSni: String = ""
+  private var h3ConnectionKeepaliveInitialIntervalMilliseconds = 0
 
   /**
    * Sets a log level to use with Envoy.
@@ -86,6 +85,20 @@ open class EngineBuilder() {
    */
   fun addConnectTimeoutSeconds(connectTimeoutSeconds: Int): EngineBuilder {
     this.connectTimeoutSeconds = connectTimeoutSeconds
+    return this
+  }
+
+  /** Disables DNS refresh on failure. */
+  fun setDisableDnsRefreshOnFailure(disableDnsRefreshOnFailure: Boolean): EngineBuilder {
+    this.disableDnsRefreshOnFailure = disableDnsRefreshOnFailure
+    return this
+  }
+
+  /** Disables DNS refresh on network change. */
+  fun setDisableDnsRefreshOnNetworkChange(
+    disableDnsRefreshOnNetworkChange: Boolean
+  ): EngineBuilder {
+    this.disableDnsRefreshOnNetworkChange = disableDnsRefreshOnNetworkChange
     return this
   }
 
@@ -207,52 +220,6 @@ open class EngineBuilder() {
    */
   fun enableHttp3(enableHttp3: Boolean): EngineBuilder {
     this.enableHttp3 = enableHttp3
-    return this
-  }
-
-  /**
-   * Specify whether to use c_ares for dns resolution. Defaults to false.
-   *
-   * @param useCares whether or not to use c_ares
-   * @return This builder.
-   */
-  fun useCares(useCares: Boolean): EngineBuilder {
-    this.useCares = useCares
-    return this
-  }
-
-  /**
-   * Add fallback resolver to c_ares.
-   *
-   * @param host ip address string
-   * @param port port for the resolver
-   * @return This builder.
-   */
-  fun addCaresFallbackResolver(host: String, port: Int): EngineBuilder {
-    this.caresFallbackResolvers.add(Pair(host, port))
-    return this
-  }
-
-  /**
-   * Specify whether local ipv4 addresses should be mapped to ipv6. Defaults to true.
-   *
-   * @param forceV6 whether or not to translate v4 to v6.
-   * @return This builder.
-   */
-  fun forceV6(forceV6: Boolean): EngineBuilder {
-    this.forceV6 = forceV6
-    return this
-  }
-
-  /**
-   * Specify whether to use UDP GRO for upstream QUIC/HTTP3 sockets, if GRO is available on the
-   * system.
-   *
-   * @param useGro whether or not to use UDP GRO
-   * @return This builder.
-   */
-  fun useGro(useGro: Boolean): EngineBuilder {
-    this.useGro = useGro
     return this
   }
 
@@ -549,6 +516,11 @@ open class EngineBuilder() {
     return this
   }
 
+  fun addH3ConnectionKeepaliveInitialIntervalMilliseconds(interval: Int): EngineBuilder {
+    this.h3ConnectionKeepaliveInitialIntervalMilliseconds = interval
+    return this
+  }
+
   /**
    * Builds and runs a new Engine instance with the provided configuration.
    *
@@ -559,6 +531,8 @@ open class EngineBuilder() {
     val engineConfiguration =
       EnvoyConfiguration(
         connectTimeoutSeconds,
+        disableDnsRefreshOnFailure,
+        disableDnsRefreshOnNetworkChange,
         dnsRefreshSeconds,
         dnsFailureRefreshSecondsBase,
         dnsFailureRefreshSecondsMax,
@@ -570,9 +544,6 @@ open class EngineBuilder() {
         dnsNumRetries ?: -1,
         enableDrainPostDnsRefresh,
         enableHttp3,
-        useCares,
-        forceV6,
-        useGro,
         http3ConnectionOptions,
         http3ClientConnectionOptions,
         quicHints,
@@ -597,7 +568,7 @@ open class EngineBuilder() {
         runtimeGuards,
         enablePlatformCertificatesValidation,
         upstreamTlsSni,
-        caresFallbackResolvers,
+        h3ConnectionKeepaliveInitialIntervalMilliseconds,
       )
 
     return EngineImpl(engineType(), engineConfiguration, logLevel)

@@ -1,14 +1,50 @@
 **Summary of changes**:
 
-* Envoy now logs warnings when `internal_address_config` is not set.  If you see this logged warning and wish to retain trusted status for internal addresses you must explicitly configure `internal_address_config` (which will turn off the warning) before the next Envoy release.
-* Removed support for (long deprecated) opentracing. 
-* Added a configuration setting for the maximum size of response headers in responses.
-* Added support for `connection_pool_per_downstream_connection` flag in tcp connection pool.
-* For the strict DNS and logical DNS cluster types, the `dns_jitter` field allows spreading out DNS refresh requests
-* Added dynamic metadata matcher support `dynamic metadata input` and `dynamic metadata input matcher`.
-* The xff original IP detection method now supports using a list of trusted CIDRs when parsing `x-forwarded-for`.
-* QUIC server and client support certificate compression, which can in some cases reduce the number of round trips required to setup a connection.
-* Added the ability to monitor CPU utilization in Linux based systems via `cpu utilization monitor` in overload manager.
-* Added new access log command operators (`%START_TIME_LOCAL%` and `%EMIT_TIME_LOCAL%`) formatters (`%UPSTREAM_CLUSTER_RAW%` `%DOWNSTREAM_PEER_CHAIN_FINGERPRINTS_256%`, and `%DOWNSTREAM_PEER_CHAIN_SERIALS%`) as well as significant boosts to json parsing.  See release notes for details
-* Added support for `%BYTES_RECEIVED%`, `%BYTES_SENT%`, `%UPSTREAM_HEADER_BYTES_SENT%`, `%UPSTREAM_HEADER_BYTES_RECEIVED%`, `%UPSTREAM_WIRE_BYTES_SENT%`, `%UPSTREAM_WIRE_BYTES_RECEIVED%` and access log substitution strings for UDP tunneling flows.
-* Added ECDS support for UDP session filters.
+* Security:
+  - Fixed TLS inspector handling of client hello messages larger than 16KB.
+  - Fixed bug where empty trusted CA files were accepted, causing validation of any certificate chain.
+
+* Build:
+  - **Major**: Upgraded to C++20, enabling modern C++ features throughout the codebase.
+  - Consolidated clang/gcc toolchains using ``--config=clang`` or ``--config=gcc``.
+  - **Breaking**: Removed ``grpc_credentials/aws_iam`` extension and contrib squash filter.
+
+* HTTP:
+  - Added ``x-envoy-original-host`` header to record original host values before mutation.
+  - Added HTTP/3 pseudo header validation (disable via ``envoy.restart_features.validate_http3_pseudo_headers``).
+  - Fixed HTTP/1 parser to properly handle newlines between requests per RFC 9112.
+  - Added request/response trailer mutations support in header mutation filter.
+
+* Load balancing:
+  - Added override host load balancing policy.
+  - Added hash policy configuration directly to ring hash and maglev load balancers.
+  - Added matcher-based cluster specifier plugin for dynamic cluster selection.
+
+* External processing:
+  - Added ``FULL_DUPLEX_STREAMED`` body mode for bidirectional streaming.
+  - Implemented graceful gRPC side stream closing with timeout.
+  - Added per-route ``failure_mode_allow`` override support.
+
+* Authentication:
+  - Added OAuth2 token encryption, configurable token expiration, and OIDC logout support.
+  - Added API key auth filter with forwarding configuration.
+  - Added AWS IAM Roles Anywhere support.
+
+* Observability:
+  - Added TLS certificate expiration metrics.
+  - Enhanced transport tap with streaming trace capability.
+  - Added JA4 fingerprinting to TLS inspector.
+  - Added TCP tunneling access log substitution strings.
+
+* New features:
+  - Dynamic modules: Added support for ``LocalityLbEndpoints`` metadata and SSL connection info attributes.
+  - Stateful session cookie attributes and envelope mode support.
+  - Redis proxy AWS IAM authentication and ``scan``/``info`` command support.
+  - Lua filter access to filter context and typed metadata.
+  - ``ServerNameMatcher`` for trie-based domain matching.
+
+* Notable fixes:
+  - Fixed Wasm hang after VM crash in request callbacks.
+  - Fixed Lua filter crash when removing status header.
+  - Fixed connection pool capacity calculation issues.
+  - Improved TCP proxy retry logic to avoid connection issues.

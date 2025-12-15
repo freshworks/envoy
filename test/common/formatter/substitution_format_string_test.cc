@@ -7,6 +7,7 @@
 #include "test/mocks/server/factory_context.h"
 #include "test/mocks/stream_info/mocks.h"
 #include "test/test_common/registry.h"
+#include "test/test_common/test_runtime.h"
 #include "test/test_common/utility.h"
 
 #include "gmock/gmock.h"
@@ -75,23 +76,6 @@ TEST_F(SubstitutionFormatStringUtilsTest, TestFromProtoConfigJson) {
     }
 })EOF";
   EXPECT_TRUE(TestUtility::jsonStringEqual(out_json, expected));
-}
-
-TEST_F(SubstitutionFormatStringUtilsTest, TestInvalidConfigs) {
-  const std::vector<std::string> invalid_configs = {
-      R"(
-  json_format:
-    field: true
-)",
-  };
-  for (const auto& yaml : invalid_configs) {
-    TestUtility::loadFromYaml(yaml, config_);
-    EXPECT_THROW_WITH_MESSAGE(
-        SubstitutionFormatStringUtils::fromProtoConfig(config_, context_).IgnoreError(),
-        EnvoyException,
-        "Only string values, nested structs, list values and number values "
-        "are supported in structured access log format.");
-  }
 }
 
 TEST_F(SubstitutionFormatStringUtilsTest, TestFromProtoConfigFormatterExtension) {

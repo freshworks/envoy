@@ -10,9 +10,13 @@ envoy_package()
 
 envoy_cc_library(
     name = "connection_interface",
-    hdrs = ["connection.h"],
+    hdrs = [
+        "connection.h",
+        "parsed_x509_name.h",
+    ],
     deps = [
         ":ssl_socket_state",
+        "//envoy/common:optref_lib",
         "//envoy/common:time_interface",
         "@com_google_absl//absl/types:optional",
     ],
@@ -35,6 +39,7 @@ envoy_cc_library(
         ":handshaker_interface",
         ":tls_certificate_config_interface",
         "//source/common/network:cidr_range_interface",
+        "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
     ],
 )
 

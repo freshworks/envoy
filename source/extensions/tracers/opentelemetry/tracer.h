@@ -25,7 +25,8 @@ namespace OpenTelemetry {
 
 #define OPENTELEMETRY_TRACER_STATS(COUNTER)                                                        \
   COUNTER(spans_sent)                                                                              \
-  COUNTER(timer_flushed)
+  COUNTER(timer_flushed)                                                                           \
+  COUNTER(spans_dropped)
 
 struct OpenTelemetryTracerStats {
   OPENTELEMETRY_TRACER_STATS(GENERATE_COUNTER_STRUCT)
@@ -39,17 +40,18 @@ public:
   Tracer(OpenTelemetryTraceExporterPtr exporter, Envoy::TimeSource& time_source,
          Random::RandomGenerator& random, Runtime::Loader& runtime, Event::Dispatcher& dispatcher,
          OpenTelemetryTracerStats tracing_stats, const ResourceConstSharedPtr resource,
-         SamplerSharedPtr sampler);
+         SamplerSharedPtr sampler, uint64_t max_cache_size);
 
   void sendSpan(::opentelemetry::proto::trace::v1::Span& span);
 
-  Tracing::SpanPtr startSpan(const std::string& operation_name, SystemTime start_time,
-
+  Tracing::SpanPtr startSpan(const std::string& operation_name,
+                             const StreamInfo::StreamInfo& stream_info, SystemTime start_time,
                              Tracing::Decision tracing_decision,
                              OptRef<const Tracing::TraceContext> trace_context,
                              OTelSpanKind span_kind);
 
-  Tracing::SpanPtr startSpan(const std::string& operation_name, SystemTime start_time,
+  Tracing::SpanPtr startSpan(const std::string& operation_name,
+                             const StreamInfo::StreamInfo& stream_info, SystemTime start_time,
                              const SpanContext& previous_span_context,
                              OptRef<const Tracing::TraceContext> trace_context,
                              OTelSpanKind span_kind);
@@ -73,6 +75,7 @@ private:
   OpenTelemetryTracerStats tracing_stats_;
   const ResourceConstSharedPtr resource_;
   SamplerSharedPtr sampler_;
+  uint64_t max_cache_size_;
 };
 
 /**
@@ -81,13 +84,13 @@ private:
  */
 class Span : Logger::Loggable<Logger::Id::tracing>, public Tracing::Span {
 public:
-  Span(const std::string& name, SystemTime start_time, Envoy::TimeSource& time_source,
-       Tracer& parent_tracer, OTelSpanKind span_kind);
+  Span(const std::string& name, const StreamInfo::StreamInfo& stream_info, SystemTime start_time,
+       Envoy::TimeSource& time_source, Tracer& parent_tracer, OTelSpanKind span_kind);
 
   // Tracing::Span functions
   void setOperation(absl::string_view /*operation*/) override;
   void setTag(absl::string_view /*name*/, absl::string_view /*value*/) override;
-  void log(SystemTime /*timestamp*/, const std::string& /*event*/) override{};
+  void log(SystemTime /*timestamp*/, const std::string& /*event*/) override {};
   void finishSpan() override;
   void injectContext(Envoy::Tracing::TraceContext& /*trace_context*/,
                      const Tracing::UpstreamContext&) override;
@@ -165,6 +168,7 @@ public:
 
 private:
   ::opentelemetry::proto::trace::v1::Span span_;
+  const StreamInfo::StreamInfo& stream_info_;
   Tracer& parent_tracer_;
   Envoy::TimeSource& time_source_;
   bool sampled_;

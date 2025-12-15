@@ -202,6 +202,31 @@ struct ClusterConnectivityState {
 };
 
 /**
+ * An interface for on-demand CDS. Defined to allow mocking.
+ */
+class OdCdsApi {
+public:
+  virtual ~OdCdsApi() = default;
+
+  // Subscribe to a cluster with a given name. It's meant to eventually send a discovery request
+  // with the cluster name to the management server.
+  virtual void updateOnDemand(std::string cluster_name) PURE;
+};
+
+using OdCdsApiSharedPtr = std::shared_ptr<OdCdsApi>;
+
+/**
+ * An interface used by OdCdsApiImpl for sending notifications about the missing cluster that was
+ * requested.
+ */
+class MissingClusterNotifier {
+public:
+  virtual ~MissingClusterNotifier() = default;
+
+  virtual void notifyMissingCluster(absl::string_view name) PURE;
+};
+
+/**
  * Manages connection pools and load balancing for upstream clusters. The cluster manager is
  * persistent and shared among multiple ongoing requests/connections.
  * Cluster manager is initialized in two phases. In the first phase which begins at the construction
@@ -249,11 +274,12 @@ public:
    *                       update. It can be overridden by setting `remove_ignored` to true while
    *                       calling removeCluster(). This is useful for clusters whose lifecycle
    *                       is managed with custom implementation, e.g., DFP clusters.
-   * @return true if the action results in an add/update of a cluster.
+   * @return true if the action results in an add/update of a cluster, an error
+   * status if the config is invalid.
    */
-  virtual bool addOrUpdateCluster(const envoy::config::cluster::v3::Cluster& cluster,
-                                  const std::string& version_info,
-                                  const bool avoid_cds_removal = false) PURE;
+  virtual absl::StatusOr<bool>
+  addOrUpdateCluster(const envoy::config::cluster::v3::Cluster& cluster,
+                     const std::string& version_info, const bool avoid_cds_removal = false) PURE;
 
   /**
    * Set a callback that will be invoked when all primary clusters have been initialized.
@@ -306,6 +332,33 @@ public:
    * NOTE: This method is only thread safe on the main thread. It should not be called elsewhere.
    */
   virtual ClusterInfoMaps clusters() const PURE;
+
+  /**
+   * Receives a cluster name and returns an active cluster (if found).
+   * @param cluster_name the name of the cluster.
+   * @return OptRef<const Cluster> A reference to the cluster if found, and nullopt otherwise.
+   *
+   * NOTE: This method is only thread safe on the main thread. It should not be called elsewhere.
+   */
+  virtual OptRef<const Cluster> getActiveCluster(const std::string& cluster_name) const PURE;
+
+  /**
+   * Returns true iff the given cluster name is known in the cluster-manager
+   * (either as active or as warming).
+   * @param cluster_name the name of the cluster.
+   * @return bool true if the cluster name is known, and false otherwise.
+   *
+   * NOTE: This method is only thread safe on the main thread. It should not be called elsewhere.
+   */
+  virtual bool hasCluster(const std::string& cluster_name) const PURE;
+
+  /**
+   * Returns true iff there's an active cluster in the cluster-manager.
+   * @return bool true if there is an active cluster, and false otherwise.
+   *
+   * NOTE: This method is only thread safe on the main thread. It should not be called elsewhere.
+   */
+  virtual bool hasActiveClusters() const PURE;
 
   using ClusterSet = absl::flat_hash_set<std::string>;
 
@@ -394,11 +447,6 @@ public:
   addThreadLocalClusterUpdateCallbacks(ClusterUpdateCallbacks& callbacks) PURE;
 
   /**
-   * Return the factory to use for creating cluster manager related objects.
-   */
-  virtual ClusterManagerFactory& clusterManagerFactory() PURE;
-
-  /**
    * Obtain the subscription factory for the cluster manager. Since subscriptions may have an
    * upstream component, the factory is a facet of the cluster manager.
    *
@@ -464,8 +512,16 @@ public:
    * @param validation_visitor
    * @return OdCdsApiHandlePtr the ODCDS handle.
    */
-  virtual OdCdsApiHandlePtr
-  allocateOdCdsApi(const envoy::config::core::v3::ConfigSource& odcds_config,
+
+  using OdCdsCreationFunction = std::function<absl::StatusOr<std::shared_ptr<OdCdsApi>>(
+      const envoy::config::core::v3::ConfigSource& odcds_config,
+      OptRef<xds::core::v3::ResourceLocator> odcds_resources_locator, ClusterManager& cm,
+      MissingClusterNotifier& notifier, Stats::Scope& scope,
+      ProtobufMessage::ValidationVisitor& validation_visitor)>;
+
+  virtual absl::StatusOr<OdCdsApiHandlePtr>
+  allocateOdCdsApi(OdCdsCreationFunction creation_function,
+                   const envoy::config::core::v3::ConfigSource& odcds_config,
                    OptRef<xds::core::v3::ResourceLocator> odcds_resources_locator,
                    ProtobufMessage::ValidationVisitor& validation_visitor) PURE;
 
@@ -530,7 +586,7 @@ public:
    * The cluster manager initialize() method needs to be called right after this method.
    * Please check https://github.com/envoyproxy/envoy/issues/33218 for details.
    */
-  virtual ClusterManagerPtr
+  virtual absl::StatusOr<ClusterManagerPtr>
   clusterManagerFromProto(const envoy::config::bootstrap::v3::Bootstrap& bootstrap) PURE;
 
   /**
@@ -566,25 +622,15 @@ public:
    * Allocate a cluster from configuration proto.
    */
   virtual absl::StatusOr<std::pair<ClusterSharedPtr, ThreadAwareLoadBalancerPtr>>
-  clusterFromProto(const envoy::config::cluster::v3::Cluster& cluster, ClusterManager& cm,
+  clusterFromProto(const envoy::config::cluster::v3::Cluster& cluster,
                    Outlier::EventLoggerSharedPtr outlier_event_logger, bool added_via_api) PURE;
 
   /**
    * Create a CDS API provider from configuration proto.
    */
-  virtual CdsApiPtr createCds(const envoy::config::core::v3::ConfigSource& cds_config,
-                              const xds::core::v3::ResourceLocator* cds_resources_locator,
-                              ClusterManager& cm) PURE;
-
-  /**
-   * Returns the secret manager.
-   */
-  virtual Secret::SecretManager& secretManager() PURE;
-
-  /**
-   * Returns the singleton manager.
-   */
-  virtual Singleton::Manager& singletonManager() PURE;
+  virtual absl::StatusOr<CdsApiPtr>
+  createCds(const envoy::config::core::v3::ConfigSource& cds_config,
+            const xds::core::v3::ResourceLocator* cds_resources_locator, ClusterManager& cm) PURE;
 };
 
 /**

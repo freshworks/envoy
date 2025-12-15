@@ -74,7 +74,8 @@ fi
 
 # Setting environments for buildx tools
 config_env() {
-    echo ">> BUILDX: install"
+    BUILDKIT_VERSION=$(grep '^FROM moby/buildkit:' ci/Dockerfile-buildkit | cut -d ':' -f2)
+    echo ">> BUILDX: install ${BUILDKIT_VERSION}"
     echo "> docker run --rm --privileged tonistiigi/binfmt --install all"
     echo "> docker buildx rm multi-builder 2> /dev/null || :"
     echo "> docker buildx create --use --name multi-builder --platform ${DOCKER_PLATFORM}"
@@ -84,11 +85,11 @@ config_env() {
     fi
 
     # Install QEMU emulators
-    docker run --rm --privileged tonistiigi/binfmt --install all
+    docker run --rm --privileged tonistiigi/binfmt:qemu-v7.0.0 --install all
 
     # Remove older build instance
     docker buildx rm multi-builder 2> /dev/null || :
-    docker buildx create --use --name multi-builder --platform "${DOCKER_PLATFORM}"
+    docker buildx create --use --name multi-builder --platform "${DOCKER_PLATFORM}" --driver-opt "image=moby/buildkit:${BUILDKIT_VERSION}"
 }
 
 # "-google-vrp" must come afer "" to ensure we rebuild the local base image dependency.

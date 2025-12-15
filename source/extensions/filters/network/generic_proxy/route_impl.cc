@@ -40,7 +40,7 @@ RouteSpecificFilterConfigConstSharedPtr RouteEntryImpl::createRouteSpecificFilte
     return nullptr;
   }
 
-  Envoy::Config::Utility::translateOpaqueConfig(typed_config, validator, *message);
+  THROW_IF_NOT_OK(Envoy::Config::Utility::translateOpaqueConfig(typed_config, validator, *message));
   return factory->createRouteSpecificFilterConfig(*message, factory_context, validator);
 }
 
@@ -89,10 +89,10 @@ VirtualHostImpl::VirtualHostImpl(const ProtoVirtualHost& virtual_host_config,
 }
 
 RouteEntryConstSharedPtr VirtualHostImpl::routeEntry(const MatchInput& request) const {
-  auto match = Matcher::evaluateMatch<MatchInput>(*matcher_, request);
+  Matcher::MatchResult match_result = Matcher::evaluateMatch<MatchInput>(*matcher_, request);
 
-  if (match.result_) {
-    auto action = match.result_();
+  if (match_result.isMatch()) {
+    Matcher::ActionPtr action = match_result.action();
 
     // The only possible action that can be used within the route matching context
     // is the RouteMatchAction, so this must be true.
@@ -104,7 +104,7 @@ RouteEntryConstSharedPtr VirtualHostImpl::routeEntry(const MatchInput& request) 
   }
 
   ENVOY_LOG(debug, "failed to match incoming request: {}",
-            static_cast<uint32_t>(match.match_state_));
+            match_result.isNoMatch() ? "no match" : "insufficient data");
   return nullptr;
 }
 

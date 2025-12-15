@@ -4,6 +4,7 @@ load(
     "envoy_cc_test_library",
     "envoy_package",
     "envoy_select_admin_functionality",
+    "envoy_select_boringssl",
     "envoy_sh_test",
 )
 
@@ -68,7 +69,7 @@ envoy_cc_test_library(
     data = [
         "//test/config/integration:google_com_proxy_port_0",
     ],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         "//source/common/api:api_lib",
         "//source/common/stats:isolated_store_lib",
@@ -88,7 +89,7 @@ envoy_cc_test(
     data = [
         "//test/config/integration:google_com_proxy_port_0",
     ],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = envoy_select_admin_functionality([":main_common_test_base_lib"]) + [
         "//source/common/api:api_lib",
         "//source/common/formatter:formatter_extension_lib",
@@ -107,7 +108,7 @@ envoy_cc_test(
     data = [
         "//test/config/integration:google_com_proxy_port_0",
     ],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = envoy_select_admin_functionality([":main_common_test_base_lib"]) + [
         "//source/common/api:api_lib",
         "//source/common/formatter:formatter_extension_lib",
@@ -124,7 +125,7 @@ envoy_cc_test(
     name = "extra_extensions_test",
     size = "large",
     srcs = ["extra_extensions_test.cc"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         "//test/test_common:environment_lib",
     ] + select({
@@ -138,7 +139,7 @@ envoy_cc_test(
 envoy_cc_test(
     name = "terminate_handler_test",
     srcs = ["terminate_handler_test.cc"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     tags = ["backtrace"],
     deps = [
         "//source/exe:terminate_handler_lib",
@@ -147,14 +148,17 @@ envoy_cc_test(
 )
 
 envoy_cc_test(
-    name = "check_extensions_against_registry_test",
+    name = "all_extensions_build_test",
     size = "large",
-    srcs = ["check_extensions_against_registry_test.cc"],
+    srcs = ["all_extensions_build_test.cc"],
+    copts = envoy_select_boringssl(["-DENVOY_SSL_FIPS"]),
     data = [
+        "fips_check.sh",
         "//source/extensions:extensions_metadata.yaml",
     ],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
+        "//source/common/version:version_lib",
         "//test/test_common:environment_lib",
     ] + select({
         # gcc RBE build has trouble compiling target with all extensions
@@ -172,7 +176,7 @@ envoy_cc_test(
         "//source/exe:envoy-static",
         "//test/config/integration:google_com_proxy_port_0",
     ],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         "//source/common/api:api_lib",
         "//source/exe:envoy_main_common_with_core_extensions_lib",
@@ -208,7 +212,7 @@ envoy_cc_test(
 envoy_cc_test(
     name = "platform_impl_test",
     srcs = ["platform_impl_test.cc"],
-    rbe_pool = "2core",
+    rbe_pool = "6gig",
     deps = [
         "//source/exe:platform_impl_lib",
         "//test/mocks/runtime:runtime_mocks",

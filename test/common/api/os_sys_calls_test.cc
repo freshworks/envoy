@@ -69,18 +69,25 @@ TEST(OsSyscallsTest, OpenPwritePreadFstatCloseStatUnlink) {
 }
 
 TEST(OsSyscallsTest, SupportsIpTransparent) {
-  bool supported = Api::OsSysCallsSingleton::get().supportsIpTransparent(
-      TestEnvironment::getIpVersionsForTest()[0]);
-  EXPECT_FALSE(supported);
+  // Some environments support this and some don't; just call the function to make sure nothing
+  // dire (like a crash) happens, without validating the return value.
+  Api::OsSysCallsSingleton::get().supportsIpTransparent(TestEnvironment::getIpVersionsForTest()[0]);
 }
 
 TEST(OsSyscallsTest, SupportsMptcp) {
-  bool supported = Api::OsSysCallsSingleton::get().supportsMptcp();
-  EXPECT_TRUE(supported);
+  // Some environments support this and some don't; just call the function to make sure nothing
+  // dire (like a crash) happens, without validating the return value.
+  Api::OsSysCallsSingleton::get().supportsMptcp();
 }
 
 TEST(OsSyscallsTest, IoCtlInvalidFd) {
   EXPECT_NE(0, Api::OsSysCallsSingleton::get().ioctl(0, 0, nullptr, 0, nullptr, 0, nullptr).errno_);
+}
+
+TEST(OsSyscallsTest, Setrlimit) {
+  // Not all environments support it, but it is safe to read limits.
+  struct rlimit rlim;
+  Api::OsSysCallsSingleton::get().getrlimit(RLIMIT_NOFILE, &rlim);
 }
 
 } // namespace Envoy

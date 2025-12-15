@@ -12,6 +12,7 @@ envoy_cc_library(
     name = "factory_base",
     hdrs = ["factory_base.h"],
     deps = [
+        "//envoy/server:factory_context_interface",
         "//envoy/upstream:load_balancer_interface",
         "//source/common/upstream:load_balancer_factory_base_lib",
     ],
@@ -26,6 +27,8 @@ envoy_cc_library(
         "//source/common/common:minimal_logger_lib",
         "//source/common/config:metadata_lib",
         "//source/common/config:well_known_names",
+        "//source/common/http:hash_policy_lib",
+        "//source/common/http:headers_lib",
         "@com_google_absl//absl/synchronization",
         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
     ],

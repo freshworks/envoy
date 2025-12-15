@@ -80,8 +80,7 @@ public:
 
   absl::Status
   updateMuxSource(Grpc::RawAsyncClientPtr&& primary_async_client,
-                  Grpc::RawAsyncClientPtr&& failover_async_client,
-                  CustomConfigValidatorsPtr&& custom_config_validators, Stats::Scope& scope,
+                  Grpc::RawAsyncClientPtr&& failover_async_client, Stats::Scope& scope,
                   BackOffStrategyPtr&& backoff_strategy,
                   const envoy::config::core::v3::ApiConfigSource& ads_config_source) override;
 
@@ -155,6 +154,8 @@ private:
     const SubscriptionOptions options_;
   };
 
+  using SubscriptionsMap = absl::flat_hash_map<std::string, SubscriptionStuffPtr>;
+
   // Helper function to create the grpc_stream_ object.
   std::unique_ptr<GrpcStreamInterface<envoy::service::discovery::v3::DeltaDiscoveryRequest,
                                       envoy::service::discovery::v3::DeltaDiscoveryResponse>>
@@ -174,7 +175,8 @@ private:
                    const SubscriptionOptions& options);
 
   // Adds a subscription for the type_url to the subscriptions map and order list.
-  void addSubscription(const std::string& type_url, bool use_namespace_matching);
+  SubscriptionsMap::iterator addSubscription(const std::string& type_url,
+                                             bool use_namespace_matching);
 
   void trySendDiscoveryRequests();
 
@@ -199,7 +201,7 @@ private:
   PausableAckQueue pausable_ack_queue_;
 
   // Map key is type_url.
-  absl::flat_hash_map<std::string, SubscriptionStuffPtr> subscriptions_;
+  SubscriptionsMap subscriptions_;
 
   // Determines the order of initial discovery requests. (Assumes that subscriptions are added in
   // the order of Envoy's dependency ordering).

@@ -126,7 +126,7 @@ public:
    */
   static absl::Status
   validateClusterName(const Upstream::ClusterManager::ClusterSet& primary_clusters,
-                      const std::string& cluster_name, const std::string& config_source);
+                      absl::string_view cluster_name, absl::string_view config_source);
 
   /**
    * Potentially calls Utility::validateClusterName, if a cluster name can be found.
@@ -299,21 +299,21 @@ public:
    * @param typed_config for the extension config.
    */
   static std::string getFactoryType(const ProtobufWkt::Any& typed_config) {
-    static const std::string typed_struct_type =
-        xds::type::v3::TypedStruct::default_instance().GetTypeName();
-    static const std::string legacy_typed_struct_type =
-        udpa::type::v1::TypedStruct::default_instance().GetTypeName();
+    static const std::string typed_struct_type(
+        xds::type::v3::TypedStruct::default_instance().GetTypeName());
+    static const std::string legacy_typed_struct_type(
+        udpa::type::v1::TypedStruct::default_instance().GetTypeName());
     // Unpack methods will only use the fully qualified type name after the last '/'.
     // https://github.com/protocolbuffers/protobuf/blob/3.6.x/src/google/protobuf/any.proto#L87
     auto type = std::string(TypeUtil::typeUrlToDescriptorFullName(typed_config.type_url()));
     if (type == typed_struct_type) {
       xds::type::v3::TypedStruct typed_struct;
-      MessageUtil::unpackToOrThrow(typed_config, typed_struct);
+      THROW_IF_NOT_OK(MessageUtil::unpackTo(typed_config, typed_struct));
       // Not handling nested structs or typed structs in typed structs
       return std::string(TypeUtil::typeUrlToDescriptorFullName(typed_struct.type_url()));
     } else if (type == legacy_typed_struct_type) {
       udpa::type::v1::TypedStruct typed_struct;
-      MessageUtil::unpackToOrThrow(typed_config, typed_struct);
+      THROW_IF_NOT_OK(MessageUtil::unpackTo(typed_config, typed_struct));
       // Not handling nested structs or typed structs in typed structs
       return std::string(TypeUtil::typeUrlToDescriptorFullName(typed_struct.type_url()));
     }
@@ -353,7 +353,8 @@ public:
     // Check that the config type is not google.protobuf.Empty
     RELEASE_ASSERT(config->GetTypeName() != "google.protobuf.Empty", "");
 
-    translateOpaqueConfig(enclosing_message.typed_config(), validation_visitor, *config);
+    THROW_IF_NOT_OK(
+        translateOpaqueConfig(enclosing_message.typed_config(), validation_visitor, *config));
     return config;
   }
 
@@ -377,7 +378,7 @@ public:
     // Check that the config type is not google.protobuf.Empty
     RELEASE_ASSERT(config->GetTypeName() != "google.protobuf.Empty", "");
 
-    translateOpaqueConfig(typed_config, validation_visitor, *config);
+    THROW_IF_NOT_OK(translateOpaqueConfig(typed_config, validation_visitor, *config));
     return config;
   }
 
@@ -393,23 +394,28 @@ public:
    * @param skip_cluster_check whether to skip cluster validation.
    * @param grpc_service_idx index of the grpc service in the api_config_source. If there's no entry
    *                         in the given index, a nullptr factory will be returned.
+   * @param xdstp_config_source whether the config source will be used for xdstp config source.
+   *                            These sources must be of type AGGREGATED_GRPC or
+   *                            AGGREGATED_DELTA_GRPC.
    * @return Grpc::AsyncClientFactoryPtr gRPC async client factory, or nullptr if there's no
-   * grpc_service in the given index.
+   *         grpc_service in the given index.
    */
   static absl::StatusOr<Grpc::AsyncClientFactoryPtr>
   factoryForGrpcApiConfigSource(Grpc::AsyncClientManager& async_client_manager,
                                 const envoy::config::core::v3::ApiConfigSource& api_config_source,
-                                Stats::Scope& scope, bool skip_cluster_check, int grpc_service_idx);
+                                Stats::Scope& scope, bool skip_cluster_check, int grpc_service_idx,
+                                bool xdstp_config_source);
 
   /**
    * Translate opaque config from google.protobuf.Any to defined proto message.
    * @param typed_config opaque config packed in google.protobuf.Any
    * @param validation_visitor message validation visitor instance.
    * @param out_proto the proto message instantiated by extensions
+   * @return a status indicating if translation was a success
    */
-  static void translateOpaqueConfig(const ProtobufWkt::Any& typed_config,
-                                    ProtobufMessage::ValidationVisitor& validation_visitor,
-                                    Protobuf::Message& out_proto);
+  static absl::Status translateOpaqueConfig(const ProtobufWkt::Any& typed_config,
+                                            ProtobufMessage::ValidationVisitor& validation_visitor,
+                                            Protobuf::Message& out_proto);
 
   /**
    * Verify that any filter designed to be terminal is configured to be terminal, and vice versa.

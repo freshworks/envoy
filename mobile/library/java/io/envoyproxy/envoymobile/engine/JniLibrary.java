@@ -152,10 +152,13 @@ public class JniLibrary {
    * @param runningCallback, called when the engine finishes its async startup and begins running.
    * @param logger,          the logging interface.
    * @param eventTracker     the event tracking interface.
+   * @param disableDnsRefreshOnNetworkChange whether disable dns refreshment or not after the
+   *     network has changed.
    * @return envoy_engine_t, handle to the underlying engine.
    */
   protected static native long initEngine(EnvoyOnEngineRunning runningCallback, EnvoyLogger logger,
-                                          EnvoyEventTracker eventTracker);
+                                          EnvoyEventTracker eventTracker,
+                                          boolean disableDnsRefreshOnNetworkChange);
 
   /**
    * External entry point for library.
@@ -233,6 +236,25 @@ public class JniLibrary {
    * A callback into the Envoy Engine when the default network was changed.
    */
   protected static native void onDefaultNetworkChanged(long engine, int networkType);
+  protected static native void onDefaultNetworkChangedV2(long engine, int connectionType,
+                                                         long net_id);
+
+  /**
+   * A callback into the Envoy Engine when the network with the given net_id gets disconnected.
+   */
+  protected static native void onNetworkDisconnect(long engine, long net_id);
+
+  /**
+   * A callback into the Envoy Engine when the network with the given net_id gets connected.
+   */
+  protected static native void onNetworkConnect(long engine, int connectionType, long net_id);
+
+  protected static native void purgeActiveNetworkList(long engine, long[] activeNetIds);
+
+  /**
+   * A more modern callback into the Envoy Engine when the default network was changed.
+   */
+  protected static native void onDefaultNetworkChangeEvent(long engine, int networkType);
 
   /**
    * A callback into the Envoy Engine when the default network is unavailable.
@@ -300,11 +322,12 @@ public class JniLibrary {
    *
    */
   public static native long createBootstrap(
-      long connectTimeoutSeconds, long dnsRefreshSeconds, long dnsFailureRefreshSecondsBase,
-      long dnsFailureRefreshSecondsMax, long dnsQueryTimeoutSeconds, long dnsMinRefreshSeconds,
-      byte[][] dnsPreresolveHostnames, boolean enableDNSCache, long dnsCacheSaveIntervalSeconds,
-      int dnsNumRetries, boolean enableDrainPostDnsRefresh, boolean enableHttp3, boolean useCares,
-      boolean forceV6, boolean useGro, String http3ConnectionOptions,
+      long connectTimeoutSeconds, boolean disableDnsRefreshOnFailure,
+      boolean disableDnsRefreshOnNetworkChange, long dnsRefreshSeconds,
+      long dnsFailureRefreshSecondsBase, long dnsFailureRefreshSecondsMax,
+      long dnsQueryTimeoutSeconds, long dnsMinRefreshSeconds, byte[][] dnsPreresolveHostnames,
+      boolean enableDNSCache, long dnsCacheSaveIntervalSeconds, int dnsNumRetries,
+      boolean enableDrainPostDnsRefresh, boolean enableHttp3, String http3ConnectionOptions,
       String http3ClientConnectionOptions, byte[][] quicHints, byte[][] quicCanonicalSuffixes,
       boolean enableGzipDecompression, boolean enableBrotliDecompression,
       int numTimeoutsToTriggerPortMigration, boolean enableSocketTagging,
@@ -313,14 +336,7 @@ public class JniLibrary {
       long streamIdleTimeoutSeconds, long perTryIdleTimeoutSeconds, String appVersion, String appId,
       boolean trustChainVerification, byte[][] filterChain,
       boolean enablePlatformCertificatesValidation, String upstreamTlsSni, byte[][] runtimeGuards,
-      byte[][] cares_fallback_resolvers);
-
-  /**
-   * Initializes c-ares.
-   * See <a
-   * href="https://c-ares.org/docs/ares_library_init_android.html">ares_library_init_android</a>.
-   */
-  public static native void initCares(ConnectivityManager connectivityManager);
+      long h3ConnectionKeepaliveInitialIntervalMilliseconds);
 
   /**
    * Returns true if the runtime feature is enabled.

@@ -55,7 +55,7 @@ EXTENSIONS = {
     # WASM
     #
 
-    "envoy.bootstrap.wasm":                             "//source/extensions/bootstrap/wasm:config",
+    # "envoy.bootstrap.wasm":                             "//source/extensions/bootstrap/wasm:config",
 
     #
     # Health checkers
@@ -217,18 +217,18 @@ EXTENSIONS = {
     "envoy.filters.network.ext_proc":                             "//source/extensions/filters/network/ext_proc:config",
     "envoy.filters.network.http_connection_manager":              "//source/extensions/filters/network/http_connection_manager:config",
     "envoy.filters.network.local_ratelimit":                      "//source/extensions/filters/network/local_ratelimit:config",
-    "envoy.filters.network.mongo_proxy":                          "//source/extensions/filters/network/mongo_proxy:config",
+    # "envoy.filters.network.mongo_proxy":                          "//source/extensions/filters/network/mongo_proxy:config",
     "envoy.filters.network.ratelimit":                            "//source/extensions/filters/network/ratelimit:config",
     "envoy.filters.network.rbac":                                 "//source/extensions/filters/network/rbac:config",
-    "envoy.filters.network.redis_proxy":                          "//source/extensions/filters/network/redis_proxy:config",
+    # "envoy.filters.network.redis_proxy":                          "//source/extensions/filters/network/redis_proxy:config",
     "envoy.filters.network.tcp_proxy":                            "//source/extensions/filters/network/tcp_proxy:config",
     "envoy.filters.network.thrift_proxy":                         "//source/extensions/filters/network/thrift_proxy:config",
     "envoy.filters.network.set_filter_state":                     "//source/extensions/filters/network/set_filter_state:config",
     "envoy.filters.network.sni_cluster":                          "//source/extensions/filters/network/sni_cluster:config",
     "envoy.filters.network.sni_dynamic_forward_proxy":            "//source/extensions/filters/network/sni_dynamic_forward_proxy:config",
     "envoy.filters.network.wasm":                                 "//source/extensions/filters/network/wasm:config",
-    "envoy.filters.network.zookeeper_proxy":                      "//source/extensions/filters/network/zookeeper_proxy:config",
-    "envoy.filters.network.generic_proxy":                        "//source/extensions/filters/network/generic_proxy:config",
+    # "envoy.filters.network.zookeeper_proxy":                      "//source/extensions/filters/network/zookeeper_proxy:config",
+    # "envoy.filters.network.generic_proxy":                        "//source/extensions/filters/network/generic_proxy:config",
 
     #
     # UDP filters
@@ -270,10 +270,10 @@ EXTENSIONS = {
     # Thrift filters
     #
 
-    "envoy.filters.thrift.router":                      "//source/extensions/filters/network/thrift_proxy/router:config",
-    "envoy.filters.thrift.header_to_metadata":          "//source/extensions/filters/network/thrift_proxy/filters/header_to_metadata:config",
-    "envoy.filters.thrift.payload_to_metadata":         "//source/extensions/filters/network/thrift_proxy/filters/payload_to_metadata:config",
-    "envoy.filters.thrift.rate_limit":                  "//source/extensions/filters/network/thrift_proxy/filters/ratelimit:config",
+    # "envoy.filters.thrift.router":                      "//source/extensions/filters/network/thrift_proxy/router:config",
+    # "envoy.filters.thrift.header_to_metadata":          "//source/extensions/filters/network/thrift_proxy/filters/header_to_metadata:config",
+    # "envoy.filters.thrift.payload_to_metadata":         "//source/extensions/filters/network/thrift_proxy/filters/payload_to_metadata:config",
+    # "envoy.filters.thrift.rate_limit":                  "//source/extensions/filters/network/thrift_proxy/filters/ratelimit:config",
 
     #
     # Tracers
@@ -364,10 +364,10 @@ EXTENSIONS = {
     # WebAssembly runtimes
     #
 
-    "envoy.wasm.runtime.null":                          "//source/extensions/wasm_runtime/null:config",
-    "envoy.wasm.runtime.v8":                            "//source/extensions/wasm_runtime/v8:config",
-    "envoy.wasm.runtime.wamr":                          "//source/extensions/wasm_runtime/wamr:config",
-    "envoy.wasm.runtime.wasmtime":                      "//source/extensions/wasm_runtime/wasmtime:config",
+    # "envoy.wasm.runtime.null":                          "//source/extensions/wasm_runtime/null:config",
+    # "envoy.wasm.runtime.v8":                            "//source/extensions/wasm_runtime/v8:config",
+    # "envoy.wasm.runtime.wamr":                          "//source/extensions/wasm_runtime/wamr:config",
+    # "envoy.wasm.runtime.wasmtime":                      "//source/extensions/wasm_runtime/wasmtime:config",
 
     #
     # Rate limit descriptors
@@ -489,6 +489,7 @@ EXTENSIONS = {
     #
 
     "envoy.matching.custom_matchers.trie_matcher":     "//source/extensions/common/matcher:trie_matcher_lib",
+    "envoy.matching.custom_matchers.domain_matcher":   "//source/extensions/common/matcher:domain_matcher_lib",
 
     #
     # Header Validators
@@ -548,7 +549,8 @@ EXTENSIONS = {
     #
     # cluster specifier plugin
     #
-    "envoy.router.cluster_specifier_plugin.lua": "//source/extensions/router/cluster_specifiers/lua:config",
+    "envoy.router.cluster_specifier_plugin.lua":     "//source/extensions/router/cluster_specifiers/lua:config",
+    "envoy.router.cluster_specifier_plugin.matcher": "//source/extensions/router/cluster_specifiers/matcher:config",
 
     #
     # Extensions for generic proxy

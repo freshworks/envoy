@@ -59,6 +59,8 @@ public:
   const std::string ZooKeeperProxy = "envoy.filters.network.zookeeper_proxy";
   // WebAssembly filter
   const std::string Wasm = "envoy.filters.network.wasm";
+  // SMTP proxy filter
+  const std::string SmtpProxy = "envoy.filters.network.smtp_proxy";
   // Network external processor filter
   const std::string NetworkExternalProcessor = "envoy.filters.network.ext_proc";
   // Network match delegate filter

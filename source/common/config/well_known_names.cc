@@ -236,8 +236,16 @@ TagNameValues::TagNameValues() {
   addRe2(PROXY_PROTOCOL_VERSION,
          R"(^proxy_proto\.((?:<TAG_VALUE>\.)?versions\.v(<PROXY_PROTOCOL_VERSION>)\.)\w+$)");
 
+  // smtp.(<stat_prefix>.)*
+  addTokenized(SMTP_PREFIX, "smtp.$.**");
   // grpc.(<stat_prefix>).**
   addTokenized(GOOGLE_GRPC_CLIENT_PREFIX, "grpc.$.**");
+
+  // listener.[<address>.]ssl.certificate.(<cert_name>).<metric_name> or
+  // cluster.[<cluster_name>.]ssl.certificate.(<cert_name>).<metric_name>
+  addRe2(TLS_CERTIFICATE,
+         R"(^<LISTENER_OR_CLUSTER_WITH_NAME>\.ssl\.certificate(\.(<TAG_VALUE>)\..*)$)",
+         ".ssl.certificate");
 }
 
 void TagNameValues::addRe2(const std::string& name, const std::string& regex,

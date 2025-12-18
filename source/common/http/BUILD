@@ -439,6 +439,7 @@ envoy_cc_library(
         ":utility_lib",
         "//envoy/common:hashable_interface",
         "//envoy/http:hash_policy_interface",
+        "//source/common/common:hex_lib",
         "//source/common/common:matchers_lib",
         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
     ],
@@ -588,7 +589,7 @@ envoy_cc_library(
         "//source/common/common:logger_lib",
         "//source/common/runtime:runtime_features_lib",
         "@com_google_absl//absl/types:optional",
-        "@com_googlesource_googleurl//url",
+        "@googleurl//url",
     ],
 )
 

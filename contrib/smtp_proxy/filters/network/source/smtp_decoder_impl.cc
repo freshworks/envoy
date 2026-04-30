@@ -1,109 +1,139 @@
 #include "contrib/smtp_proxy/filters/network/source/smtp_decoder_impl.h"
 
-#include "source/common/common/logger.h"
-#include "source/extensions/filters/network/well_known_names.h"
+#include "source/common/common/utility.h"
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_split.h"
 
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
 namespace SmtpProxy {
 
-DecoderImpl::DecoderImpl(DecoderCallbacks* callbacks, TimeSource& time_source,
-                         Random::RandomGenerator& random_generator)
-    : callbacks_(callbacks), time_source_(time_source), random_generator_(random_generator) {
-  session_ = new SmtpSession(callbacks, time_source_, random_generator_);
-}
+SmtpUtils::Result DecoderImpl::parseCommand(Buffer::Instance& data, Command& command) {
+  ENVOY_LOG(debug, "smtp_proxy parseCommand: decoding {} bytes", data.length());
+  ENVOY_LOG(debug, "smtp_proxy received command: {}", data.toString());
 
-SmtpUtils::Result DecoderImpl::onData(Buffer::Instance& data, bool upstream) {
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
-  if (upstream) {
-    result = parseResponse(data);
-    data.drain(data.length());
+
+  std::string current_line;
+  command.len = data.length();
+  result = isValidSmtpLine(data, SmtpUtils::maxCommandLen, current_line);
+  if (result != SmtpUtils::Result::ReadyForNext) {
     return result;
   }
-  result = parseCommand(data);
+  if (current_line.length() != data.length()) {
+    return SmtpUtils::Result::ProtocolError;
+  }
+  // std::string commandStr = current_line.substr(0, crlfPos);
+  absl::string_view commandStr = StringUtil::cropRight(current_line, SmtpUtils::CRLF);
+  // Split the command into verb and arguments
+  size_t spacePos = commandStr.find(' ');
+  
+  if (spacePos == 0) {
+    return SmtpUtils::Result::ProtocolError;
+  }
+  command.verb = (spacePos != std::string::npos) ? commandStr.substr(0, spacePos) : commandStr;
+  command.args = (spacePos != std::string::npos) ? commandStr.substr(spacePos + 1) : "";
+
+
+  ENVOY_LOG(debug, "command verb {}", command.verb);
+  ENVOY_LOG(debug, "command args {}", command.args);
+
   data.drain(data.length());
   return result;
 }
 
-SmtpUtils::Result DecoderImpl::parseCommand(Buffer::Instance& data) {
-  ENVOY_LOG(debug, "smtp_proxy parseCommand: decoding {} bytes", data.length());
-
-  SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
-
-  if (getSession()->isTerminated()) {
-    return result;
+SmtpUtils::Result DecoderImpl::isValidSmtpLine(Buffer::Instance& data, size_t max_len,
+                                               std::string& output) {
+  size_t crlfPos = data.search(SmtpUtils::CRLF.data(), SmtpUtils::CRLF.size(), 0, max_len);
+  if (crlfPos == std::string::npos) {
+    // Received data that does not contain /r/n, possibly received incomplete data.
+    // But we also check if length of received data is more than allowed limit.
+    if (data.length() >= max_len) {
+      return SmtpUtils::Result::ProtocolError;
+    }
+    return SmtpUtils::Result::NeedMoreData;
   }
-  if (getSession()->isDataTransferInProgress()) {
-    getSession()->updateBytesMeterOnCommand(data);
-    return result;
+
+  if (crlfPos <= 0) {
+    return SmtpUtils::Result::ProtocolError;
   }
 
   std::string buffer = data.toString();
-  ENVOY_LOG(debug, "received command {}", buffer);
-  // Each SMTP command ends with CRLF ("\r\n"), if received buffer doesn't end with CRLF, the filter
-  // will not process it.
-  if (!absl::EndsWith(buffer, SmtpUtils::smtpCrlfSuffix)) {
-    return result;
-  }
-
-  buffer = StringUtil::cropRight(buffer, SmtpUtils::smtpCrlfSuffix);
-  int length = buffer.length();
-
-  std::string command = "";
-  std::string args = "";
-  if (length < 4) {
-    return result;
-  } else if (length == 4) {
-    command = buffer;
-  } else if (length > 4) {
-    // 4 letter command with some args after a space. i.e. cmd should have at least length=6
-    if (length >= 6 && buffer[4] == ' ' && buffer[5] != ' ') {
-      command = buffer.substr(0, 4);
-      args = buffer.substr(5);
-    } else if (absl::EqualsIgnoreCase(buffer, SmtpUtils::startTlsCommand)) {
-      command = SmtpUtils::startTlsCommand;
-    }
-  }
-  result = session_->handleCommand(command, args);
-  return result;
+  output = buffer.substr(0, crlfPos + SmtpUtils::CRLF.size());
+  return SmtpUtils::Result::ReadyForNext;
 }
 
-SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data) {
+SmtpUtils::Result DecoderImpl::parseResponse(Buffer::Instance& data, Response& response) {
   ENVOY_LOG(debug, "smtp_proxy: decoding response {} bytes", data.length());
+  ENVOY_LOG(debug, "smtp_proxy: decoding response {}", data.toString());
 
+  int response_code = 0;
+  std::string response_msg;
+  size_t respose_len = 0;
   SmtpUtils::Result result = SmtpUtils::Result::ReadyForNext;
+  Buffer::OwnedImpl buffer(data);
+  // Loop to parse multi-line response
+  // https://www.rfc-editor.org/rfc/rfc5321.html#section-4.2
+  //  Reply-line     = *( Reply-code "-" [ textstring ] CRLF )
+  //                 Reply-code [ SP textstring ] CRLF
+  //  Reply-code     = %x32-35 %x30-35 %x30-39
+  while (true) {
+    std::string current_line;
+    result = isValidSmtpLine(buffer, SmtpUtils::maxResponseLen, current_line);
+    if (result != SmtpUtils::Result::ReadyForNext) {
+      return result;
+    }
+    buffer.drain(current_line.size());
+    respose_len += current_line.length();
+    // A response has to be of minimum 3 char length i.e response code needs to be present
+    if (current_line.length() < 3) {
+      return SmtpUtils::Result::ProtocolError;
+    }
 
-  // Special handling to parse any error response to connection request.
-  if (!(session_->isCommandInProgress()) &&
-      session_->getState() != SmtpSession::State::ConnectionRequest) {
-    return result;
+    std::string response_code_str = current_line.substr(0, 3);
+    int code = 0;
+    std::string msg;
+    try {
+      code = stoi(response_code_str);
+    } catch (...) {
+      code = 0;
+      ENVOY_LOG(error, "smtp_proxy: error while decoding response code ", response_code);
+      return SmtpUtils::Result::ProtocolError;
+    }
+    if (response_code && code != response_code) {
+      return SmtpUtils::Result::ProtocolError;
+    }
+    response_code = code;
+    current_line = current_line.erase(0, 3);
+    // Separator can be either ' ' or '-'
+    char separator = ' ';
+    if (!current_line.empty() && current_line != SmtpUtils::CRLF.data()) {
+      separator = current_line[0];
+      if (separator != ' ' && separator != '-') {
+        return SmtpUtils::Result::ProtocolError;
+      }
+      // Remove the first character from line
+      current_line = current_line.erase(0, 1);
+      response_msg += current_line;
+    }
+
+    if (separator == ' ') {
+      break; // We reached last line of reply.
+    }
   }
 
-  std::string response = data.toString();
-  if (!absl::EndsWith(response, SmtpUtils::smtpCrlfSuffix)) {
-    return result;
-  }
-
-  response = StringUtil::cropRight(response, SmtpUtils::smtpCrlfSuffix);
-  int length = response.length();
-  if (length < 3) {
-    // Minimum 3 byte response code needed to parse response from server.
-    return result;
-  }
-  std::string response_code_str = response.substr(0, 3);
-  uint16_t response_code = 0;
-  try {
-    response_code = stoi(response_code_str);
-  } catch (...) {
-    response_code = 0;
-    ENVOY_LOG(error, "smtp_proxy: error while decoding response code ", response_code);
-  }
-  result = session_->handleResponse(response_code, response);
-
-  return result;
+  response.len = respose_len;
+  size_t crlf_pos = response_msg.length() - 2;
+  response_msg = response_msg.erase(crlf_pos);
+  // ENVOY_LOG(debug, "smtp_proxy: response code {}", response_code);
+  // ENVOY_LOG(debug, "smtp_proxy: response msg {}",response_msg);
+  response.resp_code = response_code;
+  response.msg = response_msg;
+  // response.len = respose_len;
+  data.drain(data.length());
+  return SmtpUtils::Result::ReadyForNext;
 }
 
 } // namespace SmtpProxy

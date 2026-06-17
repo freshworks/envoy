@@ -303,14 +303,12 @@ struct Transaction {
     discard_ = false;
     send_discard_error_ = false;
     key_.clear();
-    if (connection_established_) {
-      for (auto& client : clients_) {
-        if (client != nullptr) {
-          client->close();
-        }
+    for (auto& client : clients_) {
+      if (client != nullptr) {
+        client->close();
       }
-      connection_established_ = false;
     }
+    connection_established_ = false;
     should_close_ = false;
   }
   void setDownstreamCallback(std::shared_ptr<DirectCallbacks> callback) {

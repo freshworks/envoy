@@ -137,6 +137,8 @@ private:
   void onConnectOrOpTimeout();
   void onData(Buffer::Instance& data);
   void putOutlierEvent(Upstream::Outlier::Result result);
+  void drainPendingRequests();
+  void finalizeConnectionClose();
 
   // DecoderCallbacks
   void onRespValue(RespValuePtr&& value) override;
@@ -162,6 +164,7 @@ private:
   bool is_transaction_client_;
   bool is_pubsub_client_=false;
   bool is_blocking_client_=false;
+  bool closing_{false};
   std::shared_ptr<Extensions::NetworkFilters::Common::Redis::Client::PubsubCallbacks> pubsub_cb_=nullptr;
   int32_t current_shard_index_{-1};
 };

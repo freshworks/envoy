@@ -109,6 +109,9 @@ ClientImpl::ClientImpl(Upstream::HostConstSharedPtr host, Event::Dispatcher& dis
 }
 
 ClientImpl::~ClientImpl() {
+  if (connection_ && connection_->state() != Network::Connection::State::Closed) {
+    finalizeConnectionClose();
+  }
   ASSERT(pending_requests_.empty());
   ASSERT(connection_->state() == Network::Connection::State::Closed);
   host_->cluster().trafficStats()->upstream_cx_active_.dec();
@@ -118,11 +121,17 @@ ClientImpl::~ClientImpl() {
 }
 
 void ClientImpl::close() {
+  if (closing_) {
+    // onEvent(RemoteClose) may have set closing_ before transaction.close() re-enters here.
+    // Still finalize the connection so ~ClientImpl() does not assert on connection state.
+    finalizeConnectionClose();
+    return;
+  }
+  closing_ = true;
+  drainPendingRequests();
   pubsub_cb_.reset();
   ENVOY_LOG(debug, "Upstream Client Connection close requested");
-  if (connection_) {
-    connection_->close(Network::ConnectionCloseType::NoFlush); 
-  }
+  finalizeConnectionClose();
 }
 
 void ClientImpl::flushBufferAndResetTimer() {
@@ -216,6 +225,10 @@ bool ClientImpl::makePubSubRequest(const RespValue& request) {
 
 void ClientImpl::onConnectOrOpTimeout() {
 
+  if (closing_) {
+    return;
+  }
+
   putOutlierEvent(Upstream::Outlier::Result::LocalOriginTimeout);
   if (connected_) {
     host_->cluster().trafficStats()->upstream_rq_timeout_.inc();
@@ -244,6 +257,10 @@ void ClientImpl::onConnectOrOpTimeout() {
 }
 
 void ClientImpl::onData(Buffer::Instance& data) {
+  if (closing_) {
+    return;
+  }
+
   TRY_NEEDS_AUDIT { decoder_->decode(data); }
   END_TRY catch (ProtocolError&) {
     putOutlierEvent(Upstream::Outlier::Result::ExtOriginRequestFailed);
@@ -260,9 +277,41 @@ void ClientImpl::putOutlierEvent(Upstream::Outlier::Result result) {
   }
 }
 
+void ClientImpl::drainPendingRequests() {
+  while (!pending_requests_.empty()) {
+    PendingRequest& request = pending_requests_.front();
+    ENVOY_LOG(debug, "Upstream Client draining pending request on close");
+    if (!request.canceled_) {
+      ENVOY_LOG(info, "Upstream Client Connection close calling onFailure");
+      request.callbacks_.onFailure();
+    } else {
+      host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
+    }
+    pending_requests_.pop_front();
+  }
+}
+
+void ClientImpl::finalizeConnectionClose() {
+  connect_or_op_timer_->disableTimer();
+  if (flush_timer_->enabled()) {
+    flush_timer_->disableTimer();
+  }
+  if (connection_) {
+    connection_->removeConnectionCallbacks(*this);
+    if (connection_->state() != Network::Connection::State::Closed) {
+      connection_->close(Network::ConnectionCloseType::NoFlush);
+    }
+  }
+}
+
 void ClientImpl::onEvent(Network::ConnectionEvent event) {
+  if (closing_) {
+    return;
+  }
+
   if (event == Network::ConnectionEvent::RemoteClose ||
       event == Network::ConnectionEvent::LocalClose) {
+    closing_ = true;
 
     std::string eventTypeStr = (event == Network::ConnectionEvent::RemoteClose ? "RemoteClose" : "LocalClose");
     ENVOY_LOG(debug,"Upstream Client Connection close event received:'{}'",eventTypeStr);
@@ -273,11 +322,22 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
         putOutlierEvent(Upstream::Outlier::Result::LocalOriginConnectFailed);
       }
     }
+
+    if (is_transaction_client_) {
+      ENVOY_LOG(debug, "transaction client {}", is_transaction_client_);
+      //TODO - Handle transaction client upstream client failures here..
+    }
+
+    // Drain setup requests (AUTH, READONLY) before pubsub failure handling, which may destroy
+    // this client synchronously. This prevents the ~ClientImpl() ASSERT(pending_requests_.empty())
+    // and the reentrant-destruction crash seen on pubsub upstream remote close.
+    drainPendingRequests();
+
     // If client is Pubsub handle the upstream close event such that downstream must also be closed.
-    if ( is_pubsub_client_) {
+    if (is_pubsub_client_) {
       host_->cluster().trafficStats()->upstream_cx_destroy_with_active_rq_.inc();
       ENVOY_LOG(debug,"Pubsub Client Connection close event received:'{}', clearing pubsub_cb_",eventTypeStr);
-      //clear pubsub_cb_ be it either local or remote close       
+      //clear pubsub_cb_ be it either local or remote close
       if ((pubsub_cb_ != nullptr)&&(event == Network::ConnectionEvent::RemoteClose)){
         ENVOY_LOG(debug,"Pubsub Client Remote close received on Downstream Notify Upstream and close it");
         pubsub_cb_->onFailure();
@@ -285,25 +345,7 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
       pubsub_cb_.reset();
     }
 
-    if (is_transaction_client_) {
-      ENVOY_LOG(debug, "transaction client {}", is_transaction_client_);
-      //TODO - Handle transaction client upstream client failures here..
-    }
-
-    //handle non blocking and non transaction requests
-    while (!pending_requests_.empty()) { 
-      PendingRequest& request = pending_requests_.front();
-      ENVOY_LOG(debug,"Upstream Client Connection close ");
-      if (!request.canceled_) {
-        ENVOY_LOG(info,"Upstream Client Connection close calling onFailure");
-        request.callbacks_.onFailure();
-      } else {
-        host_->cluster().trafficStats()->upstream_rq_cancelled_.inc();
-      }
-      pending_requests_.pop_front();
-    }
-
-    connect_or_op_timer_->disableTimer();
+    finalizeConnectionClose();
     
   } else if (event == Network::ConnectionEvent::Connected) {
     connected_ = true;
@@ -324,8 +366,37 @@ void ClientImpl::onEvent(Network::ConnectionEvent event) {
 }
 
 void ClientImpl::onRespValue(RespValuePtr&& value) {
+  if (closing_) {
+    return;
+  }
+
   int32_t clientIndex = getCurrentClientIndex();
   if (is_pubsub_client_) {
+    // AUTH and READONLY setup commands are sent via makeRequest() during initialize() and are
+    // tracked in pending_requests_. Their responses (OK / Error) must be drained here, otherwise
+    // pending_requests_ stays non-empty for the lifetime of the pubsub connection and triggers
+    // ASSERT(pending_requests_.empty()) in ~ClientImpl() on close.
+    if (!pending_requests_.empty()) {
+      const bool is_setup_ok = value->type() == Common::Redis::RespType::SimpleString &&
+                               value->asString() == "OK";
+      const bool is_setup_error = value->type() == Common::Redis::RespType::Error;
+      if (is_setup_ok || is_setup_error) {
+        PendingRequest& request = pending_requests_.front();
+        if (config_.enableCommandStats()) {
+          redis_command_stats_->updateStats(scope_, request.command_, is_setup_ok);
+          request.command_request_timer_->complete();
+        }
+        request.aggregate_request_timer_->complete();
+        pending_requests_.pop_front();
+        if (pending_requests_.empty() && connect_or_op_timer_->enabled()) {
+          connect_or_op_timer_->disableTimer();
+        }
+        putOutlierEvent(is_setup_ok ? Upstream::Outlier::Result::ExtOriginRequestSuccess
+                                    : Upstream::Outlier::Result::ExtOriginRequestFailed);
+        return;
+      }
+    }
+
     // This is a pubsub client, and we have received a message from the server.
     // We need to pass this message to the registered callback.
     if (pubsub_cb_ != nullptr){

@@ -33,6 +33,13 @@ namespace Common {
 namespace Redis {
 namespace Client {
 
+class MockPubsubCallbacks : public PubsubCallbacks {
+public:
+  MOCK_METHOD(void, handleChannelMessage,
+              (Common::Redis::RespValuePtr&& value, int32_t client_index), (override));
+  MOCK_METHOD(void, onFailure, (), (override));
+};
+
 class RedisClientImplTest : public testing::Test,
                             public Event::TestUsingSimulatedTime,
                             public Common::Redis::DecoderFactory {
@@ -61,6 +68,15 @@ public:
   }
 
   void finishSetup() {
+    finishSetupWithClientType(false, false, nullptr);
+  }
+
+  void finishSetupPubsub(const std::shared_ptr<PubsubCallbacks>& pubsub_cb) {
+    finishSetupWithClientType(false, true, pubsub_cb);
+  }
+
+  void finishSetupWithClientType(bool is_transaction_client, bool is_pubsub_client,
+                                 const std::shared_ptr<PubsubCallbacks>& pubsub_cb) {
     upstream_connection_ = new NiceMock<Network::MockClientConnection>();
     Upstream::MockHost::MockCreateConnectionData conn_info;
     conn_info.connection_ = upstream_connection_;
@@ -80,10 +96,13 @@ public:
         Common::Redis::RedisCommandStats::createRedisCommandStats(stats_.symbolTable());
 
     client_ = ClientImpl::create(host_, dispatcher_, Common::Redis::EncoderPtr{encoder_}, *this,
-                                 *config_, redis_command_stats_, *stats_.rootScope(), false);
+                                 *config_, redis_command_stats_, *stats_.rootScope(),
+                                 is_transaction_client, is_pubsub_client, false, pubsub_cb);
     EXPECT_EQ(1UL, host_->cluster_.traffic_stats_->upstream_cx_total_.value());
     EXPECT_EQ(1UL, host_->stats_.cx_total_.value());
-    EXPECT_EQ(false, client_->active());
+    if (!is_pubsub_client) {
+      EXPECT_EQ(false, client_->active());
+    }
 
     // NOP currently.
     upstream_connection_->runHighWatermarkCallbacks();
@@ -1204,6 +1223,69 @@ TEST_F(RedisClientImplTest, RemoveFailedHost) {
   EXPECT_CALL(*connect_or_op_timer_, disableTimer());
   EXPECT_CALL(connection_callbacks, onEvent(Network::ConnectionEvent::RemoteClose));
   upstream_connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
+}
+
+// Pubsub clients send AUTH via makeRequest(); OK must drain pending_requests_ or close
+// must drain before onFailure() to avoid ~ClientImpl() assert (prod crash).
+TEST_F(RedisClientImplTest, PubsubAuthOkDrainsPendingRequest) {
+  InSequence s;
+
+  auto pubsub_cb = std::make_shared<NiceMock<MockPubsubCallbacks>>();
+  config_ = std::make_unique<ConfigImpl>(createConnPoolSettings());
+  finishSetupPubsub(pubsub_cb);
+
+  auth_username_ = "default";
+  auth_password_ = "secret";
+  Utility::AuthRequest auth_request(auth_username_, auth_password_);
+  EXPECT_CALL(*encoder_, encode(Eq(auth_request), _));
+  EXPECT_CALL(*flush_timer_, enabled()).WillOnce(Return(false));
+  client_->initialize(auth_username_, auth_password_);
+
+  onConnected();
+
+  Common::Redis::RespValuePtr auth_ok{new Common::Redis::RespValue()};
+  auth_ok->type(Common::Redis::RespType::SimpleString);
+  auth_ok->asString() = "OK";
+  ClientImpl* client_impl = dynamic_cast<ClientImpl*>(client_.get());
+  ASSERT_NE(client_impl, nullptr);
+  EXPECT_CALL(host_->outlier_detector_,
+              putResult(Upstream::Outlier::Result::ExtOriginRequestSuccess, _));
+  client_impl->onRespValue(std::move(auth_ok));
+
+  EXPECT_CALL(*pubsub_cb, onFailure());
+  EXPECT_CALL(*connect_or_op_timer_, disableTimer());
+  EXPECT_CALL(*upstream_connection_, removeConnectionCallbacks(_));
+  EXPECT_CALL(*upstream_connection_, state())
+      .WillRepeatedly(Return(Network::Connection::State::Closed));
+  upstream_connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
+
+  client_.reset();
+}
+
+TEST_F(RedisClientImplTest, PubsubRemoteCloseWithPendingAuthSurvivesDestroy) {
+  InSequence s;
+
+  auto pubsub_cb = std::make_shared<NiceMock<MockPubsubCallbacks>>();
+  config_ = std::make_unique<ConfigImpl>(createConnPoolSettings());
+  finishSetupPubsub(pubsub_cb);
+
+  auth_password_ = "secret";
+  Utility::AuthRequest auth_request(auth_password_);
+  EXPECT_CALL(*encoder_, encode(Eq(auth_request), _));
+  EXPECT_CALL(*flush_timer_, enabled()).WillOnce(Return(false));
+  client_->initialize(auth_username_, auth_password_);
+
+  onConnected();
+
+  // AUTH still in flight (pending_requests_ non-empty) — reproduces prod close path.
+  EXPECT_CALL(*pubsub_cb, onFailure()).WillOnce(Invoke([this]() { client_->close(); }));
+  EXPECT_CALL(*connect_or_op_timer_, disableTimer()).Times(testing::AtLeast(1));
+  EXPECT_CALL(*upstream_connection_, removeConnectionCallbacks(_)).Times(testing::AtLeast(1));
+  EXPECT_CALL(*upstream_connection_, state())
+      .WillRepeatedly(Return(Network::Connection::State::Closed));
+  upstream_connection_->raiseEvent(Network::ConnectionEvent::RemoteClose);
+
+  client_.reset();
 }
 
 TEST(RedisClientFactoryImplTest, Basic) {

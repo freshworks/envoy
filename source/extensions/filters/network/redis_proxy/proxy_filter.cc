@@ -238,14 +238,13 @@ void ProxyFilter::closeDownstreamConnection() {
 }
 void ProxyFilter::onPubsubConnClose(){
   ASSERT(pending_requests_.empty());
-//Close the downstream connection on upstream connection close 
   transaction_.setPubSubCallback(nullptr);
-  //callbacks_->connection().close(Network::ConnectionCloseType::FlushWrite);
-  //This callback is called only on remote close , so no need to close the client connnection again
-  transaction_.connection_established_=false;
   connection_quit_ = false;
+  // Close all upstream pubsub clients (including other shards) before tearing down
+  // downstream. Do not clear connection_established_ first; Transaction::close()
+  // only closes clients while that flag is still true.
+  transaction_.close();
   this->closeDownstreamConnection();
-  return;
 }
 
 void ProxyFilter::onResponse(PendingRequest& request, Common::Redis::RespValuePtr&& value) {
